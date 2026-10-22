@@ -1,4 +1,4 @@
-package com.simple.home;
+package com.petrobot.hume;
 
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
