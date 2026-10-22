@@ -137,7 +137,9 @@ public class MainActivity extends Activity {
     FrameLayout shelfView;
     LinearLayout heroInfo, heroDots;
     ImageView heroLogo;
-    TextView heroTitle, heroMeta, heroOverview;
+    TextView heroTitle, heroMeta, heroOverview, heroRemove;
+    GradientDrawable heroRemoveBg;
+    boolean removeSelected;
     /** tvOS-style capsule button: glass when idle, solid white with dark text when focused. */
     LinearLayout heroButton;
     TextView heroBtnText;
@@ -1356,9 +1358,27 @@ public class MainActivity extends Activity {
         LinearLayout.LayoutParams iclp = new LinearLayout.LayoutParams(dp(22), dp(22));
         iclp.leftMargin = dp(9);
         heroButton.addView(heroBtnIcon, iclp);
+        // Resume / Open capsule, plus a Remove capsule on Continue Watching items (Right reaches it).
+        LinearLayout btnRow = new LinearLayout(this);
+        btnRow.setOrientation(LinearLayout.HORIZONTAL);
+        btnRow.setClipChildren(false);
+        btnRow.addView(heroButton, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(32)));
+        heroRemove = text(13, Ui.font(this, "semibold"), 1f);
+        heroRemove.setShadowLayer(0, 0, 0, 0);
+        heroRemove.setText("\u2715  Remove");
+        heroRemove.setGravity(Gravity.CENTER);
+        heroRemove.setPadding(dp(16), 0, dp(18), 0);
+        heroRemoveBg = new GradientDrawable();
+        heroRemoveBg.setCornerRadius(dp(16));
+        heroRemoveBg.setColor(0x47FFFFFF);
+        heroRemove.setBackground(heroRemoveBg);
+        heroRemove.setVisibility(View.GONE);
+        LinearLayout.LayoutParams rlp2 = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(32));
+        rlp2.leftMargin = dp(10);
+        btnRow.addView(heroRemove, rlp2);
         LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(32));
         blp.topMargin = dp(14);
-        heroInfo.addView(heroButton, blp);
+        heroInfo.addView(btnRow, blp);
         // Overview and button only show while the carousel itself is focused (tvOS).
         heroOverview.setAlpha(0f);
         heroButton.setAlpha(0f);
@@ -1642,18 +1662,10 @@ public class MainActivity extends Activity {
         });
     }
 
-    /** Up to four recent Continue Watching titles, one after every two other items. */
+    /** Resume first: up to six recent Continue Watching titles, then news and recommendations. */
     static List<Suggestions.Item> mixContinue(List<Suggestions.Item> base, List<Suggestions.Item> cw) {
-        List<Suggestions.Item> out = new ArrayList<>();
-        List<Suggestions.Item> resume = cw.subList(0, Math.min(4, cw.size()));
-        int r = 0;
-        if (base != null) {
-            for (int i = 0; i < base.size(); i++) {
-                out.add(base.get(i));
-                if (i % 2 == 1 && r < resume.size()) out.add(resume.get(r++));
-            }
-        }
-        while (r < resume.size()) out.add(resume.get(r++));
+        List<Suggestions.Item> out = new ArrayList<>(cw.subList(0, Math.min(6, cw.size())));
+        if (base != null) out.addAll(base);
         return out;
     }
 
@@ -1778,6 +1790,8 @@ public class MainActivity extends Activity {
     /** Title/meta/overview for an item, applied in the same frame as its artwork. */
     void applyHeroInfo(Suggestions.Item it, Bitmap logo, int dir) {
         boolean news = "news".equals(it.type);
+        if (removeSelected) selectRemove(false);
+        heroRemove.setVisibility(!it.pkg.isEmpty() && shelfView.isFocused() ? View.VISIBLE : View.GONE);
         if (shelfView.isFocused()) {
             heroButton.setVisibility(news ? View.GONE : View.VISIBLE);
             if (!news) heroButton.setAlpha(1f);
@@ -1934,6 +1948,8 @@ public class MainActivity extends Activity {
             heroDots.animate().withLayer().translationY(0).setDuration(500).setInterpolator(EASE).start();
             heroOverview.setVisibility(View.VISIBLE);
             heroButton.setVisibility(heroIsNews() ? View.GONE : View.VISIBLE);
+            heroRemove.setVisibility(heroIsContinue() ? View.VISIBLE : View.GONE);
+            heroRemove.setAlpha(1f);
             if (continueMode() && heroStrip.getChildCount() > 0) heroStrip.setVisibility(View.VISIBLE);
             heroOverview.animate().alpha(0.85f).setDuration(400).setStartDelay(120).start();
             heroButton.animate().alpha(1f).setDuration(400).setStartDelay(120).start();
@@ -1953,9 +1969,35 @@ public class MainActivity extends Activity {
             }
             heroButton.animate().alpha(0f).setDuration(160).setStartDelay(0)
                     .withEndAction(() -> heroButton.setVisibility(View.GONE)).start();
+            if (removeSelected) selectRemove(false);
+            heroRemove.setVisibility(View.GONE);
             heroStrip.setVisibility(View.GONE);
             scheduleAdvance();
         }
+    }
+
+    boolean heroIsContinue() {
+        return heroIndex >= 0 && heroIndex < heroItems.size() && !heroItems.get(heroIndex).pkg.isEmpty();
+    }
+
+    /** Moves the highlight between Resume and Remove (the carousel keeps focus). */
+    void selectRemove(boolean on) {
+        removeSelected = on;
+        heroBtnBg.setColor(on ? 0x47FFFFFF : 0xFFFFFFFF);
+        heroBtnText.setTextColor(on ? Color.WHITE : 0xFF111114);
+        heroRemoveBg.setColor(on ? 0xFFFFFFFF : 0x47FFFFFF);
+        heroRemove.setTextColor(on ? 0xFF111114 : Color.WHITE);
+        heroButton.animate().scaleX(on ? 1f : 1.08f).scaleY(on ? 1f : 1.08f).setDuration(180).start();
+        heroRemove.animate().scaleX(on ? 1.08f : 1f).scaleY(on ? 1.08f : 1f).setDuration(180).start();
+    }
+
+    void removeHeroItem(Suggestions.Item it) {
+        MediaWatchService.Store.remove(this, it.key);
+        selectRemove(false);
+        lastCwSig = "";
+        heroVersion = -1;
+        toast("Removed " + it.title);
+        loadHero();
     }
 
     /** News stories have no button: they are read right on the shelf. */
@@ -1972,11 +2014,24 @@ public class MainActivity extends Activity {
         boolean heroActive = shelfView.isFocusable() && !folderMode;
         if (f == shelfView) {
             switch (k) {
-                case KeyEvent.KEYCODE_DPAD_LEFT: if (down) heroStep(-1, true); return true;
-                case KeyEvent.KEYCODE_DPAD_RIGHT: if (down) heroStep(1, true); return true;
+                case KeyEvent.KEYCODE_DPAD_LEFT:
+                    if (down) {
+                        if (removeSelected) selectRemove(false);
+                        else heroStep(-1, true);
+                    }
+                    return true;
+                case KeyEvent.KEYCODE_DPAD_RIGHT:
+                    if (down) {
+                        if (!removeSelected && heroIsContinue()) selectRemove(true);
+                        else heroStep(1, true);
+                    }
+                    return true;
                 case KeyEvent.KEYCODE_DPAD_CENTER:
                 case KeyEvent.KEYCODE_ENTER:
-                    if (!down && !heroItems.isEmpty()) openHeroItem(heroItems.get(heroIndex));
+                    if (!down && !heroItems.isEmpty()) {
+                        if (removeSelected) removeHeroItem(heroItems.get(heroIndex));
+                        else openHeroItem(heroItems.get(heroIndex));
+                    }
                     return true;
                 case KeyEvent.KEYCODE_MENU:
                     if (!down && !heroItems.isEmpty() && !heroItems.get(heroIndex).pkg.isEmpty()) {

@@ -76,8 +76,8 @@ Shown behind the dock while a dock app is focused; below the dock the launcher b
   (no key; unofficial API) or **TMDB** (free key). Full-screen artwork with the service's icon,
   title, year · type · genre · rating; when focused, the description and a **▶ Open** button that
   goes to the title's page in the app (exact title link with JustWatch; search with TMDB).
-- **Continue Watching** titles are mixed into the same carousel — up to four, one after every two
-  news/recommendation items (switch off per profile in Settings → Continue Watching or during setup).
+- **Continue Watching** titles come first in the same carousel (up to six), then news and
+  recommendations. Each has **Resume** and **Remove** buttons (Right moves to Remove) (switch off per profile in Settings → Continue Watching or during setup).
   A title drops off if it isn't played again for 7 days. What you played recently in each app, from the "now playing" information
   apps publish (title, artwork, position). **▶ Resume** opens the app; an Up Next strip with
   progress bars appears when focused; Menu → *Remove from Continue Watching*.
