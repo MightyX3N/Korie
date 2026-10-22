@@ -46,13 +46,14 @@ Settings → Home → **Run setup again** repeats it.
 | Any card | Hold OK / Menu | Options menu: Open, Move, Hide, App Info, Uninstall, Reset Layout |
 | Move mode | Arrows / OK | Move the wiggling card / finish |
 | Dock | Up | Top shelf (carousel) |
-| Status row | Left / Right | Weather pill ⇄ Control Center ⇄ profile avatar |
+| Status row | Left / Right | Weather pill ⇄ Refresh ⇄ Control Center ⇄ profile avatar |
 | Anywhere | Home | Closes any overlay and goes back to the first app in the dock |
 
 ## Status row
 
 Top right, as on tvOS: the **internet indicator** and time on a faint dark chip (for contrast over
-bright artwork), the glass **Control Center** button and the profile avatar. Glass controls adapt to what is behind them: the backdrop is desaturated and
+bright artwork), a glass **Refresh** button (reloads recommendations, news, Continue Watching and
+weather), the glass **Control Center** button and the profile avatar. Glass controls adapt to what is behind them: the backdrop is desaturated and
 the tint darkens over bright artwork and lightens over dark artwork, so white text stays legible. The indicator is drawn like Apple's symbols, in white
 only: Wi-Fi bars lit by signal strength (unlit bars at 30%) or an Ethernet symbol when the internet
 works; dimmed bars with "!" when the TV is on a network that can't reach the internet; dimmed bars

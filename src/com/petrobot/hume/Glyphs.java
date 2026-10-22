@@ -283,6 +283,16 @@ final class Glyphs {
                 c.drawRect(r, dot);
                 break;
             }
+            case "refresh": {  // circular arrow
+                r.set(s * 0.2f, s * 0.2f, s * 0.8f, s * 0.8f);
+                c.drawArc(r, -60, 300, false, p);
+                float ax = m + s * 0.3f * (float) Math.cos(Math.toRadians(-60)), ay = m + s * 0.3f * (float) Math.sin(Math.toRadians(-60));
+                path.moveTo(ax - s * 0.16f, ay - s * 0.04f);
+                path.lineTo(ax, ay);
+                path.lineTo(ax - s * 0.02f, ay + s * 0.16f);
+                c.drawPath(path, p);
+                break;
+            }
             case "search":
                 c.drawCircle(s * 0.44f, s * 0.44f, s * 0.24f, p);
                 c.drawLine(s * 0.62f, s * 0.62f, s * 0.82f, s * 0.82f, p);

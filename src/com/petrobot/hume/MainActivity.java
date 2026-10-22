@@ -503,6 +503,28 @@ public class MainActivity extends Activity {
         timeChip.addView(time);
         clockBox.addView(timeChip, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, btn));
 
+        // Refresh: reloads every part of the carousel (recommendations, news, Continue Watching) and weather.
+        refreshButton = new ImageView(this);
+        refreshButton.setScaleType(ImageView.ScaleType.CENTER);
+        refreshButton.setImageBitmap(Glyphs.get("refresh", dp(20), Color.WHITE));
+        LiquidGlass rfGlass = new LiquidGlass(btn / 2f, 0x1F000000, glassSource, screenW, screenH, unit).adaptive();
+        rfGlass.lens = dp(4);
+        refreshButton.setBackground(rfGlass);
+        refreshButton.setFocusable(true);
+        refreshButton.setClickable(true);
+        LinearLayout.LayoutParams rblp = new LinearLayout.LayoutParams(btn, btn);
+        rblp.leftMargin = dp(18);
+        clockBox.addView(refreshButton, rblp);
+        GradientDrawable rfLit = new GradientDrawable();
+        rfLit.setShape(GradientDrawable.OVAL);
+        rfLit.setColor(Color.WHITE);
+        refreshButton.setOnFocusChangeListener((v, has) -> {
+            refreshButton.setBackground(has ? rfLit : rfGlass);
+            refreshButton.setImageBitmap(Glyphs.get("refresh", dp(20), has ? 0xFF111114 : Color.WHITE));
+            v.animate().scaleX(has ? 1.12f : 1f).scaleY(has ? 1.12f : 1f).setDuration(200).setInterpolator(LIFT).start();
+        });
+        refreshButton.setOnClickListener(v -> refreshAll());
+
         ccButton = new ImageView(this);
         ccButton.setScaleType(ImageView.ScaleType.CENTER);
         ccButton.setImageBitmap(Glyphs.get("controls", dp(20), Color.WHITE));
@@ -512,7 +534,7 @@ public class MainActivity extends Activity {
         ccButton.setFocusable(true);
         ccButton.setClickable(true);
         LinearLayout.LayoutParams cblp = new LinearLayout.LayoutParams(btn, btn);
-        cblp.leftMargin = dp(18);
+        cblp.leftMargin = dp(12);
         clockBox.addView(ccButton, cblp);
         GradientDrawable ccLit = new GradientDrawable();
         ccLit.setShape(GradientDrawable.OVAL);
@@ -1912,7 +1934,7 @@ public class MainActivity extends Activity {
     /** Carousel focused: the dock slides away and the artwork takes the whole screen (tvOS Top Shelf). */
     boolean heroRequested;
 
-    ImageView avatarView, ccButton, netIcon;
+    ImageView avatarView, ccButton, refreshButton, netIcon;
     android.net.ConnectivityManager.NetworkCallback netCallback;
     WeatherView weatherCard;
     LiquidGlass weatherGlass;
@@ -2091,18 +2113,22 @@ public class MainActivity extends Activity {
                 default: return false;
             }
         }
-        if (f == ccButton || f == avatarView) {
+        if (f == refreshButton || f == ccButton || f == avatarView) {
+            // Status row, left to right: Refresh, Control Center, profile.
             if (k == KeyEvent.KEYCODE_DPAD_LEFT) {
-                // Left of Control Center is the tab bar.
                 if (down) {
                     if (f == avatarView) ccButton.requestFocus();
+                    else if (f == ccButton) refreshButton.requestFocus();
                     else if (switcher.getVisibility() == View.VISIBLE) switcher.requestFocus();
                     else if (weatherShown()) weatherCard.requestFocus();
                 }
                 return true;
             }
             if (k == KeyEvent.KEYCODE_DPAD_RIGHT) {
-                if (down && f == ccButton) avatarView.requestFocus();
+                if (down) {
+                    if (f == refreshButton) ccButton.requestFocus();
+                    else if (f == ccButton) avatarView.requestFocus();
+                }
                 return true;
             }
             if (k == KeyEvent.KEYCODE_DPAD_DOWN || k == KeyEvent.KEYCODE_BACK) {
@@ -3559,6 +3585,20 @@ public class MainActivity extends Activity {
         }
     }
 
+    /** Refresh button: fetch fresh recommendations and news, reload Continue Watching and weather. */
+    void refreshAll() {
+        refreshButton.animate().cancel();
+        refreshButton.setRotation(0);
+        refreshButton.animate().rotation(360).setDuration(700).setInterpolator(EASE).start();
+        Suggestions.changed(this);
+        lastCwSig = "";
+        heroVersion = -1;
+        heroItems = new ArrayList<>();
+        loadHero();
+        Weather.refresh(this, true, this::updateWeather);
+        toast("Refreshing");
+    }
+
     // ---------------------------------------------------------------- idle full-screen carousel
 
     boolean idle, swallowUp;
@@ -3840,7 +3880,7 @@ public class MainActivity extends Activity {
 
     boolean statusFocused() {
         View f = getCurrentFocus();
-        return f != null && (f == ccButton || f == avatarView);
+        return f != null && (f == ccButton || f == avatarView || f == refreshButton);
     }
 
     /** Directional focus inside a popover: nearest cell whose centre lies in that direction. */
