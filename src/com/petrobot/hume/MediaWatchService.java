@@ -36,8 +36,12 @@ public class MediaWatchService extends NotificationListenerService {
     final Map<MediaSession.Token, MediaController.Callback> tracked = new HashMap<>();
     final MediaSessionManager.OnActiveSessionsChangedListener sessions = this::onSessions;
 
+    /** Live instance while the listener is connected (Control Center uses it for Do Not Disturb). */
+    static MediaWatchService instance;
+
     @Override
     public void onListenerConnected() {
+        instance = this;
         msm = getSystemService(MediaSessionManager.class);
         ComponentName me = new ComponentName(this, MediaWatchService.class);
         try {
@@ -50,6 +54,7 @@ public class MediaWatchService extends NotificationListenerService {
 
     @Override
     public void onListenerDisconnected() {
+        instance = null;
         if (msm != null) msm.removeOnActiveSessionsChangedListener(sessions);
         tracked.clear();
     }
@@ -87,7 +92,7 @@ public class MediaWatchService extends NotificationListenerService {
         static final int MAX = 20;
 
         static File file(Context c) {
-            return new File(c.getFilesDir(), "continue.json");
+            return new File(c.getFilesDir(), Profiles.continueFile(Profiles.current(c).id));
         }
 
         static synchronized JSONArray read(Context c) {

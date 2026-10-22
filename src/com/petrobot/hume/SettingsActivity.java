@@ -75,6 +75,15 @@ public class SettingsActivity extends Activity {
         sv.addView(list);
         split.addView(sv, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1.25f));
 
+        section("Profiles");
+        row("Current profile", () -> Profiles.current(this).name, () -> {
+            startActivity(new Intent(this, MainActivity.class).putExtra("pick_profile", true)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            finish();
+        });
+        row("Show profiles on wake", () -> Profiles.askOnWake(this) ? "On" : "Off",
+                () -> Profiles.setAskOnWake(this, !Profiles.askOnWake(this)));
+
         section("Suggestions");
         row("Show suggestions", () -> Suggestions.enabled(this) ? "On" : "Off", () -> {
             Suggestions.prefs(this).edit().putBoolean(Suggestions.K_ENABLED, !Suggestions.enabled(this)).apply();
@@ -126,20 +135,20 @@ public class SettingsActivity extends Activity {
 
         section("Home");
         row("Background", () -> {
-            String k = getSharedPreferences("home", MODE_PRIVATE).getString("wallpaper", "aurora");
+            String k = Profiles.homePrefs(this).getString("wallpaper", "aurora");
             int i = java.util.Arrays.asList(MainActivity.WALL_KEYS).indexOf(k);
             return MainActivity.WALL_NAMES[Math.max(0, i)];
         }, () -> {
-            String k = getSharedPreferences("home", MODE_PRIVATE).getString("wallpaper", "aurora");
+            String k = Profiles.homePrefs(this).getString("wallpaper", "aurora");
             int cur = Math.max(0, java.util.Arrays.asList(MainActivity.WALL_KEYS).indexOf(k));
             dialog("Background").setSingleChoiceItems(MainActivity.WALL_NAMES, cur, (d, w) -> {
-                getSharedPreferences("home", MODE_PRIVATE).edit().putString("wallpaper", MainActivity.WALL_KEYS[w]).apply();
+                Profiles.homePrefs(this).edit().putString("wallpaper", MainActivity.WALL_KEYS[w]).apply();
                 refreshAll();
                 d.dismiss();
             }).show();
         });
         row("Reset app layout", () -> "", () -> {
-            getSharedPreferences("home", MODE_PRIVATE).edit().remove("order").apply();
+            Profiles.homePrefs(this).edit().remove("order").apply();
             Toast.makeText(this, "Layout reset", Toast.LENGTH_SHORT).show();
         });
 

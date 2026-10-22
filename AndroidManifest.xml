@@ -7,6 +7,10 @@
 
     <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
     <!-- Normal-level permission: lets us try reading apps' published TV rows for the top shelf. -->
     <uses-permission android:name="com.android.providers.tv.permission.READ_EPG_DATA" />
 
@@ -47,6 +51,19 @@
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Control Center: Power Off / Sleep Timer (force-lock device admin only). -->
+        <receiver
+            android:name=".SleepReceiver$Admin"
+            android:exported="true"
+            android:label="Hume Launcher sleep"
+            android:permission="android.permission.BIND_DEVICE_ADMIN">
+            <meta-data android:name="android.app.device_admin" android:resource="@xml/device_admin" />
+            <intent-filter>
+                <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
+            </intent-filter>
+        </receiver>
+        <receiver android:name=".SleepReceiver" android:exported="false" />
 
         <!-- Continue Watching: reads the media sessions apps publish while playing. -->
         <service
