@@ -873,17 +873,48 @@ public class MainActivity extends Activity {
                     new float[]{0f, 0.22f, 0.5f, 0.78f, 1f}, Shader.TileMode.CLAMP));
         }
 
+        // Cache: the glass body (backdrop, lensing, tint, glow) is rendered off-screen at half
+        // resolution and only rebuilt when what's behind it changes; each frame is then a single
+        // bitmap draw plus the crisp rim. Keeps this weak GPU at 60 fps.
+        Bitmap cache, cacheBg;
+        int cacheX = Integer.MIN_VALUE, cacheY, cacheW, cacheH, cacheFill;
+        final Paint blit = new Paint(Paint.FILTER_BITMAP_FLAG);
+
         @Override public void draw(Canvas c) {
             Bitmap b = backdrop.get();
             Object cb = getCallback();
             if (cb instanceof View) ((View) cb).getLocationOnScreen(loc);
+            int w = Math.max(1, Math.round(box.width() / 2f)), h = Math.max(1, Math.round(box.height() / 2f));
+            if (cache == null || b != cacheBg || loc[0] != cacheX || loc[1] != cacheY
+                    || w != cacheW || h != cacheH || fill.getColor() != cacheFill) {
+                if (cache == null || cache.getWidth() != w || cache.getHeight() != h) {
+                    cache = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+                } else {
+                    cache.eraseColor(0);
+                }
+                Canvas k = new Canvas(cache);
+                k.scale(w / box.width(), h / box.height());
+                k.translate(-box.left, -box.top);
+                renderBody(k, b);
+                cacheBg = b;
+                cacheX = loc[0];
+                cacheY = loc[1];
+                cacheW = w;
+                cacheH = h;
+                cacheFill = fill.getColor();
+            }
+            c.drawBitmap(cache, null, box, blit);
+            float in = rim.getStrokeWidth() / 2f;
+            c.drawRoundRect(box.left + in, box.top + in, box.right - in, box.bottom - in, r - in, r - in, rim);
+        }
+
+        void renderBody(Canvas c, Bitmap b) {
             c.save();
             c.clipPath(clip);
             if (b != null) {
                 dst.set(box.left - loc[0], box.top - loc[1], box.left - loc[0] + screenW, box.top - loc[1] + screenH);
                 c.drawBitmap(b, null, dst, bg);
                 if (lens > 0) {
-                    // Edge lensing: the band along the rim shows the backdrop slightly magnified.
                     // Two softer steps instead of one hard band, so the bend has no visible seam.
                     c.save();
                     c.clipPath(ring);
@@ -894,7 +925,6 @@ public class MainActivity extends Activity {
                     c.save();
                     c.clipPath(ringOuter);
                     c.scale(1.06f, 1.06f, box.centerX(), box.centerY());
-                    bg.setAlpha(150);
                     c.drawBitmap(b, null, dst, bg);
                     c.restore();
                     bg.setAlpha(255);
@@ -903,8 +933,6 @@ public class MainActivity extends Activity {
             c.drawRect(box, fill);
             c.drawRect(box, glow);
             c.restore();
-            float in = rim.getStrokeWidth() / 2f;
-            c.drawRoundRect(box.left + in, box.top + in, box.right - in, box.bottom - in, r - in, r - in, rim);
         }
 
         @Override public void setAlpha(int a) { }
