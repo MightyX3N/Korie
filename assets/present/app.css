@@ -40,7 +40,7 @@
   }
 }
 * { box-sizing: border-box; }
-html, body { margin: 0; }
+html, body { margin: 0; overflow-x: hidden; }
 body {
   font: 15px/1.4 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, "Segoe UI", Roboto, sans-serif;
   background: var(--bg);
@@ -223,6 +223,7 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
   background: var(--bar); backdrop-filter: saturate(180%) blur(20px); -webkit-backdrop-filter: saturate(180%) blur(20px);
   border-radius: 16px; box-shadow: 0 10px 40px rgba(0,0,0,.18); border: 0.5px solid var(--sep); transition: transform .3s cubic-bezier(.2,.8,.2,1);
 }
+.savebar:not(.show) { visibility: hidden; transition: transform .3s cubic-bezier(.2,.8,.2,1), visibility 0s .3s; }
 .savebar.show { transform: translate(-50%, 0); }
 .savebar-title { font-weight: 600; }
 .savebar-actions { display: flex; gap: 6px; }
@@ -245,9 +246,10 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 /* Toast */
 .toast {
   position: fixed; left: 50%; top: 18px; transform: translate(-50%, -150%); z-index: 50; padding: 10px 16px; border-radius: 999px;
-  background: var(--label); color: var(--card); font-weight: 600; font-size: 14px; transition: transform .3s cubic-bezier(.2,.8,.2,1);
+  background: var(--label); color: var(--card); font-weight: 600; font-size: 14px;
+  opacity: 0; visibility: hidden; transition: transform .3s cubic-bezier(.2,.8,.2,1), opacity .2s, visibility .3s;
 }
-.toast.show { transform: translate(-50%, 0); }
+.toast.show { transform: translate(-50%, 0); opacity: 1; visibility: visible; }
 .toast.error { background: var(--red); color: #fff; }
 
 @media (max-width: 720px) {
@@ -259,4 +261,16 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
   .content { padding: 12px 12px 140px; }
   .inspector { padding-left: 14px; }
   .grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+  .section-head { align-items: flex-start; }
+  .head-actions { width: 100%; }
+  .head-actions .btn { flex: 1; }
+  .now-controls { width: 100%; justify-content: space-between; }
+  .slide-row { gap: 8px; padding: 10px; }
+  .slide-thumb { width: 56px; height: 32px; }
+  .slide-num { display: none; }
+  .inspector { grid-template-columns: 1fr !important; }
+  .field .row { min-width: 0; }
+  .field input[type="range"] { flex: 1; min-width: 0; }
+  .inline-add { flex-wrap: wrap; }
+  .inline-add input { flex-basis: 100%; }
 }

@@ -8,6 +8,13 @@ full screen. It is a built-in feature of Hume Launcher, ported from **PB Markete
 **Removed from the original** (by request): the admin/upload lock PIN, the debug telemetry panel
 and the APK self-updater. **Kept:** browser pairing with a 6-digit code shown on the TV.
 
+| | |
+|---|---|
+| ![Library](images/web-library.jpg) | ![Playlist](images/web-playlist.jpg) |
+| Library: drag & drop uploads, thumbnails | Playlist: reorder, inspector, save bar |
+| ![Pairing](images/web-pair.jpg) | ![Phone](images/web-phone.jpg) |
+| Pairing with the TV's code | On a phone |
+
 ## Turn it on
 
 Settings → **Presentation**:
