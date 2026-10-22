@@ -3276,7 +3276,7 @@ public class MainActivity extends Activity {
         c.drawRoundRect(r, s * 0.06f, s * 0.06f, p);
     }
 
-    /** Apple TV-style tick on D-pad moves and tock on select (Settings -> Home -> Navigation sounds). */
+    /** Apple TV-style click on D-pad moves, select and Back (Settings -> Home -> Navigation sounds). */
     static void navSound(Context c, KeyEvent ev) {
         if (ev.getAction() != KeyEvent.ACTION_DOWN) return;
         switch (ev.getKeyCode()) {
@@ -3289,6 +3289,9 @@ public class MainActivity extends Activity {
             case KeyEvent.KEYCODE_DPAD_CENTER:
             case KeyEvent.KEYCODE_ENTER:
                 if (ev.getRepeatCount() == 0) Clicks.select(c);
+                break;
+            case KeyEvent.KEYCODE_BACK:
+                if (ev.getRepeatCount() == 0) Clicks.back(c);
                 break;
             default:
                 break;

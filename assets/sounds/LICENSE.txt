@@ -1,0 +1,6 @@
+Navigation sounds from "Interface Sounds" (1.0) by Kenney (www.kenney.nl)
+License: Creative Commons Zero (CC0) — http://creativecommons.org/publicdomain/zero/1.0/
+
+nav_move.ogg   = click_001.ogg
+nav_select.ogg = select_002.ogg
+nav_back.ogg   = back_003.ogg

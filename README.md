@@ -23,3 +23,5 @@ Documentation: **[docs/](docs/README.md)** — [install](docs/install.md) ·
 ./build.sh                                   # → build/tvos-home.apk
 adb install -r build/tvos-home.apk
 ```
+
+Navigation sounds: "Interface Sounds" by Kenney (www.kenney.nl), CC0.
