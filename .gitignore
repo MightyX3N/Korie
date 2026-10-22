@@ -1,1 +1,5 @@
 build/
+signing.keystore
+debug.keystore
+*.jks
+keystore-password.txt

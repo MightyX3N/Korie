@@ -23,8 +23,9 @@ runtime libraries; the APK is about 1 MB.
 - **Presentation mode**: send images, videos and webpages from a browser and loop them full screen;
   can start with the TV (signage).
 - **First-time setup** in Apple's style, **multi-page Settings**, permissions asked **on screen**
-  (adb only as a last resort), system or carousel **screensaver**, an **AirPlay guard** for the
-  open-source AirPlay receiver, and Android TV navigation sounds.
+  (adb only as a last resort), system or carousel **screensaver**, and Android TV navigation sounds.
+- **AirPlay**: works with the open-source [AirPlay Server](https://github.com/jqssun/android-airplay-server)
+  app; Hume keeps the receiver visible to Macs and iPhones after the TV sleeps.
 
 Full list with screenshots: **[docs/features.md](docs/features.md)**.
 

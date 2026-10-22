@@ -3,7 +3,8 @@
 ## Build
 
 No Gradle and no runtime libraries. `build.sh` runs `aapt2` (resources + assets) → `javac
---release 11` against `android.jar` (API 34) → `d8` (min API 24) → `zipalign` → `apksigner`.
+--release 11` against `android.jar` (API 34) → `d8` (min API 24) → `zipalign` → `apksigner` (local debug key, or the private release key via
+`RELEASE_KEYSTORE`).
 Fonts (Inter, OFL) and the Presentation web app are plain assets; the QR encoder is vendored
 source (Nayuki, MIT) under `src/io/nayuki/qrcodegen`.
 

@@ -187,5 +187,14 @@ bring in code under a licence compatible with Apache-2.0 (MIT, BSD, Apache, OFL 
 Third-party code and assets already here: **Inter** font (SIL Open Font License,
 `assets/fonts/Inter-LICENSE.txt`) and **Nayuki QR Code generator** (MIT, `src/io/nayuki/qrcodegen`).
 
-> **Maintainers:** `signing.keystore` is for development builds only — sign public releases with a
-> separate, private key.
+### Signing
+
+Development builds are signed with a local `debug.keystore` that `build.sh` creates on first use; it
+is ignored by git. **Release builds are signed by maintainers only**, with the private key kept in
+a separate private repository (never in this one):
+
+```sh
+RELEASE_KEYSTORE=/path/to/hume-release.jks RELEASE_KEYSTORE_PASS=... VERSION_CODE=.. VERSION_NAME=.. ./build.sh
+```
+
+A debug build can't update a release install (different key): uninstall first.

@@ -59,7 +59,8 @@ VERSION_CODE=88 VERSION_NAME=7.5 ./build.sh                 # release builds set
 ```
 
 What `build.sh` does, in order: `aapt2` compiles resources and assets → `javac` compiles `src/` →
-`d8` converts to DEX → `zipalign` → `apksigner` signs with `signing.keystore`. A full build takes
+`d8` converts to DEX → `zipalign` → `apksigner` signs with a local debug key (`debug.keystore`,
+created on first build, never committed). A full build takes
 about 15 seconds. If a tool is missing it says which one and how to get it.
 
 ## 4. Run it on a TV
@@ -124,7 +125,7 @@ Useful logs: `adb logcat -s TvHome` (Hume's own messages) and
 |---|---|
 | `Missing …/aapt2` | Install `build-tools;34.0.0` and `platforms;android-34`, or set `ANDROID_HOME` |
 | `javac not found` | Install JDK 17+ or set `JAVA_HOME` |
-| `INSTALL_FAILED_UPDATE_INCOMPATIBLE` | The installed copy was signed with a different key: `adb uninstall com.petrobot.hume` first (this clears its settings) |
+| `INSTALL_FAILED_UPDATE_INCOMPATIBLE` | The installed copy was signed with a different key (e.g. a release build): `adb uninstall com.petrobot.hume` first (this clears its settings) |
 | `adb: device offline` / `unauthorized` | Accept the prompt on the TV; `adb disconnect` then `adb connect` again |
 | Home button still opens the old launcher | Finish setup's *Make Hume the Home Screen*, or see install.md |
 | Install over Wi-Fi is very slow | Normal for 1 MB+ over a busy network; it finishes — don't wrap it in fixed sleeps |

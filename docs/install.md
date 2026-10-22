@@ -14,8 +14,10 @@
 VERSION_CODE=62 VERSION_NAME=6.9 ./build.sh
 ```
 
-The script compiles resources (`aapt2`), Java (`javac`), dexes (`d8`), aligns and signs with
-`signing.keystore`. **Keep `signing.keystore`** — updates must be signed with the same key.
+The script compiles resources (`aapt2`), Java (`javac`), dexes (`d8`), aligns and signs. Development
+builds use a local debug key; official releases are signed by the maintainers with a private key.
+Android only installs updates signed with the same key, so switching between a release and a
+development build needs an uninstall first.
 
 ## Install and make it the home screen
 
@@ -52,6 +54,22 @@ easiest to type with a remote. It can also be set from a computer:
 ```sh
 adb shell am start -n com.petrobot.hume/.SettingsActivity --es tmdb_token <token>
 ```
+
+## Optional: AirPlay receiver
+
+To AirPlay from a Mac, iPhone or iPad to the TV, install the open-source
+[AirPlay Server](https://github.com/jqssun/android-airplay-server) app (GPL-3.0; a separate app, not
+part of Hume). Download `app-release.apk` from its
+[latest release](https://github.com/jqssun/android-airplay-server/releases/latest) and install it:
+
+```sh
+adb install -r app-release.apk
+```
+
+Open it once from Hume, set a name (e.g. "Mi Box") in its Settings and keep *Start on boot* on. The
+TV then appears in AirPlay on Apple devices on the same Wi-Fi. Hume's AirPlay guard keeps it visible
+after the TV sleeps ([features](features.md#airplay-with-the-airplay-server-app)). Tested with
+version 0.0.36 on a Mi Box (Android 12) and an Android 9 TV.
 
 ## Undo
 

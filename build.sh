@@ -32,12 +32,23 @@ javac -encoding UTF-8 --release 11 -classpath "$JAR" \
 
 "$BT/zipalign" -f 4 build/unsigned.apk build/aligned.apk
 
-KS=signing.keystore
-if [ ! -f "$KS" ]; then
-    keytool -genkeypair -keystore "$KS" -storepass android -keypass android -alias home \
-        -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=tvOS Home" >/dev/null
+# Signing. Release builds: RELEASE_KEYSTORE + RELEASE_KEYSTORE_PASS (the private key lives in the
+# separate, private hume-launcher-signing repo). Development builds: a local debug key, created on
+# first use and never committed (it's in .gitignore).
+if [ -n "${RELEASE_KEYSTORE:-}" ]; then
+    [ -n "${RELEASE_KEYSTORE_PASS:-}" ] || { echo "Set RELEASE_KEYSTORE_PASS for $RELEASE_KEYSTORE" >&2; exit 1; }
+    "$BT/apksigner" sign --ks "$RELEASE_KEYSTORE" --ks-pass env:RELEASE_KEYSTORE_PASS \
+        --ks-key-alias "${RELEASE_KEY_ALIAS:-hume-release}" --out build/tvos-home.apk build/aligned.apk
+    echo "Signed with the release key"
+else
+    KS=debug.keystore
+    if [ ! -f "$KS" ]; then
+        keytool -genkeypair -keystore "$KS" -storepass android -keypass android -alias debug \
+            -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Hume Launcher debug" >/dev/null
+    fi
+    "$BT/apksigner" sign --ks "$KS" --ks-pass pass:android --key-pass pass:android \
+        --out build/tvos-home.apk build/aligned.apk
+    echo "Signed with the local debug key (development build)"
 fi
-"$BT/apksigner" sign --ks "$KS" --ks-pass pass:android --key-pass pass:android \
-    --out build/tvos-home.apk build/aligned.apk
 
 echo "Built build/tvos-home.apk"

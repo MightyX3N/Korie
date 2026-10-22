@@ -7,7 +7,7 @@ Everything Hume Launcher does, by area. For how the code is organised see
 - [Home screen](#home-screen) · [Remote controls](#remote-controls)
 - [Status row](#status-row) · [Carousel (top shelf)](#carousel-top-shelf) · [Idle full-screen carousel](#idle-full-screen-carousel)
 - [Weather](#weather) · [Control Center](#control-center) · [Profiles](#profiles) · [Inputs](#inputs)
-- [Presentation mode](#presentation-mode) · [Screensaver](#screensaver) · [AirPlay guard](#airplay-guard)
+- [Presentation mode](#presentation-mode) · [Screensaver](#screensaver) · [AirPlay](#airplay-with-the-airplay-server-app)
 - [Navigation sounds](#navigation-sounds) · [Settings](#settings) · [Permissions](#permissions) · [Display scaling](#display-scaling)
 
 ## First-time setup
@@ -164,14 +164,20 @@ TV's timeout. Settings → Home → **Screensaver on Home**: *System screensaver
 full-screen carousel*, which keeps the screen on and lets the carousel play instead. Also shows the
 TV's screensaver (opens its settings or app) and **Start screensaver now**.
 
-## AirPlay guard
+## AirPlay (with the AirPlay Server app)
 
-Only when the open-source AirPlay receiver (`io.github.jqssun.airplay`) is installed. After long
-sleeps that receiver can keep running without announcing itself, so it vanishes from Mac and
-iPhone AirPlay lists. On wake, when the network returns and every 15 minutes on Home, Hume asks the
-network (an mDNS query, as a Mac does); if the receiver doesn't answer, Hume restarts its server
-through the app's settings receiver, or starts a stopped app through its start-up receiver. Nothing
-appears on screen.
+Android TV can't receive AirPlay by itself. Install the free, open-source
+**[AirPlay Server](https://github.com/jqssun/android-airplay-server)** app
+(`io.github.jqssun.airplay`, GPL-3.0) and the TV shows up in AirPlay on Macs, iPhones and iPads for
+screen mirroring, video and audio. See [install.md](install.md#optional-airplay-receiver) to set it
+up. It appears in Hume like any other app.
+
+**AirPlay guard** (automatic, only when that app is installed): after long sleeps the AirPlay app
+can keep running without announcing itself, so the TV vanishes from AirPlay lists. On wake, when
+the network returns and every 15 minutes on Home, Hume asks the network (an mDNS query, as a Mac
+does) whether the receiver is visible; if not, it restarts the receiver's server through the app's
+settings receiver, or starts a stopped app through its start-up receiver. Nothing appears on screen.
+The receiver's name is set in the AirPlay app (e.g. "Mi Box").
 
 ## Navigation sounds
 
