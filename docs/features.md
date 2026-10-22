@@ -65,7 +65,9 @@ Opened from the gear in Control Center. Sections:
   auto-advance, refresh, TMDB token.
 - **Continue Watching** — access status, clear history.
 - **Home** — background, reset app layout.
-- **System** — TV settings, about.
+- **System** — TV settings, about (version).
+
+The left side shows the Petrobot icon above the title, with "Hume Launcher by Petrobot".
 
 ## Display scaling
 

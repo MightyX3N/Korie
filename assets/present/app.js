@@ -11,7 +11,8 @@ const state = {
   draft: null,
   dirty: false,
   tab: "library",
-  open: new Set(),
+  selected: null,
+  onTv: null,
   playing: true,
 };
 const $ = (id) => document.getElementById(id);
@@ -65,25 +66,18 @@ function bind() {
   ["dragleave", "drop"].forEach((t) => drop.addEventListener(t, () => drop.classList.remove("over")));
   drop.addEventListener("drop", (e) => { e.preventDefault(); uploadFiles([...e.dataTransfer.files]); });
 
-  $("addWebpageBtn").addEventListener("click", () => { $("webpageForm").classList.remove("hidden"); $("webpageUrl").focus(); });
-  $("cancelWebpage").addEventListener("click", () => { $("webpageForm").classList.add("hidden"); $("webpageUrl").value = ""; });
-  $("webpageForm").addEventListener("submit", (e) => {
-    e.preventDefault();
-    const url = $("webpageUrl").value.trim();
-    if (!/^https?:\/\//.test(url)) { toast("Webpage address must start with http:// or https://", "error"); return; }
-    addSlide({
-      type: "webpage", url, durationSec: defaultDuration("webpage"), fitMode: "contain", muted: true, loop: false,
-      webpageAutoScroll: true, webpageScrollSpeedPxPerSec: 40, webpageScrollPauseSec: 5, enabled: true,
-    });
-    $("webpageUrl").value = "";
-    $("webpageForm").classList.add("hidden");
-  });
-  $("addMediaBtn").addEventListener("click", openPicker);
+  // Add Slide menu (and the empty state's buttons).
+  $("addBtn").addEventListener("click", (e) => { e.stopPropagation(); toggleMenu(); });
+  document.addEventListener("click", (e) => { if (!e.target.closest(".menu-wrap")) toggleMenu(false); });
+  document.querySelectorAll("[data-add]").forEach((b) => b.addEventListener("click", () => {
+    toggleMenu(false);
+    if (b.dataset.add === "library") openPicker(); else openWebpageSheet();
+  }));
   $("saveBtn").addEventListener("click", savePlaylist);
   $("revertBtn").addEventListener("click", () => { state.draft = clone(state.playlist); setDirty(false); renderSlides(); });
   $("sheetClose").addEventListener("click", closeSheet);
   $("sheet").addEventListener("click", (e) => { if (e.target.id === "sheet") closeSheet(); });
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape") { closeSheet(); closeConfirm(false); } });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") { closeSheet(); closeConfirm(false); toggleMenu(false); } });
 }
 
 /* ------------------------------------------------------------------ pairing */
@@ -170,6 +164,9 @@ async function refreshPlayback() {
     const dot = $("nowDot");
     dot.className = "status-dot " + ({ playing: "playing", paused: "paused", error: "error" }[p.state] || "");
     state.playing = p.state !== "paused";
+    const live = (state.playlist?.slides || []).slice().sort((a, b) => a.order - b.order).filter((x) => x.enabled !== false);
+    const onTv = p.available && p.slideCount > 0 && live[p.slideIndex] ? live[p.slideIndex].id : null;
+    if (onTv !== state.onTv) { state.onTv = onTv; if (state.tab === "playlist") { renderNav(); renderPreview(); } }
     $("playPause").dataset.cmd = state.playing ? "pause" : "play";
     $("playPause").title = state.playing ? "Pause" : "Play";
     $("ppIcon").setAttribute("d", state.playing ? "M8 5v14M16 5v14" : "M7 5l12 7-12 7z");
@@ -194,6 +191,8 @@ function setTab(tab) {
   document.querySelectorAll("[data-tab]").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tab === tab)));
   $("libraryView").classList.toggle("hidden", tab !== "library");
   $("playlistView").classList.toggle("hidden", tab !== "playlist");
+  document.querySelector(".content").classList.toggle("wide", tab === "playlist");
+  document.body.classList.toggle("wide", tab === "playlist");
 }
 
 function setFilter(f) {
@@ -287,121 +286,186 @@ function uploadOne(file, onProgress) {
 
 /* ------------------------------------------------------------------ playlist */
 
+const ICON = {
+  web: `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3.5 3 14.5 0 18M12 3c-3 3.5-3 14.5 0 18"/></svg>`,
+  video: `<svg viewBox="0 0 24 24"><path d="M8 5.5v13l10-6.5z" fill="currentColor"/></svg>`,
+  hidden: `<svg viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/><path d="M4 4l16 16"/></svg>`,
+  up: `<svg viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6"/></svg>`,
+  down: `<svg viewBox="0 0 24 24"><path d="M12 5v14M6 13l6 6 6-6"/></svg>`,
+  trash: `<svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg>`,
+};
+
+/** Re-renders the whole editor: slide navigator, preview and inspector for the selected slide. */
 function renderSlides() {
   ensureDraft();
-  const list = $("slides");
   const slides = state.draft.slides;
   $("slideCount").textContent = slides.length ? slides.length : "";
   $("loopTime").textContent = loopLabel(slides);
-  list.innerHTML = "";
+  $("editor").classList.toggle("hidden", !slides.length);
   $("slidesEmpty").classList.toggle("hidden", slides.length > 0);
-  if (!slides.length) { renderSaveBar(); return; }
-
-  slides.forEach((s, i) => {
-    const m = s.mediaId ? state.media.find((x) => x.id === s.mediaId) : null;
-    const title = s.type === "webpage" ? s.url || "Webpage" : m?.displayName || "Missing file";
-    const enabled = s.enabled !== false;
-    const row = document.createElement("div");
-    row.className = `slide${state.open.has(s.id) ? " open" : ""}${enabled ? "" : " off"}`;
-    row.dataset.index = i;
-    row.innerHTML = `
-      <div class="slide-row">
-        <span class="handle" title="Drag to reorder" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 9h14M5 15h14"/></svg></span>
-        <span class="slide-num">${i + 1}</span>
-        <div class="slide-main" data-a="toggle" role="button" tabindex="0" aria-expanded="${state.open.has(s.id)}">
-          <span class="slide-thumb">${s.type === "webpage" ? `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3.5 3 14.5 0 18M12 3c-3 3.5-3 14.5 0 18"/></svg>` : m ? thumb(m) : ""}</span>
-          <span class="slide-text">
-            <div class="slide-title">${esc(title)}</div>
-            <div class="slide-sub">${esc(summary(s))}</div>
-          </span>
-        </div>
-        <label class="switch" title="${enabled ? "Showing" : "Hidden"}"><input type="checkbox" data-f="enabled" ${enabled ? "checked" : ""} aria-label="Show this slide"><span></span></label>
-        <span class="chev" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></span>
-      </div>
-      <div class="inspector">${inspector(s)}</div>`;
-
-    row.querySelector('[data-a="toggle"]').addEventListener("click", () => toggleOpen(s.id, row));
-    row.querySelector('[data-a="toggle"]').addEventListener("keydown", (e) => { if (e.key === "Enter") toggleOpen(s.id, row); });
-    row.querySelectorAll("[data-f]").forEach((input) => {
-      const ev = input.type === "range" || input.type === "number" || input.tagName === "INPUT" && input.type !== "checkbox" ? "input" : "change";
-      input.addEventListener(ev, () => updateField(i, input, row));
-    });
-    row.querySelectorAll("[data-fit]").forEach((b) => b.addEventListener("click", () => {
-      s.fitMode = b.dataset.fit; markDirty();
-      row.querySelectorAll("[data-fit]").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
-      row.querySelector(".slide-sub").textContent = summary(s);
-    }));
-    row.querySelectorAll("[data-step]").forEach((b) => b.addEventListener("click", () => {
-      const input = row.querySelector('[data-f="durationSec"]');
-      input.value = Math.max(1, Number(input.value || 0) + Number(b.dataset.step));
-      updateField(i, input, row);
-    }));
-    row.querySelector('[data-a="up"]')?.addEventListener("click", () => move(i, -1));
-    row.querySelector('[data-a="down"]')?.addEventListener("click", () => move(i, 1));
-    row.querySelector('[data-a="remove"]').addEventListener("click", () => removeSlide(i));
-    enableDrag(row, i);
-    list.appendChild(row);
-  });
+  if (!slides.some((s) => s.id === state.selected)) state.selected = slides[0]?.id || null;
+  if (slides.length) { renderNav(); renderPreview(); renderInspector(); }
   renderSaveBar();
 }
 
-function inspector(s) {
-  const fit = s.fitMode || "contain";
-  const parts = [];
+function selectedIndex() { return state.draft.slides.findIndex((s) => s.id === state.selected); }
+function mediaOf(s) { return s.mediaId ? state.media.find((x) => x.id === s.mediaId) : null; }
+function titleOf(s) { return s.type === "webpage" ? s.url || "Webpage" : mediaOf(s)?.displayName || "Missing file"; }
+
+function select(id, focus) {
+  state.selected = id;
+  renderNav(); renderPreview(); renderInspector();
+  if (focus) document.querySelector(`.nav-item[data-id="${CSS.escape(id)}"]`)?.focus();
+  revealSelected();
+}
+
+/** Scrolls only the slide navigator (never the page) so the selected slide is visible. */
+function revealSelected() {
+  const el = document.querySelector(".nav-item.sel"), nav = el?.closest(".navigator");
+  if (!el || !nav) return;
+  const r = el.getBoundingClientRect(), n = nav.getBoundingClientRect(), pad = 8;
+  if (r.top < n.top) nav.scrollTop -= n.top - r.top + pad;
+  else if (r.bottom > n.bottom) nav.scrollTop += r.bottom - n.bottom + pad;
+  if (r.left < n.left) nav.scrollLeft -= n.left - r.left + pad;
+  else if (r.right > n.right) nav.scrollLeft += r.right - n.right + pad;
+}
+
+function renderNav() {
+  const list = $("slides");
+  if (!state.draft) return;
+  list.innerHTML = "";
+  state.draft.slides.forEach((s, i) => {
+    const m = mediaOf(s), enabled = s.enabled !== false, sel = s.id === state.selected;
+    const li = document.createElement("li");
+    li.className = `nav-item${sel ? " sel" : ""}${enabled ? "" : " off"}`;
+    li.dataset.id = s.id;
+    li.tabIndex = sel ? 0 : -1;
+    li.setAttribute("role", "option");
+    li.setAttribute("aria-selected", String(sel));
+    li.setAttribute("aria-label", `Slide ${i + 1}: ${titleOf(s)}`);
+    li.innerHTML = `
+      <span class="nav-num">${i + 1}</span>
+      <div class="nav-thumb${s.type === "webpage" ? " web" : ""}">
+        ${s.type === "webpage" ? ICON.web : m ? thumb(m) : ""}
+        ${state.onTv === s.id && !state.dirty ? `<span class="chip tl live">On TV</span>` : ""}
+        ${enabled ? "" : `<span class="chip tr">${ICON.hidden}</span>`}
+        <span class="chip br">${s.type === "video" ? ICON.video + "Video" : (s.type === "webpage" && s.webpageAutoScroll !== false ? "Scroll" : formatDuration(s.durationSec || defaultDuration(s.type)))}</span>
+      </div>`;
+    li.addEventListener("click", () => select(s.id));
+    li.addEventListener("keydown", (e) => navKey(e, i));
+    enableDrag(li, i);
+    list.appendChild(li);
+  });
+}
+
+function navKey(e, i) {
+  const s = state.draft.slides, prev = ["ArrowUp", "ArrowLeft"].includes(e.key), next = ["ArrowDown", "ArrowRight"].includes(e.key);
+  if (!prev && !next) return;
+  e.preventDefault();
+  if (e.altKey) { move(i, prev ? -1 : 1); document.querySelector(".nav-item.sel")?.focus(); return; }
+  const t = s[i + (prev ? -1 : 1)];
+  if (t) select(t.id, true);
+}
+
+function renderPreview() {
+  const i = selectedIndex(), s = state.draft?.slides[i];
+  const box = $("preview");
+  if (!s) { box.innerHTML = ""; return; }
+  const m = mediaOf(s), enabled = s.enabled !== false;
+  const fit = { contain: "contain", cover: "cover", fill: "fill" }[s.fitMode] || "contain";
+  let body = "";
   if (s.type === "webpage") {
-    parts.push(`<label class="field">Webpage address<input data-f="url" value="${esc(s.url || "")}" placeholder="https://example.com"></label>`);
+    body = `<div class="web-card">${ICON.web}<div class="web-url">${esc(s.url || "No address yet")}</div>
+      <div class="web-note">Shown on the TV as a 1920-px-wide page${s.webpageAutoScroll !== false ? ", scrolling down" : ""}</div></div>`;
+  } else if (m && kind(m) === "image") {
+    body = `<img src="${mediaUrl(m)}" alt="" style="object-fit:${fit}">`;
+  } else if (m && kind(m) === "video") {
+    body = `<video src="${mediaUrl(m)}#t=0.5" style="object-fit:${fit}" controls muted playsinline preload="metadata"></video>`;
+  } else {
+    body = `<div class="web-card" style="background:#1c1c1e"><div class="web-url">Missing file</div><div class="web-note">Choose another file for this slide.</div></div>`;
+  }
+  box.className = `preview${enabled ? "" : " off"}`;
+  box.innerHTML = body + `<span class="chip tl">${i + 1} of ${state.draft.slides.length}</span>`
+    + (state.onTv === s.id && !state.dirty ? `<span class="chip tr live">On TV now</span>` : enabled ? "" : `<span class="chip tr">${ICON.hidden}Hidden</span>`);
+  $("capTitle").textContent = titleOf(s);
+  $("capSub").textContent = summary(s);
+}
+
+function renderInspector() {
+  const i = selectedIndex(), s = state.draft?.slides[i];
+  const box = $("inspector");
+  if (!s) { box.innerHTML = ""; return; }
+  const fit = s.fitMode || "contain", count = state.draft.slides.length;
+  const g = [];
+  if (s.type === "webpage") {
+    g.push(`<div class="group-label">Webpage</div><div class="group">
+      <div class="cell stack"><input data-f="url" type="url" value="${esc(s.url || "")}" placeholder="https://example.com" aria-label="Webpage address"></div>
+      <div class="cell"><span>Auto-scroll</span><label class="switch"><input type="checkbox" data-f="webpageAutoScroll" ${s.webpageAutoScroll !== false ? "checked" : ""} aria-label="Auto-scroll"><span></span></label></div>
+      ${s.webpageAutoScroll !== false ? `
+      <div class="cell stack"><span>Scroll speed</span><div class="row"><input data-f="webpageScrollSpeedPxPerSec" type="range" min="5" max="400" value="${Math.min(400, s.webpageScrollSpeedPxPerSec || 40)}" aria-label="Scroll speed"><span class="val" data-v="speed">${s.webpageScrollSpeedPxPerSec || 40} px/s</span></div></div>
+      <div class="cell stack"><span>Pause on each screen</span><div class="row"><input data-f="webpageScrollPauseSec" type="range" min="0" max="60" value="${Math.min(60, s.webpageScrollPauseSec ?? 5)}" aria-label="Pause on each screen"><span class="val" data-v="wait">${s.webpageScrollPauseSec ?? 5} s</span></div></div>` : ""}
+    </div>`);
   } else {
     const opts = state.media.filter((m) => kind(m) === s.type)
       .map((m) => `<option value="${m.id}" ${m.id === s.mediaId ? "selected" : ""}>${esc(m.displayName)}</option>`).join("");
-    parts.push(`<label class="field">File<select data-f="mediaId">${opts}</select></label>`);
+    g.push(`<div class="group-label">${s.type === "video" ? "Video" : "Image"}</div><div class="group">
+      <div class="cell"><span>File</span><select data-f="mediaId" aria-label="File">${opts}</select></div></div>`);
   }
-  if (s.type !== "video") {
-    parts.push(`<div class="field">${s.type === "webpage" ? "Time on screen (if it doesn’t scroll)" : "Time on screen"}
-      <div class="row"><span class="stepper"><button type="button" data-step="-5" aria-label="5 seconds less">−</button><input data-f="durationSec" type="number" min="1" max="86400" value="${s.durationSec || defaultDuration(s.type)}" aria-label="Seconds"><button type="button" data-step="5" aria-label="5 seconds more">+</button></span><span>seconds</span></div></div>`);
-  }
-  parts.push(`<div class="field">Fit<div class="segmented small" role="group" aria-label="Fit">
-    ${["contain", "cover", "fill"].map((f) => `<button type="button" data-fit="${f}" aria-pressed="${f === fit}">${f[0].toUpperCase() + f.slice(1)}</button>`).join("")}</div></div>`);
-  if (s.type === "video") {
-    parts.push(`<div class="field">Sound<div class="switch-row">Muted<label class="switch"><input type="checkbox" data-f="muted" ${s.muted !== false ? "checked" : ""}><span></span></label></div></div>`);
-  }
-  if (s.type === "webpage") {
-    const speed = s.webpageScrollSpeedPxPerSec || 40, wait = s.webpageScrollPauseSec ?? 5;
-    parts.push(`<div class="field">Scrolling<div class="switch-row">Auto-scroll the page<label class="switch"><input type="checkbox" data-f="webpageAutoScroll" ${s.webpageAutoScroll !== false ? "checked" : ""}><span></span></label></div></div>`);
-    parts.push(`<label class="field">Scroll speed<div class="row"><input data-f="webpageScrollSpeedPxPerSec" type="range" min="5" max="400" value="${Math.min(400, speed)}"><span class="val" data-v="speed">${speed} px/s</span></div></label>`);
-    parts.push(`<label class="field">Pause between screens<div class="row"><input data-f="webpageScrollPauseSec" type="range" min="0" max="60" value="${Math.min(60, wait)}"><span class="val" data-v="wait">${wait} s</span></div></label>`);
-  }
-  parts.push(`<div class="inspector-actions">
-    <button type="button" class="btn tinted small" data-a="up">Move Up</button>
-    <button type="button" class="btn tinted small" data-a="down">Move Down</button>
-    <span class="spacer"></span>
-    <button type="button" class="btn plain small" style="color:var(--red)" data-a="remove">Remove Slide</button></div>`);
-  return parts.join("");
+  const timing = s.type === "video"
+    ? `<div class="cell"><span>Time on screen</span><span class="note">Plays to the end</span></div>`
+    : s.type === "webpage" && s.webpageAutoScroll !== false
+      ? `<div class="cell"><span>Time on screen</span><span class="note">Until it reaches the bottom</span></div>`
+      : `<div class="cell"><span>Time on screen</span><span class="stepper"><button type="button" data-step="-5" aria-label="5 seconds less">−</button><input data-f="durationSec" type="number" min="1" max="86400" value="${s.durationSec || defaultDuration(s.type)}" aria-label="Seconds"><span class="unit">s</span><button type="button" data-step="5" aria-label="5 seconds more">+</button></span></div>`;
+  g.push(`<div class="group-label">Playback</div><div class="group">
+    ${timing}
+    <div class="cell"><span>Fit</span><div class="segmented small" role="group" aria-label="Fit">
+      ${["contain", "cover", "fill"].map((f) => `<button type="button" data-fit="${f}" aria-pressed="${f === fit}" title="${{ contain: "Show all of it", cover: "Fill the screen, cropping edges", fill: "Stretch to the screen" }[f]}">${f[0].toUpperCase() + f.slice(1)}</button>`).join("")}</div></div>
+    ${s.type === "video" ? `<div class="cell"><span>Sound</span><label class="switch"><input type="checkbox" data-f="muted" data-invert ${s.muted === false ? "checked" : ""} aria-label="Play sound"><span></span></label></div>` : ""}
+    <div class="cell"><span>Show this slide</span><label class="switch"><input type="checkbox" data-f="enabled" ${s.enabled !== false ? "checked" : ""} aria-label="Show this slide"><span></span></label></div>
+  </div>`);
+  g.push(`<div class="insp-actions">
+    <button type="button" class="btn small" data-a="up" ${i === 0 ? "disabled" : ""}>${ICON.up}Earlier</button>
+    <button type="button" class="btn small" data-a="down" ${i === count - 1 ? "disabled" : ""}>${ICON.down}Later</button>
+    <button type="button" class="btn small remove" data-a="remove">${ICON.trash}Remove Slide</button></div>`);
+  box.innerHTML = g.join("");
+
+  box.querySelectorAll("[data-f]").forEach((input) => {
+    const live = input.type === "range" || input.type === "number" || input.type === "url";
+    input.addEventListener(live ? "input" : "change", () => updateField(i, input));
+  });
+  box.querySelectorAll("[data-fit]").forEach((b) => b.addEventListener("click", () => {
+    s.fitMode = b.dataset.fit; markDirty();
+    box.querySelectorAll("[data-fit]").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+    renderPreview();
+  }));
+  box.querySelectorAll("[data-step]").forEach((b) => b.addEventListener("click", () => {
+    const input = box.querySelector('[data-f="durationSec"]');
+    input.value = Math.max(1, Number(input.value || 0) + Number(b.dataset.step));
+    updateField(i, input);
+  }));
+  box.querySelector('[data-a="up"]').addEventListener("click", () => move(i, -1));
+  box.querySelector('[data-a="down"]').addEventListener("click", () => move(i, 1));
+  box.querySelector('[data-a="remove"]').addEventListener("click", () => removeSlide(i));
 }
 
-function toggleOpen(id, row) {
-  if (state.open.has(id)) state.open.delete(id); else state.open.add(id);
-  row.classList.toggle("open", state.open.has(id));
-  row.querySelector('[data-a="toggle"]').setAttribute("aria-expanded", String(state.open.has(id)));
-}
-
-function updateField(i, input, row) {
+function updateField(i, input) {
   ensureDraft();
   const s = state.draft.slides[i];
   if (!s) return;
   const f = input.dataset.f;
-  if (input.type === "checkbox") s[f] = input.checked;
+  if (input.type === "checkbox") s[f] = "invert" in input.dataset ? !input.checked : input.checked;
   else if (["durationSec", "webpageScrollSpeedPxPerSec", "webpageScrollPauseSec"].includes(f)) s[f] = normalizeNumber(f, input.value);
   else s[f] = input.value;
-  if (f === "enabled") row.classList.toggle("off", !input.checked);
-  if (f === "webpageScrollSpeedPxPerSec") row.querySelector('[data-v="speed"]').textContent = `${s[f]} px/s`;
-  if (f === "webpageScrollPauseSec") row.querySelector('[data-v="wait"]').textContent = `${s[f]} s`;
-  if (f === "mediaId" || f === "url") {
-    const m = state.media.find((x) => x.id === s.mediaId);
-    row.querySelector(".slide-title").textContent = s.type === "webpage" ? s.url || "Webpage" : m?.displayName || "Missing file";
-  }
-  row.querySelector(".slide-sub").textContent = summary(s);
+  if (f === "webpageScrollSpeedPxPerSec") $("inspector").querySelector('[data-v="speed"]').textContent = `${s[f]} px/s`;
+  if (f === "webpageScrollPauseSec") $("inspector").querySelector('[data-v="wait"]').textContent = `${s[f]} s`;
   $("loopTime").textContent = loopLabel(state.draft.slides);
   markDirty();
+  if (f === "durationSec") {
+    const chip = document.querySelector(".nav-item.sel .chip.br");
+    if (chip) chip.textContent = formatDuration(s[f]);
+  } else renderNav();
+  if (["mediaId", "enabled", "url", "webpageAutoScroll"].includes(f)) renderPreview(); else { $("capSub").textContent = summary(s); }
+  if (f === "webpageAutoScroll") renderInspector();
 }
 
 function addMediaSlide(m) {
@@ -414,6 +478,7 @@ function addSlide(slide) {
   ensureDraft();
   const created = { id: randomId(), order: state.draft.slides.length, ...slide };
   state.draft.slides.push(created);
+  state.selected = created.id;
   markDirty();
   renderSlides();
   toast("Slide added — Save to TV when ready");
@@ -435,19 +500,59 @@ function moveTo(from, to) {
 }
 
 function removeSlide(i) {
-  state.draft.slides.splice(i, 1);
+  const s = state.draft.slides;
+  const next = s[i + 1] || s[i - 1];
+  s.splice(i, 1);
+  state.selected = next?.id || null;
   normalizeOrders(); markDirty(); renderSlides();
 }
 
-function enableDrag(row, i) {
-  const handle = row.querySelector(".handle");
-  handle.addEventListener("mousedown", () => (row.draggable = true));
-  handle.addEventListener("touchstart", () => (row.draggable = true), { passive: true });
-  row.addEventListener("dragstart", (e) => { row.classList.add("dragging"); e.dataTransfer.setData("text/plain", String(i)); e.dataTransfer.effectAllowed = "move"; });
-  row.addEventListener("dragend", () => { row.draggable = false; row.classList.remove("dragging"); document.querySelectorAll(".drop-before").forEach((x) => x.classList.remove("drop-before")); });
-  row.addEventListener("dragover", (e) => { e.preventDefault(); row.classList.add("drop-before"); });
-  row.addEventListener("dragleave", () => row.classList.remove("drop-before"));
-  row.addEventListener("drop", (e) => { e.preventDefault(); moveTo(Number(e.dataTransfer.getData("text/plain")), i); });
+/** Drag a thumbnail above or below another; the drop line shows where it lands. */
+function enableDrag(li, i) {
+  li.draggable = true;
+  const clear = () => document.querySelectorAll(".drop-before, .drop-after").forEach((x) => x.classList.remove("drop-before", "drop-after"));
+  const after = (e) => {
+    const r = li.getBoundingClientRect();
+    return getComputedStyle($("slides")).gridAutoFlow.startsWith("column") ? e.clientX > r.left + r.width / 2 : e.clientY > r.top + r.height / 2;
+  };
+  li.addEventListener("dragstart", (e) => { li.classList.add("dragging"); e.dataTransfer.setData("text/plain", String(i)); e.dataTransfer.effectAllowed = "move"; });
+  li.addEventListener("dragend", () => { li.classList.remove("dragging"); clear(); });
+  li.addEventListener("dragover", (e) => { e.preventDefault(); clear(); li.classList.add(after(e) ? "drop-after" : "drop-before"); });
+  li.addEventListener("dragleave", () => li.classList.remove("drop-before", "drop-after"));
+  li.addEventListener("drop", (e) => {
+    e.preventDefault();
+    const to = after(e) ? i + 1 : i;
+    clear();
+    moveTo(Number(e.dataTransfer.getData("text/plain")), to);
+  });
+}
+
+function toggleMenu(open) {
+  const menu = $("addMenu"), show = open ?? menu.classList.contains("hidden");
+  menu.classList.toggle("hidden", !show);
+  $("addBtn").setAttribute("aria-expanded", String(show));
+  if (show) menu.querySelector("button").focus();
+}
+
+function openWebpageSheet() {
+  $("sheetTitle").textContent = "Add Webpage";
+  $("sheetBody").innerHTML = `<form id="webForm" class="web-form">
+    <div class="group"><div class="cell stack"><input id="webUrl" type="url" placeholder="https://example.com/dashboard" aria-label="Webpage address" required></div></div>
+    <p class="secondary small">The page opens full screen on the TV and scrolls down slowly. You can change scrolling in the slide’s settings.</p>
+    <button class="btn primary wide" type="submit">Add Slide</button></form>`;
+  $("sheet").classList.remove("hidden");
+  setTimeout(() => $("webUrl").focus(), 50);
+  $("webForm").addEventListener("submit", (e) => {
+    e.preventDefault();
+    let url = $("webUrl").value.trim();
+    if (url && !/^[a-z]+:\/\//i.test(url)) url = "https://" + url;
+    if (!/^https?:\/\//.test(url)) { toast("Webpage address must start with http:// or https://", "error"); return; }
+    addSlide({
+      type: "webpage", url, durationSec: defaultDuration("webpage"), fitMode: "contain", muted: true, loop: false,
+      webpageAutoScroll: true, webpageScrollSpeedPxPerSec: 40, webpageScrollPauseSec: 5, enabled: true,
+    });
+    closeSheet();
+  });
 }
 
 function openPicker() {
@@ -569,8 +674,10 @@ function kind(m) {
   return "";
 }
 
+function mediaUrl(m) { return `/api/media/${encodeURIComponent(m.id)}/file?token=${encodeURIComponent(state.token)}`; }
+
 function thumb(m) {
-  const src = `/api/media/${encodeURIComponent(m.id)}/file?token=${encodeURIComponent(state.token)}`;
+  const src = mediaUrl(m);
   if (kind(m) === "image") return `<img loading="lazy" src="${src}" alt="">`;
   if (kind(m) === "video") return `<video preload="metadata" muted playsinline src="${src}#t=0.5"></video>`;
   return "";

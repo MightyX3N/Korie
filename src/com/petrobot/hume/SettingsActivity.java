@@ -10,6 +10,7 @@ import android.provider.Settings;
 import android.view.Gravity;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -52,7 +53,23 @@ public class SettingsActivity extends Activity {
         split.setOrientation(LinearLayout.HORIZONTAL);
         root.addView(split, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
-        // Left: large title, vertically centred (tvOS settings layout).
+        // Left: app icon over a large title, vertically centred (tvOS settings layout).
+        LinearLayout left = new LinearLayout(this);
+        left.setOrientation(LinearLayout.VERTICAL);
+        left.setGravity(Gravity.CENTER);
+        // Petrobot's mark on a white 5:3 tile, the same shape and radius as the Home cards.
+        FrameLayout icon = new FrameLayout(this);
+        GradientDrawable plate = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+                new int[]{0xFFFFFFFF, 0xFFE9EAEE});
+        plate.setCornerRadius(Ui.px(this, 12));
+        icon.setBackground(plate);
+        icon.setElevation(Ui.px(this, 8));
+        ImageView mark = new ImageView(this);
+        mark.setImageResource(R.drawable.petrobot_mark);
+        mark.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        icon.addView(mark, new FrameLayout.LayoutParams(Ui.px(this, 58), Ui.px(this, 58), Gravity.CENTER));
+        left.addView(icon, new LinearLayout.LayoutParams(Ui.px(this, 150), Ui.px(this, 90)));
+
         TextView title = new TextView(this);
         title.setText("Settings");
         title.setTextColor(Color.WHITE);
@@ -60,7 +77,17 @@ public class SettingsActivity extends Activity {
         title.setLetterSpacing(-0.02f);
         Ui.textSize(title, 34);
         title.setGravity(Gravity.CENTER);
-        split.addView(title, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f));
+        LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        tlp.topMargin = Ui.px(this, 22);
+        left.addView(title, tlp);
+
+        TextView by = new TextView(this);
+        by.setText("Hume Launcher by Petrobot");
+        by.setTextColor(0x8CFFFFFF);
+        by.setTypeface(Ui.font(this, "regular"));
+        Ui.textSize(by, 13);
+        left.addView(by);
+        split.addView(left, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f));
 
         ScrollView sv = new ScrollView(this);
         sv.setVerticalScrollBarEnabled(false);
@@ -178,10 +205,18 @@ public class SettingsActivity extends Activity {
 
         section("System");
         row("TV settings", () -> "", () -> Suggestions.start(this, new Intent(Settings.ACTION_SETTINGS)));
-        row("About", () -> "Hume Launcher", () -> { });
+        row("About", () -> "Petrobot \u00b7 Version " + version(), () -> { });
 
         setContentView(root);
         if (list.getChildCount() > 1) list.getChildAt(1).requestFocus();
+    }
+
+    String version() {
+        try {
+            return getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
+        } catch (Exception e) {
+            return "";
+        }
     }
 
     void section(String name) {

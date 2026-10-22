@@ -2317,17 +2317,10 @@ public class MainActivity extends Activity {
         e.pkg = getPackageName();
         e.label = "Presentation";
         e.system = true;
-        e.color = 0xFF1E7BF2;
+        e.color = 0xFF4370FF;
         e.launch = new Intent(this, com.petrobot.hume.present.PresentationActivity.class)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        int w = 640, h = 360;
-        Bitmap b = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
-        Canvas c = new Canvas(b);
-        Paint p = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.DITHER_FLAG);
-        p.setShader(new LinearGradient(0, 0, 0, h, 0xFF4FC3FF, 0xFF1A5FE0, Shader.TileMode.CLAMP));
-        c.drawRect(0, 0, w, h, p);
-        Bitmap g = Glyphs.get("present", (int) (h * 0.5f), Color.WHITE);
-        c.drawBitmap(g, (w - g.getWidth()) / 2f, (h - g.getHeight()) / 2f, null);
+        Bitmap b = com.petrobot.hume.present.PresentIcon.banner(640, 384);
         e.banner = new BitmapDrawable(getResources(), b);
         e.icon = e.banner;
         all.put(e.key, e);

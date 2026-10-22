@@ -1,5 +1,7 @@
 # Presentation mode
 
+<img src="images/presentation-tile.jpg" alt="Presentation icon" width="240" align="right">
+
 Presentation turns the TV into a signage screen you control from any browser on the same network.
 Upload images and videos, add webpages, arrange them in a playlist, and the TV loops through them
 full screen. It is a built-in feature of Hume Launcher, ported from **PB Marketer TV**
@@ -11,7 +13,7 @@ and the APK self-updater. **Kept:** browser pairing with a 6-digit code shown on
 | | |
 |---|---|
 | ![Library](images/web-library.jpg) | ![Playlist](images/web-playlist.jpg) |
-| Library: drag & drop uploads, thumbnails | Playlist: reorder, inspector, save bar |
+| Library: drag & drop uploads, thumbnails | Playlist: slide navigator, live preview, settings |
 | ![Pairing](images/web-pair.jpg) | ![Phone](images/web-phone.jpg) |
 | Pairing with the TV's code | On a phone |
 
@@ -36,9 +38,15 @@ Settings → **Presentation**:
    restarts).
 3. **Library**: drag images or videos onto the drop area (several at once); each shows its own
    progress bar. Filter by All / Images / Videos; delete with confirmation.
-4. **Playlist**: *Add from Library* or *Add Webpage*. Drag the ≡ handle (or use Move Up/Down) to
-   reorder; tap a slide to set its time on screen, fit (Contain / Cover / Fill), sound for videos,
-   and auto-scroll speed and pause for webpages; switch a slide off to skip it.
+4. **Playlist** works like a slide editor: thumbnails of every slide on the left (a strip across
+   the top on phones), a large preview of the selected slide in the middle, and its settings on the
+   right.
+   - **Add Slide** → *From Library…* or *Webpage…*.
+   - Drag thumbnails to reorder (or use *Earlier* / *Later*, or Alt+↑/↓). Use ↑/↓ to move between
+     slides.
+   - Settings: file or address, time on screen, fit (Contain / Cover / Fill, shown live in the
+     preview), sound for videos, auto-scroll speed and pause for webpages, and *Show this slide*.
+   - The slide the TV is showing is marked **On TV**; hidden slides are dimmed.
 5. **Save to TV** — the save bar appears whenever there are unsaved changes (with *Revert*).
 6. The **Now Playing** bar shows what the TV is showing and has previous / play-pause / next /
    start over, plus *Show code on TV*.

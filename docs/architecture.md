@@ -23,6 +23,7 @@ source (Nayuki, MIT) under `src/io/nayuki/qrcodegen`.
 | `present/AdminServer.java` | HTTP server (port 8080), API, streaming multipart uploads |
 | `present/Repo.java`, `Model.java`, `Pairing.java` | SQLite storage, slide model & validation, pairing tokens |
 | `present/PresentationActivity.java` | Full-screen player (images, MediaPlayer video, WebView with auto-scroll) |
+| `present/PresentIcon.java` | The Presentation tile icon (drawn in code; `assets/present/icon.svg` is the same design) |
 | `present/LegacyCss.java`, `Qr.java`, `Net.java` | `@layer` unwrapping for old WebViews, QR bitmaps, LAN URLs |
 | `assets/present/` | Browser admin app (`index.html`, `app.css`, `app.js`) |
 

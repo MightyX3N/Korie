@@ -181,6 +181,7 @@ final class AdminServer {
         if (p.equals("/app.css")) { asset(out, "app.css", "text/css; charset=utf-8"); return; }
         if (p.equals("/app.js")) { asset(out, "app.js", "application/javascript; charset=utf-8"); return; }
         if (p.equals("/logo.png")) { asset(out, "logo.png", "image/png"); return; }
+        if (p.equals("/icon.svg")) { asset(out, "icon.svg", "image/svg+xml"); return; }
         if (p.equals("/api/info")) { json(out, 200, info()); return; }
         if (p.equals("/api/pair") && "POST".equals(r.method)) {
             String token = pairing.pair(body(r).optString("pin"));
