@@ -54,6 +54,10 @@ adb shell am start -n com.petrobot.hume/.MainActivity
 Android TV 7.0+ (API 24). Developed and tested on a Xiaomi Mi Box 4 (Android 12) and an Android 9
 TV with 1 GB RAM.
 
+## License
+
+Apache License 2.0 — see [LICENSE](LICENSE) and [NOTICE](NOTICE).
+
 ## Credits
 
 Inter font (SIL OFL) · Nayuki QR Code generator (MIT) · weather from Open-Meteo, MET Norway and

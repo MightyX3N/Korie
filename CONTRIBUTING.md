@@ -179,11 +179,13 @@ follow §6, code follows §3.
 
 ## 10. Licensing
 
-Third-party code and assets in this repository: **Inter** font (SIL Open Font License,
-`assets/fonts/Inter-LICENSE.txt`) and **Nayuki QR Code generator** (MIT, `src/io/nayuki/qrcodegen`).
-Keep their licence files with them; add the licence of anything new you vendor.
+Hume Launcher is licensed under the **[Apache License 2.0](LICENSE)**. By submitting a pull request
+you agree that your contribution is licensed under the same terms (Apache-2.0, section 5). Keep the
+[NOTICE](NOTICE) file accurate: add an entry for any third-party code or asset you bring in, and only
+bring in code under a licence compatible with Apache-2.0 (MIT, BSD, Apache, OFL for fonts — not GPL).
 
-> **Maintainers:** the project itself has no `LICENSE` file yet. Choose one (e.g. Apache-2.0, MIT or
-> GPL-3.0) and add it before publishing the repository publicly; contributions are accepted under
-> that licence. Also note that `signing.keystore` is for development builds only — sign public
-> releases with a separate, private key.
+Third-party code and assets already here: **Inter** font (SIL Open Font License,
+`assets/fonts/Inter-LICENSE.txt`) and **Nayuki QR Code generator** (MIT, `src/io/nayuki/qrcodegen`).
+
+> **Maintainers:** `signing.keystore` is for development builds only — sign public releases with a
+> separate, private key.
