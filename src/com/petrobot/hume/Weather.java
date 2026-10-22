@@ -321,7 +321,7 @@ final class Weather {
         return d;
     }
 
-    /** MET Norway (Yr) Locationforecast: UTC time series in °C and m/s; days grouped locally. */
+    /** MET Norway (Yr) Locationforecast: UTC time series in \u00b0C and m/s; days grouped locally. */
     private static Data fetchMet(double lat, double lon, boolean f) throws Exception {
         JSONObject j = new JSONObject(get(String.format(Locale.US,
                 "https://api.met.no/weatherapi/locationforecast/2.0/compact?lat=%.4f&lon=%.4f", lat, lon)));
@@ -450,7 +450,7 @@ final class Weather {
         return p.optJSONObject("summary").optString("symbol_code", null);
     }
 
-    /** MET Norway symbol → WMO weather code. */
+    /** MET Norway symbol \u2192 WMO weather code. */
     static int metCode(String sym) {
         if (sym == null) return 3;
         String s = sym.replace("_day", "").replace("_night", "").replace("_polartwilight", "");
@@ -470,7 +470,7 @@ final class Weather {
         }
     }
 
-    /** World Weather Online code (used by wttr.in) → WMO weather code. */
+    /** World Weather Online code (used by wttr.in) \u2192 WMO weather code. */
     static int wwoCode(int c) {
         switch (c) {
             case 113: return 0;
@@ -489,7 +489,7 @@ final class Weather {
         }
     }
 
-    /** Apparent temperature (Australian BoM formula), °C from °C, % humidity and m/s wind. */
+    /** Apparent temperature (Australian BoM formula), \u00b0C from \u00b0C, % humidity and m/s wind. */
     static double apparent(double t, double rh, double ws) {
         double e = rh / 100 * 6.105 * Math.exp(17.27 * t / (237.7 + t));
         return t + 0.33 * e - 0.70 * ws - 4.00;

@@ -21,9 +21,8 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * tvOS-style settings, opened from the profile capsule: title on the left, a list of rows on the
- * right. Covers the suggestions carousel (source, on/off, movies/series, services, languages,
- * auto-advance, TMDB token), home background and layout, and a shortcut to the TV's own settings.
+ * tvOS-style settings: a main list of sections, each opening its own page, with the page's icon
+ * and title on the left and its rows on the right; Back returns to the main list.
  *
  * A TMDB token can also be supplied over adb:
  *   adb shell am start -n com.petrobot.hume/.SettingsActivity --es tmdb_token &lt;token&gt;
@@ -43,66 +42,217 @@ public class SettingsActivity extends Activity {
             Toast.makeText(this, "TMDB connected", Toast.LENGTH_SHORT).show();
         }
         build();
+        String pg = getIntent().getStringExtra("page");  // adb: --es page "Top Shelf"
+        if (pg != null) show(pg);
     }
+
+    // tvOS-style pages: the main list opens a page per section; Back returns to the main list.
+    static final String ROOT = "root", PROFILES = "Profiles", SHELF = "Top Shelf", PRESENT = "Presentation",
+            INPUTS = "Inputs", WEATHER = "Weather", WATCHING = "Continue Watching", HOME = "Home",
+            PERMS = "Permissions", ABOUT = "About";
+
+    FrameLayout leftPane;
+    ScrollView scroller;
+    String page = ROOT, lastPage = null;
+    final java.util.Map<String, android.view.View> navRows = new java.util.HashMap<>();
 
     void build() {
         FrameLayout root = new FrameLayout(this);
         root.setBackgroundColor(0xFF0B0B10);
-
         LinearLayout split = new LinearLayout(this);
         split.setOrientation(LinearLayout.HORIZONTAL);
         root.addView(split, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
-        // Left: app icon over a large title, vertically centred (tvOS settings layout).
-        LinearLayout left = new LinearLayout(this);
-        left.setOrientation(LinearLayout.VERTICAL);
-        left.setGravity(Gravity.CENTER);
-        // Petrobot's mark on a white 5:3 tile, the same shape and radius as the Home cards.
-        FrameLayout icon = new FrameLayout(this);
-        GradientDrawable plate = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
-                new int[]{0xFFFFFFFF, 0xFFE9EAEE});
-        plate.setCornerRadius(Ui.px(this, 12));
-        icon.setBackground(plate);
-        icon.setElevation(Ui.px(this, 8));
-        ImageView mark = new ImageView(this);
-        mark.setImageResource(R.drawable.petrobot_mark);
-        mark.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        icon.addView(mark, new FrameLayout.LayoutParams(Ui.px(this, 58), Ui.px(this, 58), Gravity.CENTER));
-        left.addView(icon, new LinearLayout.LayoutParams(Ui.px(this, 150), Ui.px(this, 90)));
+        leftPane = new FrameLayout(this);
+        split.addView(leftPane, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f));
 
-        TextView title = new TextView(this);
-        title.setText("Settings");
-        title.setTextColor(Color.WHITE);
-        title.setTypeface(Ui.font(this, "display"));
-        title.setLetterSpacing(-0.02f);
-        Ui.textSize(title, 34);
-        title.setGravity(Gravity.CENTER);
-        LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        tlp.topMargin = Ui.px(this, 22);
-        left.addView(title, tlp);
-
-        TextView by = new TextView(this);
-        by.setText("Hume Launcher by Petrobot");
-        by.setTextColor(0x8CFFFFFF);
-        by.setTypeface(Ui.font(this, "regular"));
-        Ui.textSize(by, 13);
-        left.addView(by);
-        split.addView(left, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f));
-
-        ScrollView sv = new ScrollView(this);
-        sv.setVerticalScrollBarEnabled(false);
-        sv.setClipToPadding(false);
-        sv.setPadding(0, Ui.px(this, 40), Ui.px(this, 44), Ui.px(this, 40));
+        scroller = new ScrollView(this);
+        scroller.setVerticalScrollBarEnabled(false);
+        scroller.setClipToPadding(false);
+        scroller.setClipChildren(false);
+        scroller.setPadding(0, Ui.px(this, 60), Ui.px(this, 44), Ui.px(this, 60));
         list = new LinearLayout(this);
         list.setOrientation(LinearLayout.VERTICAL);
         list.setClipChildren(false);
         list.setClipToPadding(false);
         list.setPadding(Ui.px(this, 12), 0, Ui.px(this, 12), 0);
-        sv.setClipChildren(false);
-        sv.addView(list);
-        split.addView(sv, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1.25f));
+        scroller.addView(list);
+        split.addView(scroller, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1.25f));
+        setContentView(root);
+        show(ROOT);
+    }
 
-        section("Profiles");
+    /** Builds one page: its icon and title on the left, its rows on the right. */
+    void show(String p) {
+        lastPage = page;
+        page = p;
+        list.removeAllViews();
+        refreshers.clear();
+        navRows.clear();
+        buildLeft(p);
+        switch (p) {
+            case PROFILES: pageProfiles(); break;
+            case SHELF: pageShelf(); break;
+            case PRESENT: pagePresentation(); break;
+            case INPUTS: pageInputs(); break;
+            case WEATHER: pageWeather(); break;
+            case WATCHING: pageWatching(); break;
+            case HOME: pageHome(); break;
+            case PERMS: pagePermissions(); break;
+            case ABOUT: pageAbout(); break;
+            default: pageRoot(); break;
+        }
+        scroller.scrollTo(0, 0);
+        // Returning to the main list puts focus back on the section you came from.
+        android.view.View focus = p.equals(ROOT) && lastPage != null ? navRows.get(lastPage) : null;
+        if (focus == null) {
+            for (int i = 0; i < list.getChildCount(); i++) {
+                if (list.getChildAt(i).isFocusable()) {
+                    focus = list.getChildAt(i);
+                    break;
+                }
+            }
+        }
+        if (focus != null) focus.requestFocus();
+        list.setAlpha(0f);
+        list.setTranslationX(Ui.px(this, p.equals(ROOT) ? -16 : 16));
+        list.animate().alpha(1f).translationX(0).setDuration(220).start();
+    }
+
+    @Override
+    public void onBackPressed() {
+        if (!page.equals(ROOT)) show(ROOT);
+        else super.onBackPressed();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        refreshAll();  // e.g. a permission granted on a system screen
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int code, String[] perms, int[] results) {
+        refreshAll();
+    }
+
+    /** Left side: the page's icon (Petrobot on the main list), its title, and the brand line. */
+    void buildLeft(String p) {
+        leftPane.removeAllViews();
+        LinearLayout left = new LinearLayout(this);
+        left.setOrientation(LinearLayout.VERTICAL);
+        left.setGravity(Gravity.CENTER_HORIZONTAL);
+        android.view.View icon;
+        if (p.equals(ROOT)) {
+            // Petrobot's mark on a white 5:3 tile, the same shape and radius as the Home cards.
+            FrameLayout tile = new FrameLayout(this);
+            GradientDrawable plate = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+                    new int[]{0xFFFFFFFF, 0xFFE9EAEE});
+            plate.setCornerRadius(Ui.px(this, 12));
+            tile.setBackground(plate);
+            ImageView mark = new ImageView(this);
+            mark.setImageResource(R.drawable.petrobot_mark);
+            mark.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            tile.addView(mark, new FrameLayout.LayoutParams(Ui.px(this, 58), Ui.px(this, 58), Gravity.CENTER));
+            icon = tile;
+        } else {
+            ImageView iv = new ImageView(this);
+            iv.setImageBitmap(pageIcon(p, Ui.px(this, 150), Ui.px(this, 90)));
+            iv.setClipToOutline(true);
+            GradientDrawable shape = new GradientDrawable();
+            shape.setCornerRadius(Ui.px(this, 12));
+            iv.setBackground(shape);
+            icon = iv;
+        }
+        icon.setElevation(Ui.px(this, 8));
+        left.addView(icon, new LinearLayout.LayoutParams(Ui.px(this, 150), Ui.px(this, 90)));
+
+        TextView title = new TextView(this);
+        title.setText(p.equals(ROOT) ? "Settings" : p);
+        title.setTextColor(Color.WHITE);
+        title.setTypeface(Ui.font(this, "display"));
+        title.setLetterSpacing(-0.02f);
+        Ui.textSize(title, p.equals(ROOT) ? 34 : 28);
+        title.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        tlp.topMargin = Ui.px(this, 22);
+        left.addView(title, tlp);
+
+        if (p.equals(ROOT)) {
+            TextView by = new TextView(this);
+            by.setText("Hume Launcher by Petrobot");
+            by.setTextColor(0x8CFFFFFF);
+            by.setTypeface(Ui.font(this, "regular"));
+            Ui.textSize(by, 13);
+            by.setGravity(Gravity.CENTER);
+            LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            blp.topMargin = Ui.px(this, 4);
+            left.addView(by, blp);
+        }
+        leftPane.addView(left, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER));
+    }
+
+    /** A 5:3 icon for a section page: a gradient tile with a white glyph (or the section's own art). */
+    android.graphics.Bitmap pageIcon(String p, int w, int h) {
+        if (p.equals(PRESENT)) return com.petrobot.hume.present.PresentIcon.banner(w, h);
+        int[] grad;
+        String glyph;
+        switch (p) {
+            case PROFILES: grad = new int[]{0xFFBF5AF2, 0xFF7D3CCB}; glyph = null; break;
+            case SHELF: grad = new int[]{0xFF64D2FF, 0xFF0A84FF}; glyph = "shelf"; break;
+            case INPUTS: grad = new int[]{0xFF6E6E73, 0xFF2C2C2E}; glyph = "input"; break;
+            case WEATHER: grad = new int[]{0xFF5AC8FA, 0xFF2D6BD8}; glyph = null; break;
+            case WATCHING: grad = new int[]{0xFFFF6482, 0xFFD6305A}; glyph = "present"; break;
+            case HOME: grad = new int[]{0xFF30D158, 0xFF1E9E48}; glyph = "house"; break;
+            case PERMS: grad = new int[]{0xFF8E8E93, 0xFF48484A}; glyph = "shield"; break;
+            default: grad = new int[]{0xFF8E8E93, 0xFF3A3A3C}; glyph = "gear"; break;
+        }
+        android.graphics.Bitmap b = android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888);
+        android.graphics.Canvas c = new android.graphics.Canvas(b);
+        android.graphics.Paint paint = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+        paint.setShader(new android.graphics.LinearGradient(0, 0, 0, h, grad[0], grad[1], android.graphics.Shader.TileMode.CLAMP));
+        c.drawRect(0, 0, w, h, paint);
+        android.graphics.Bitmap g;
+        if (p.equals(PROFILES)) g = Profiles.avatar(this, Profiles.current(this), (int) (h * 0.62f));
+        else if (p.equals(WEATHER)) g = WeatherIcons.get(0, true, (int) (h * 0.7f));
+        else g = Glyphs.get(glyph, (int) (h * 0.56f), Color.WHITE);
+        c.drawBitmap(g, (w - g.getWidth()) / 2f, (h - g.getHeight()) / 2f, null);
+        return b;
+    }
+
+    // ---------------------------------------------------------------- pages
+
+    void pageRoot() {
+        nav(PROFILES, () -> Profiles.current(this).name);
+        nav(SHELF, () -> {
+            switch (Suggestions.shelf(this)) {
+                case Suggestions.SHELF_RECS: return "Recommendations";
+                case Suggestions.SHELF_NEWS: return "News";
+                case Suggestions.SHELF_NONE: return "Off";
+                default: return "Recommendations & News";
+            }
+        });
+        nav(PRESENT, () -> com.petrobot.hume.present.Presenter.enabled(this) ? "On" : "Off");
+        if (!Inputs.list(this).isEmpty()) nav(INPUTS, () -> Inputs.showCard(this) ? "On" : "Off");
+        nav(WEATHER, () -> !Weather.enabled(this) ? "Off" : Weather.place(this).isEmpty() ? "On" : Weather.place(this));
+        nav(WATCHING, () -> MediaWatchService.granted(this) ? "On"
+                : Perms.listenerSupported(this) ? "Needs permission" : "Not on this TV");
+        nav(HOME, () -> {
+            String k = Profiles.homePrefs(this).getString("wallpaper", "aurora");
+            int i = java.util.Arrays.asList(MainActivity.WALL_KEYS).indexOf(k);
+            return MainActivity.WALL_NAMES[Math.max(0, i)];
+        });
+        nav(PERMS, () -> {
+            int missing = (Perms.hasListener(this) || !Perms.listenerSupported(this) ? 0 : 1) + (Perms.hasLocation(this) ? 0 : 1)
+                    + (Perms.hasAdmin(this) || !Perms.adminSupported(this) ? 0 : 1) + (Perms.isDefaultHome(this) ? 0 : 1);
+            return missing == 0 ? "All allowed" : missing + " to allow";
+        });
+        nav(ABOUT, () -> "Version " + version());
+        row("TV Settings", () -> "", () -> Suggestions.start(this, new Intent(Settings.ACTION_SETTINGS)));
+    }
+
+    void pageProfiles() {
         row("Current profile", () -> Profiles.current(this).name, () -> {
             startActivity(new Intent(this, MainActivity.class).putExtra("pick_profile", true)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
@@ -110,8 +260,106 @@ public class SettingsActivity extends Activity {
         });
         row("Show profiles on wake", () -> Profiles.askOnWake(this) ? "On" : "Off",
                 () -> Profiles.setAskOnWake(this, !Profiles.askOnWake(this)));
+    }
 
-        section("Presentation");
+    void pageShelf() {
+        row("Show in carousel", () -> {
+            switch (Suggestions.shelf(this)) {
+                case Suggestions.SHELF_RECS: return "Recommendations";
+                case Suggestions.SHELF_NEWS: return "News";
+                case Suggestions.SHELF_NONE: return "Nothing";
+                default: return "Both";
+            }
+        }, () -> {
+            String[] keys = {Suggestions.SHELF_BOTH, Suggestions.SHELF_RECS, Suggestions.SHELF_NEWS, Suggestions.SHELF_NONE};
+            String[] names = {"Recommendations & News", "Recommendations", "News", "Nothing"};
+            int sel = Math.max(0, java.util.Arrays.asList(keys).indexOf(Suggestions.shelf(this)));
+            dialog("Show in carousel").setSingleChoiceItems(names, sel, (d, w) -> {
+                Suggestions.prefs(this).edit().putString(Suggestions.K_SHELF, keys[w]).apply();
+                Suggestions.changed(this);
+                d.dismiss();
+                show(SHELF);
+            }).show();
+        });
+        if (Suggestions.showRecs(this)) {
+            section("Recommendations");
+            row("Source", () -> Suggestions.source(this).equals(Suggestions.SRC_TMDB) ? "TMDB" : "JustWatch", this::chooseSource);
+            row("Content", () -> {
+                String t = Suggestions.types(this);
+                return t.equals("movie") ? "Movies" : t.equals("tv") ? "TV Series" : "Movies & Series";
+            }, this::chooseTypes);
+            row("Streaming services", () -> {
+                int n = Suggestions.providers(this).size();
+                return n == Suggestions.PROVIDERS.size() ? "All" : n + " selected";
+            }, this::chooseProviders);
+            row("Languages", () -> {
+                Set<String> l = Suggestions.languages(this);
+                if (l.isEmpty()) return "Any";
+                List<String> names = new ArrayList<>();
+                for (int i = 0; i < Suggestions.LANG_CODES.length; i++) {
+                    if (l.contains(Suggestions.LANG_CODES[i])) names.add(Suggestions.LANG_NAMES[i]);
+                }
+                return names.size() > 2 ? names.size() + " languages" : String.join(", ", names);
+            }, this::chooseLanguages);
+            row("TMDB token", () -> Suggestions.hasToken(this) ? "Connected" : "Not set", this::enterToken);
+        }
+        if (Suggestions.showNews(this)) {
+            section("News");
+            row("Newsrooms", () -> {
+                int n = News.sources(this).size();
+                return n == News.SOURCES.size() ? "All" : n + " selected";
+            }, this::chooseNewsrooms);
+            row("Local news for", () -> News.city(this).isEmpty() ? "Unknown" : News.city(this), () ->
+                    Toast.makeText(this, "Local news follows the weather location (Settings \u2192 Weather \u2192 Location).",
+                            Toast.LENGTH_LONG).show());
+            row("Update news every", () -> News.refreshMinutes(this) + " minutes", () -> {
+                int[] mins = News.REFRESH_CHOICES;
+                String[] names = new String[mins.length];
+                int sel = 1;
+                for (int i = 0; i < mins.length; i++) {
+                    names[i] = mins[i] + " minutes" + (mins[i] == 30 ? "  (default)" : "");
+                    if (mins[i] == News.refreshMinutes(this)) sel = i;
+                }
+                dialog("Update news every").setSingleChoiceItems(names, sel, (d, w) -> {
+                    Suggestions.prefs(this).edit().putInt(News.K_REFRESH, mins[w]).apply();
+                    refreshAll();
+                    d.dismiss();
+                }).show();
+            });
+        }
+        if (Suggestions.enabled(this)) {
+            section("Carousel");
+            row("Auto-advance", () -> {
+                int sec = Suggestions.advanceSeconds(this);
+                return sec == 0 ? "Off" : "Every " + sec + " s";
+            }, this::chooseAdvance);
+            row("Refresh now", () -> "", () -> {
+                Suggestions.changed(this);
+                Toast.makeText(this, "The carousel will refresh on Home", Toast.LENGTH_SHORT).show();
+            });
+        }
+    }
+
+    void chooseNewsrooms() {
+        String[] names = new String[News.SOURCES.size()];
+        boolean[] on = new boolean[names.length];
+        Set<String> cur = News.sources(this);
+        for (int i = 0; i < names.length; i++) {
+            names[i] = News.SOURCES.get(i).name;
+            on[i] = cur.contains(News.SOURCES.get(i).id);
+        }
+        dialog("Newsrooms").setMultiChoiceItems(names, on, (d, w, checked) -> on[w] = checked)
+                .setPositiveButton("Done", (d, w) -> {
+                    Set<String> ids = new java.util.HashSet<>();
+                    for (int i = 0; i < on.length; i++) if (on[i]) ids.add(News.SOURCES.get(i).id);
+                    if (ids.isEmpty()) ids.add("toi");
+                    News.setSources(this, ids);
+                    Suggestions.changed(this);
+                    refreshAll();
+                }).setNegativeButton("Cancel", null).show();
+    }
+
+    void pagePresentation() {
         row("Presentation mode", () -> com.petrobot.hume.present.Presenter.enabled(this) ? "On" : "Off", () -> {
             boolean on = !com.petrobot.hume.present.Presenter.enabled(this);
             com.petrobot.hume.present.Presenter.set(this, com.petrobot.hume.present.Presenter.KEY_ENABLED, on);
@@ -134,25 +382,47 @@ public class SettingsActivity extends Activity {
             }
             com.petrobot.hume.present.Presenter.open(this);
         });
+    }
 
-        section("Inputs");
+    void pageInputs() {
         row("Inputs card on Home", () -> Inputs.showCard(this) ? "On" : "Off", () ->
                 Inputs.prefs(this).edit().putBoolean(Inputs.K_CARD, !Inputs.showCard(this)).apply());
-        row("Inputs button (top right)", () -> Inputs.showButton(this) ? "On" : "Off", () ->
-                Inputs.prefs(this).edit().putBoolean(Inputs.K_BUTTON, !Inputs.showButton(this)).apply());
+        section("This TV");
+        for (Inputs.Input in : Inputs.list(this)) {
+            row(in.label, () -> in.disconnected ? "Not connected" : "", () -> {
+                if (!Inputs.open(this, in)) Toast.makeText(this, "Can't switch to " + in.label, Toast.LENGTH_SHORT).show();
+            });
+        }
+    }
 
-        section("Weather");
+    void pageWeather() {
         row("Show weather", () -> Weather.enabled(this) ? "On" : "Off", () -> {
             Weather.prefs(this).edit().putBoolean(Weather.K_ENABLED, !Weather.enabled(this)).apply();
             Weather.changed(this);
         });
         row("Location", () -> Weather.manual(this) ? Weather.place(this)
                 : Weather.place(this).isEmpty() ? "Automatic" : "Automatic \u00b7 " + Weather.place(this), this::chooseLocation);
+        row("Temperature", () -> {
+            String u = Weather.prefs(this).getString(Weather.K_UNITS, "auto");
+            return u.equals("c") ? "Celsius" : u.equals("f") ? "Fahrenheit" : "Automatic";
+        }, () -> {
+            String[] keys = {"auto", "c", "f"};
+            String[] names = {"Automatic", "Celsius (\u00b0C)", "Fahrenheit (\u00b0F)"};
+            String cur = Weather.prefs(this).getString(Weather.K_UNITS, "auto");
+            int sel = cur.equals("c") ? 1 : cur.equals("f") ? 2 : 0;
+            dialog("Temperature").setSingleChoiceItems(names, sel, (d, w) -> {
+                Weather.prefs(this).edit().putString(Weather.K_UNITS, keys[w]).apply();
+                Weather.changed(this);
+                refreshAll();
+                d.dismiss();
+            }).show();
+        });
+        section("Updates");
         row("Source", () -> Weather.sourceName(Weather.source(this)), () -> {
             String[] keys = Weather.SOURCES;
             String[] names = {"Open-Meteo", "MET Norway (Yr)", "wttr.in  (3 days)"};
             int sel = java.util.Arrays.asList(keys).indexOf(Weather.source(this));
-            dialog("Weather source").setMessage(null).setSingleChoiceItems(names, Math.max(0, sel), (d, w) -> {
+            dialog("Weather source").setSingleChoiceItems(names, Math.max(0, sel), (d, w) -> {
                 Weather.prefs(this).edit().putString(Weather.K_SOURCE, keys[w]).apply();
                 Weather.changed(this);
                 refreshAll();
@@ -174,72 +444,20 @@ public class SettingsActivity extends Activity {
                 d.dismiss();
             }).show();
         });
-        row("Temperature", () -> {
-            String u = Weather.prefs(this).getString(Weather.K_UNITS, "auto");
-            return u.equals("c") ? "Celsius" : u.equals("f") ? "Fahrenheit" : "Automatic";
-        }, () -> {
-            String[] keys = {"auto", "c", "f"};
-            String[] names = {"Automatic", "Celsius (\u00b0C)", "Fahrenheit (\u00b0F)"};
-            String cur = Weather.prefs(this).getString(Weather.K_UNITS, "auto");
-            int sel = cur.equals("c") ? 1 : cur.equals("f") ? 2 : 0;
-            dialog("Temperature").setSingleChoiceItems(names, sel, (d, w) -> {
-                Weather.prefs(this).edit().putString(Weather.K_UNITS, keys[w]).apply();
-                Weather.changed(this);
-                refreshAll();
-                d.dismiss();
-            }).show();
-        });
+    }
 
-        section("Suggestions");
-        row("Show suggestions", () -> Suggestions.enabled(this) ? "On" : "Off", () -> {
-            Suggestions.prefs(this).edit().putBoolean(Suggestions.K_ENABLED, !Suggestions.enabled(this)).apply();
-            Suggestions.changed(this);
-        });
-        row("Source", () -> Suggestions.source(this).equals(Suggestions.SRC_TMDB) ? "TMDB" : "JustWatch", this::chooseSource);
-        row("Content", () -> {
-            String t = Suggestions.types(this);
-            return t.equals("movie") ? "Movies" : t.equals("tv") ? "TV Series" : "Movies & Series";
-        }, this::chooseTypes);
-        row("Streaming services", () -> {
-            int n = Suggestions.providers(this).size();
-            return n == Suggestions.PROVIDERS.size() ? "All" : n + " selected";
-        }, this::chooseProviders);
-        row("Languages", () -> {
-            Set<String> l = Suggestions.languages(this);
-            if (l.isEmpty()) return "Any";
-            List<String> names = new ArrayList<>();
-            for (int i = 0; i < Suggestions.LANG_CODES.length; i++) {
-                if (l.contains(Suggestions.LANG_CODES[i])) names.add(Suggestions.LANG_NAMES[i]);
-            }
-            return names.size() > 2 ? names.size() + " languages" : String.join(", ", names);
-        }, this::chooseLanguages);
-        row("Auto-advance", () -> {
-            int s = Suggestions.advanceSeconds(this);
-            return s == 0 ? "Off" : "Every " + s + " s";
-        }, this::chooseAdvance);
-        row("Refresh now", () -> "", () -> {
-            Suggestions.changed(this);
-            Toast.makeText(this, "Suggestions will refresh on Home", Toast.LENGTH_SHORT).show();
-        });
-        row("TMDB token", () -> Suggestions.hasToken(this) ? "Connected" : "Not set", this::enterToken);
-
-        section("Continue Watching");
-        row("Access", () -> MediaWatchService.granted(this) ? "On" : "Off", () -> {
-            if (MediaWatchService.granted(this)) return;
-            Intent i = new Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS");
-            if (i.resolveActivity(getPackageManager()) != null && Suggestions.start(this, i)) return;
-            dialog("Turn on Continue Watching")
-                    .setMessage("Hume Launcher learns what you watch from the media info apps share while playing. "
-                            + "This TV has no on-screen switch for it, so enable it once from a computer:\n\n"
-                            + "adb shell cmd notification allow_listener com.petrobot.hume/com.petrobot.hume.MediaWatchService")
-                    .setPositiveButton("OK", null).show();
-        });
+    void pageWatching() {
+        row("Access", () -> MediaWatchService.granted(this) ? "Allowed"
+                : Perms.listenerSupported(this) ? "Allow\u2026" : "Not on this TV", () -> Perms.requestListener(this));
         row("Clear history", () -> "", () -> {
             MediaWatchService.Store.clear(this);
             Toast.makeText(this, "Continue Watching cleared", Toast.LENGTH_SHORT).show();
         });
+    }
 
-        section("Home");
+    void pageHome() {
+        row("Home screen", () -> Perms.isDefaultHome(this) ? "Hume Launcher" : "Make Hume the home screen\u2026",
+                () -> Perms.requestDefaultHome(this));
         row("Background", () -> {
             String k = Profiles.homePrefs(this).getString("wallpaper", "aurora");
             int i = java.util.Arrays.asList(MainActivity.WALL_KEYS).indexOf(k);
@@ -257,13 +475,25 @@ public class SettingsActivity extends Activity {
             Profiles.homePrefs(this).edit().remove("order").apply();
             Toast.makeText(this, "Layout reset", Toast.LENGTH_SHORT).show();
         });
+    }
 
-        section("System");
-        row("TV settings", () -> "", () -> Suggestions.start(this, new Intent(Settings.ACTION_SETTINGS)));
-        row("About", () -> "Petrobot \u00b7 Version " + version(), () -> { });
+    void pagePermissions() {
+        row("Continue Watching & Do Not Disturb", () -> Perms.hasListener(this) ? "Allowed"
+                : Perms.listenerSupported(this) ? "Allow\u2026" : "Not on this TV",
+                () -> Perms.requestListener(this));
+        row("Power Off & Sleep Timer", () -> Perms.hasAdmin(this) ? "Allowed"
+                : Perms.adminSupported(this) ? "Allow\u2026" : "Not on this TV", () -> Perms.requestAdmin(this));
+        row("Hume as the home screen", () -> Perms.isDefaultHome(this) ? "Yes" : "Set\u2026",
+                () -> Perms.requestDefaultHome(this));
+        row("Wi-Fi name in Control Center", () -> Perms.hasLocation(this) ? "Allowed" : "Allow\u2026",
+                () -> Perms.requestLocation(this));
+    }
 
-        setContentView(root);
-        if (list.getChildCount() > 1) list.getChildAt(1).requestFocus();
+    void pageAbout() {
+        row("Hume Launcher", () -> "Version " + version(), () -> { });
+        row("Made by", () -> "Petrobot", () -> { });
+        row("Weather", () -> Weather.sourceName(Weather.source(this)), () -> { });
+        row("News", () -> News.sources(this).size() + " Indian newsrooms", () -> { });
     }
 
     String version() {
@@ -280,7 +510,7 @@ public class SettingsActivity extends Activity {
         t.setTextColor(0x8CFFFFFF);
         t.setTypeface(Ui.font(this, "medium"));
         t.setLetterSpacing(0.06f);
-        Ui.textSize(t, 11);
+        Ui.textSize(t, 11.5f);
         t.setPadding(Ui.px(this, 14), Ui.px(this, 18), 0, Ui.px(this, 6));
         list.addView(t);
     }
@@ -289,8 +519,14 @@ public class SettingsActivity extends Activity {
         String get();
     }
 
+    /** A row that opens a section page: label, current value and a chevron. */
+    void nav(String target, Value value) {
+        android.view.View r = row(target, () -> value.get() + "   \u203a", () -> show(target));
+        navRows.put(target, r);
+    }
+
     /** A settings row: label left, current value right; focus lifts it onto a light plate. */
-    void row(String label, Value value, Runnable action) {
+    android.view.View row(String label, Value value, Runnable action) {
         LinearLayout r = new LinearLayout(this);
         r.setOrientation(LinearLayout.HORIZONTAL);
         r.setGravity(Gravity.CENTER_VERTICAL);
@@ -308,11 +544,13 @@ public class SettingsActivity extends Activity {
         l.setTextColor(Color.WHITE);
         l.setTypeface(Ui.font(this, "medium"));
         Ui.textSize(l, 15);
+        l.setSingleLine(true);
         r.addView(l, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         TextView v = new TextView(this);
         v.setTextColor(0x99FFFFFF);
         v.setTypeface(Ui.font(this, "regular"));
         Ui.textSize(v, 15);
+        v.setSingleLine(true);
         r.addView(v);
         Runnable refresh = () -> v.setText(value.get());
         refresh.run();
@@ -331,6 +569,7 @@ public class SettingsActivity extends Activity {
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Ui.px(this, 40));
         lp.bottomMargin = Ui.px(this, 6);
         list.addView(r, lp);
+        return r;
     }
 
     AlertDialog.Builder dialog(String title) {
@@ -367,7 +606,7 @@ public class SettingsActivity extends Activity {
         box.setPadding(pad, pad / 2, pad, 0);
         box.addView(in);
         dialog("TMDB token")
-                .setMessage("Get it free at themoviedb.org → Settings → API. The short \"API Key\" is easiest to type.")
+                .setMessage("Get it free at themoviedb.org \u2192 Settings \u2192 API. The short \"API Key\" is easiest to type.")
                 .setView(box)
                 .setPositiveButton("Save", (d, w) -> {
                     Suggestions.prefs(this).edit().putString(Suggestions.K_TOKEN, in.getText().toString().trim()).apply();

@@ -22,19 +22,30 @@
 | Move mode | Arrows / OK | Move the wiggling card / finish |
 | Dock | Up | Top shelf (or the tab bar if the shelf is empty) |
 | Tab bar | Left / Right | Suggestions ⇄ Continue Watching |
-| Status row | Left / Right | Control Center ⇄ Inputs ⇄ Settings ⇄ profile avatar |
+| Status row | Left / Right | Tab bar ⇄ Control Center ⇄ profile avatar |
+| Tab bar | Left (on Suggestions) | Weather card |
 | Anywhere | Home | Back to the first app in the dock |
 
 ## Status row
 
-Top right, as on tvOS: an **internet indicator**, the time, then glass **Control Center**,
-**Inputs** and **Settings** buttons and the profile avatar. The indicator is drawn like Apple's symbols, in white
+Top right, as on tvOS: an **internet indicator**, the time, the glass **Control Center** button
+and the profile avatar. Glass controls adapt to what is behind them: the backdrop is desaturated and
+the tint darkens over bright artwork and lightens over dark artwork, so white text stays legible. The indicator is drawn like Apple's symbols, in white
 only: Wi-Fi bars lit by signal strength (unlit bars at 30%) or an Ethernet symbol when the internet
 works; dimmed bars with "!" when the TV is on a network that can't reach the internet; dimmed bars
 with a slash when there is no network. When the internet comes back, weather and suggestions
 refresh by themselves.
 
 ## Top shelf
+
+Settings → Top Shelf → **Show in carousel**: Recommendations & News (default), Recommendations, News
+or Nothing.
+
+- **News**: India, local (your city, from the weather location) and world stories mixed together,
+  from Indian newsrooms' feeds with large images — Times of India, Hindustan Times, The Indian
+  Express, India Today and News18 by default (NDTV and The Hindu optional). Headline, summary, section,
+  newsroom and age; no button. Updates every 30 minutes (15/30/60 in Settings). Local news uses
+  Times of India city feeds (16 cities) plus Indian Express and Hindustan Times city feeds.
 
 Shown behind the dock while a dock app is focused; below the dock the launcher background returns.
 
@@ -50,7 +61,7 @@ Shown behind the dock while a dock app is focused; below the dock the launcher b
 ## Inputs
 
 On TVs with inputs (HDMI, AV, tuner), an **Inputs** card starts as the first card in the dock and an
-**Inputs** button sits in the status row. Either opens the input picker: Control Center-style capsules
+**Inputs** button sits in Control Center. Either opens the input picker: Control Center-style capsules
 for each input the TV reports (for example HDMI 1–3, AV 1–2, TV); OK switches to it through the TV
 app. The card can be moved, hidden to More Apps like any app, or switched off in Settings → Inputs,
 which also turns the button on or off. Boxes without inputs (such as a Mi Box) show neither.
@@ -59,9 +70,9 @@ which also turns the button on or off. Boxes without inputs (such as a Mi Box) s
 
 ## Weather
 
-- A glass **overview card** sits under the status row, over the top shelf: city, current
+- A glass **overview card** sits in the top-left corner, over the top shelf: city, current
   conditions, today's high/low and the next five days. It fades with the top shelf like the time.
-- Press ↓ from the status row (or ↑ from the tab bar) to focus it; **OK** opens the forecast: current
+- Press ← from the Suggestions tab to focus it; **OK** opens the forecast: current
   temperature, humidity and wind, the next six hours, and a 5-day list with temperature range bars
   (blue → red, with a dot for the current temperature), as in Apple Weather.
 - Data from free services that need no key: [Open-Meteo](https://open-meteo.com) (default),
@@ -87,25 +98,34 @@ which also turns the button on or off. Boxes without inputs (such as a Mi Box) s
 ## Control Center
 
 Opened from the button next to the time. Tiles: **Power Off** (sleep), **Wi-Fi**, **Do Not
-Disturb**, **Audio**, **Sleep Timer** (Off → 15 → 30 → 60 → 90 min), and shortcuts for
-**Bluetooth/controllers**, **Accessibility**, **launcher Settings** and **Search**.
+Disturb**, **Audio**, **Sleep Timer** (Off → 15 → 30 → 60 → 90 min), and round shortcuts for
+**Inputs** (TVs with inputs; Accessibility otherwise), **Bluetooth/controllers**, **Settings** and
+**Search**.
+
+![Control Center](images/control-center.jpg)
 
 ## Settings
 
-Opened from the gear in Control Center. Sections:
+Opened from the gear in Control Center. A main list opens a page per section (Back returns):
+Profiles, Top Shelf, Presentation, Inputs, Weather, Continue Watching, Home, Permissions, About,
+and the TV's own settings.
 
-- **Profiles** — current profile, show profiles on wake.
-- **Presentation** — see [presentation.md](presentation.md).
-- **Inputs** — Inputs card on Home, Inputs button in the status row.
-- **Weather** — on/off, location (Automatic or Choose City… by name), source (Open-Meteo / MET
-  Norway / wttr.in), update interval (10 / 15 / 30 / 60 minutes), temperature (Automatic / °C / °F).
-- **Suggestions** — on/off, source, content (movies/series), services, languages (TMDB),
-  auto-advance, refresh, TMDB token.
-- **Continue Watching** — access status, clear history.
-- **Home** — background, reset app layout.
-- **System** — TV settings, about (version).
+| | |
+|---|---|
+| ![Settings](images/settings-root.jpg) | ![Top Shelf](images/settings-top-shelf.jpg) |
 
-The left side shows the Petrobot icon above the title, with "Hume Launcher by Petrobot".
+### Permissions
+
+Hume asks on screen wherever the TV allows it; adb is only a last resort:
+
+| Feature | How it is granted |
+|---|---|
+| Wi-Fi name (location) | Android's normal permission prompt |
+| Power Off & Sleep Timer (device admin) | Android's "Activate device admin app?" screen; on TVs without device-admin support it says so |
+| Continue Watching & Do Not Disturb (notification access) | The system notification-access screen; not available on low-RAM (1 GB) TVs, where Android disables it |
+| Home screen | Android 10+ "default home app" prompt, the TV's Home-app settings, or Android's chooser; Hume offers this once when opened while another launcher is home |
+
+Only when a TV has none of these screens is the one-time command shown.
 
 ## Display scaling
 

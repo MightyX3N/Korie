@@ -18,6 +18,8 @@ source (Nayuki, MIT) under `src/io/nayuki/qrcodegen`.
 | `Profiles.java` | Profiles (max 3), unique emoji avatars, per-profile storage names |
 | `SleepReceiver.java` | Sleep via force-lock device admin; sleep timer alarm |
 | `Inputs.java` | TV inputs from the TV input framework; switching via the passthrough channel URI |
+| `News.java` | News for the top shelf: Indian newsrooms' RSS (India, local city, world), images, freshness |
+| `Perms.java` | On-screen permission and default-home requests, with adb only as a last resort |
 | `Weather.java` | Forecast from Open-Meteo, MET Norway or wttr.in (with fallback) in one format, IP location / city search, cache, refresh schedule |
 | `WeatherView.java`, `WeatherIcons.java` | Weather overview card and forecast panel (drawn in code), multicolour weather icons |
 | `Glyphs.java` | Line glyphs drawn in code (Control Center, Presentation tile) |
@@ -44,6 +46,10 @@ source (Nayuki, MIT) under `src/io/nayuki/qrcodegen`.
   and Continue Watching uses published media sessions.
 
 ## Performance (Mi Box, Mali-450 MP, GLES 2.0)
+
+- Startup: the app list (package manager, banners, icon colours) and the wallpaper are prepared on
+  background threads while the window's views are built: cold start ~1.0 s → ~0.86 s on a 1 GHz
+  Android 9 TV.
 
 - No perpetual animations (no wallpaper drift, no idle sway): idle draws 0 frames.
 - Nothing is rendered in software on the UI thread during transitions (the original glass cache

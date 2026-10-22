@@ -185,7 +185,7 @@ final class AdminServer {
         if (p.equals("/api/info")) { json(out, 200, info()); return; }
         if (p.equals("/api/pair") && "POST".equals(r.method)) {
             String token = pairing.pair(body(r).optString("pin"));
-            if (token == null) json(out, 403, new JSONObject().put("error", "That PIN doesn’t match the one on the TV."));
+            if (token == null) json(out, 403, new JSONObject().put("error", "That PIN doesn\u2019t match the one on the TV."));
             else json(out, 200, new JSONObject().put("token", token));
             return;
         }
@@ -235,7 +235,7 @@ final class AdminServer {
             if (!cmd.matches("play|pause|next|previous|restart|showconnectioninfo|connectinfo|connection")) {
                 json(out, 400, new JSONObject().put("error", "Unsupported playback command"));
             } else if (!gateway.control(cmd)) {
-                json(out, 409, new JSONObject().put("error", "Presentation isn’t on screen. Start it from the TV or turn on “Start on boot”."));
+                json(out, 409, new JSONObject().put("error", "Presentation isn\u2019t on screen. Start it from the TV or turn on \u201cStart on boot\u201d."));
             } else {
                 json(out, 200, new JSONObject().put("accepted", true));
             }

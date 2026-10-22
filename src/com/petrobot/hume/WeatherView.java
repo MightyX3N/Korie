@@ -72,7 +72,7 @@ final class WeatherView extends View {
         for (int i = 0; i < n; i++) {
             Weather.Day day = d.days.get(i);
             float mx = x0 + colW * (i + 0.5f);
-            text(c, i == 0 ? "Today" : day.label, mx, ly + 17 * u, 10.5f, medium, 0.7f, Paint.Align.CENTER);
+            text(c, i == 0 ? "Today" : day.label, mx, ly + 17 * u, 11.5f, medium, 0.7f, Paint.Align.CENTER);
             icon(c, day.code, true, mx - 10 * u, ly + 22 * u, 20 * u);
             text(c, day.max + "\u00b0", mx, ly + 57 * u, 12, semibold, 1f, Paint.Align.CENTER);
         }
@@ -89,8 +89,8 @@ final class WeatherView extends View {
 
         // Hourly
         float y = pad + 126 * u;
-        text(c, "HOURLY FORECAST", x0, y, 10.5f, semibold, 0.55f, Paint.Align.LEFT);
-        text(c, "Humidity " + d.humidity + "%  \u00b7  Wind " + d.wind + " " + d.windUnit, x1, y, 10.5f, medium, 0.55f, Paint.Align.RIGHT);
+        text(c, "HOURLY FORECAST", x0, y, 11.5f, semibold, 0.55f, Paint.Align.LEFT);
+        text(c, "Humidity " + d.humidity + "%  \u00b7  Wind " + d.wind + " " + d.windUnit, x1, y, 11.5f, medium, 0.55f, Paint.Align.RIGHT);
         hairline(c, x0, x1, y + 8 * u);
         int hn = Math.min(6, d.hours.size());
         float hw = (x1 - x0) / Math.max(1, hn);
@@ -104,7 +104,7 @@ final class WeatherView extends View {
 
         // 5-day list with range bars
         y += 102 * u;
-        text(c, "5-DAY FORECAST", x0, y, 10.5f, semibold, 0.55f, Paint.Align.LEFT);
+        text(c, "5-DAY FORECAST", x0, y, 11.5f, semibold, 0.55f, Paint.Align.LEFT);
         int lo = Integer.MAX_VALUE, hi = Integer.MIN_VALUE;
         for (Weather.Day day : d.days) {
             lo = Math.min(lo, day.min);
@@ -124,7 +124,7 @@ final class WeatherView extends View {
             float ix = x0 + 64 * u;
             if (day.rain >= 20) {
                 icon(c, day.code, true, ix, ry + 3 * u, 22 * u);
-                text(c, day.rain + "%", ix + 11 * u, ry + row - 2 * u, 10, semibold, 1f, Paint.Align.CENTER, 0xFF64C8FF);
+                text(c, day.rain + "%", ix + 11 * u, ry + row - 1 * u, 11.5f, semibold, 1f, Paint.Align.CENTER, 0xFF64C8FF);
             } else {
                 icon(c, day.code, true, ix - 1 * u, ry + 5 * u, 24 * u);
             }
@@ -151,7 +151,7 @@ final class WeatherView extends View {
         }
         // Source and time of the last update.
         String when = android.text.format.DateFormat.getTimeFormat(getContext()).format(new java.util.Date(d.fetchedAt));
-        text(c, Weather.sourceName(d.source) + "  \u00b7  Updated " + when, mid, getHeight() - 14 * u, 10.5f, medium, 0.5f, Paint.Align.CENTER);
+        text(c, Weather.sourceName(d.source) + "  \u00b7  Updated " + when, mid, getHeight() - 14 * u, 11.5f, medium, 0.5f, Paint.Align.CENTER);
     }
 
     /** Apple Weather's palette: blue (cold) -> teal -> green -> yellow -> orange -> red (hot). */

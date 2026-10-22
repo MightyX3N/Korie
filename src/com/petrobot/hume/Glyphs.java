@@ -6,7 +6,7 @@ import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.RectF;
 
-/** SF Symbols–style line glyphs for Control Center, drawn in code (no image assets). */
+/** SF Symbols\u2013style line glyphs for Control Center, drawn in code (no image assets). */
 final class Glyphs {
     private Glyphs() { }
 
@@ -137,6 +137,34 @@ final class Glyphs {
                 }
                 p.setStyle(Paint.Style.FILL);
                 c.drawCircle(m, s * 0.36f, s * 0.06f, p);
+                break;
+            case "house":  // Home
+                path.moveTo(s * 0.16f, s * 0.48f);
+                path.lineTo(m, s * 0.16f);
+                path.lineTo(s * 0.84f, s * 0.48f);
+                c.drawPath(path, p);
+                r.set(s * 0.26f, s * 0.42f, s * 0.74f, s * 0.84f);
+                c.drawRoundRect(r, s * 0.04f, s * 0.04f, p);
+                c.drawLine(m, s * 0.84f, m, s * 0.64f, p);
+                break;
+            case "shield":  // Permissions
+                path.moveTo(m, s * 0.12f);
+                path.lineTo(s * 0.8f, s * 0.26f);
+                path.cubicTo(s * 0.8f, s * 0.58f, s * 0.68f, s * 0.78f, m, s * 0.9f);
+                path.cubicTo(s * 0.32f, s * 0.78f, s * 0.2f, s * 0.58f, s * 0.2f, s * 0.26f);
+                path.close();
+                c.drawPath(path, p);
+                c.drawLine(s * 0.38f, s * 0.5f, s * 0.47f, s * 0.6f, p);
+                c.drawLine(s * 0.47f, s * 0.6f, s * 0.64f, s * 0.4f, p);
+                break;
+            case "shelf":  // Top Shelf: a wide card above a row of small ones
+                r.set(s * 0.12f, s * 0.2f, s * 0.88f, s * 0.58f);
+                c.drawRoundRect(r, s * 0.06f, s * 0.06f, p);
+                p.setStyle(Paint.Style.FILL);
+                for (int i = 0; i < 3; i++) {
+                    r.set(s * (0.12f + i * 0.27f), s * 0.68f, s * (0.34f + i * 0.27f), s * 0.82f);
+                    c.drawRoundRect(r, s * 0.03f, s * 0.03f, p);
+                }
                 break;
             case "search":
                 c.drawCircle(s * 0.44f, s * 0.44f, s * 0.24f, p);
