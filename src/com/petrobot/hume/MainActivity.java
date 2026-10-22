@@ -267,6 +267,8 @@ public class MainActivity extends Activity {
             else if (panel.equals("present")) com.petrobot.hume.present.Presenter.open(this);
             return;
         }
+        if (idle) exitIdle();
+        resetIdle();
         // Home pressed while already on the home screen: jump back to the top of the home grid.
         if (moveIndex >= 0) endMove();
         if (folderMode) {
@@ -306,6 +308,7 @@ public class MainActivity extends Activity {
         loadHero();
         if (launchOverlay != null) finishLaunchReturn();
         updateWeather();
+        resetIdle();
         // Opened from the app list while another launcher is the home screen: offer once to take over.
         if (SetupActivity.done(this) && !Perms.isDefaultHome(this) && !prefs.getBoolean("asked_default_home", false)) {
             prefs.edit().putBoolean("asked_default_home", true).apply();
@@ -325,6 +328,8 @@ public class MainActivity extends Activity {
         resumed = false;
         handler.removeCallbacks(heroAdvance);
         handler.removeCallbacks(weatherTick);
+        handler.removeCallbacks(idleRunnable);
+        if (idle) exitIdle();
     }
 
     @Override
@@ -508,7 +513,7 @@ public class MainActivity extends Activity {
 
         // Weather overview in the top-left corner, over the top shelf; OK opens the forecast.
         weatherCard = new WeatherView(this, false, unit);
-        weatherGlass = new LiquidGlass(dp(20), 0x2E000000, glassSource, screenW, screenH, unit).adaptive();
+        weatherGlass = new LiquidGlass(dp(WeatherView.COMPACT_H) / 2f, 0x2E000000, glassSource, screenW, screenH, unit).adaptive();
         weatherGlass.lens = dp(6);
         weatherCard.setBackground(weatherGlass);
         weatherCard.setFocusable(true);
@@ -2466,6 +2471,19 @@ public class MainActivity extends Activity {
     @Override
     public boolean dispatchKeyEvent(KeyEvent ev) {
         if (launchOverlay != null) return true;
+        // Idle full-screen carousel: the first press only brings the Home Screen back.
+        if (idle) {
+            if (ev.getAction() == KeyEvent.ACTION_DOWN) {
+                exitIdle();
+                swallowUp = true;
+            }
+            return true;
+        }
+        if (swallowUp && ev.getAction() == KeyEvent.ACTION_UP) {
+            swallowUp = false;
+            return true;
+        }
+        resetIdle();
         if (pickerLayer != null && menuLayer == null) {
             int pk = ev.getKeyCode();
             boolean pd = ev.getAction() == KeyEvent.ACTION_DOWN;
@@ -3197,6 +3215,76 @@ public class MainActivity extends Activity {
         c.drawRoundRect(r, s * 0.06f, s * 0.06f, p);
         r.set(s * 0.61f, s * 0.62f, s * 0.91f, s * 0.9f);
         c.drawRoundRect(r, s * 0.06f, s * 0.06f, p);
+    }
+
+    // ---------------------------------------------------------------- idle full-screen carousel
+
+    boolean idle, swallowUp;
+    float idleScrollY, idleInfoY, idleDotsY;
+    boolean idleOverviewShown;
+
+    /** Seconds without input before the dock slides away (Settings -> Home); 0 = never. */
+    int idleSeconds() {
+        return Profiles.homePrefs(this).getInt("idle_sec", 20);
+    }
+
+    final Runnable idleRunnable = this::enterIdle;
+
+    void resetIdle() {
+        handler.removeCallbacks(idleRunnable);
+        int sec = idleSeconds();
+        if (sec > 0 && resumed) handler.postDelayed(idleRunnable, sec * 1000L);
+    }
+
+    /**
+     * No input for a while: the dock and grid slide down off screen, the weather card and tab bar
+     * fade, and the carousel keeps playing full screen with its title and summary at the bottom.
+     */
+    void enterIdle() {
+        if (idle || !resumed || !heroShown || heroItems.isEmpty() || continueMode() || folderMode
+                || launchOverlay != null || pickerLayer != null || menuLayer != null || moveIndex >= 0) {
+            resetIdle();
+            return;
+        }
+        idle = true;
+        idleScrollY = scroll.getTranslationY();
+        idleInfoY = heroInfo.getTranslationY();
+        idleDotsY = heroDots.getTranslationY();
+        idleOverviewShown = heroOverview.getVisibility() == View.VISIBLE;
+        scroll.animate().cancel();
+        scroll.animate().withLayer().translationY(screenH).alpha(0f).setDuration(900).setInterpolator(EASE)
+                .setUpdateListener(null).start();
+        heroInfo.animate().withLayer().translationY(0).setDuration(900).setInterpolator(EASE).start();
+        heroDots.animate().withLayer().translationY(dp(4)).setDuration(900).setInterpolator(EASE).start();
+        weatherCard.animate().alpha(0f).setDuration(500).start();
+        switcher.animate().alpha(0f).setDuration(500).start();
+        heroButton.animate().alpha(0f).setDuration(300).start();
+        heroOverview.animate().cancel();
+        heroOverview.setVisibility(heroOverview.getText().length() > 0 ? View.VISIBLE : View.GONE);
+        heroOverview.animate().alpha(0.85f).setDuration(600).start();
+        handler.removeCallbacks(heroAdvance);
+        scheduleAdvance();
+    }
+
+    void exitIdle() {
+        if (!idle) return;
+        idle = false;
+        scroll.animate().cancel();
+        scroll.animate().withLayer().translationY(idleScrollY).alpha(1f).setDuration(450).setInterpolator(EASE)
+                .setUpdateListener(null).withEndAction(this::invalidateGlass).start();
+        heroInfo.animate().withLayer().translationY(idleInfoY).setDuration(450).setInterpolator(EASE).start();
+        heroDots.animate().withLayer().translationY(idleDotsY).setDuration(450).setInterpolator(EASE).start();
+        weatherCard.animate().alpha(weatherAlpha()).setDuration(350).start();
+        switcher.animate().alpha(folderMode ? 0f : clockAlpha()).setDuration(350).start();
+        if (shelfView.isFocused()) {
+            heroButton.animate().alpha(1f).setDuration(300).start();
+            handler.removeCallbacks(heroAdvance);  // browsing by hand: no auto-advance
+        }
+        if (!idleOverviewShown && !heroIsNews()) {
+            heroOverview.animate().alpha(0f).setDuration(200)
+                    .withEndAction(() -> heroOverview.setVisibility(View.GONE)).start();
+        }
+        resetIdle();
     }
 
     // ---------------------------------------------------------------- weather

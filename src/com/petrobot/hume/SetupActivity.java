@@ -77,6 +77,11 @@ public class SetupActivity extends Activity {
         steps.add(this::presentation);
         steps.add(this::homeAndPermissions);
         steps.add(this::finish_);
+        if (getIntent().getBooleanExtra("skip", false)) {  // adb: --ez skip true marks setup as done
+            getSharedPreferences("setup", MODE_PRIVATE).edit().putBoolean(K_DONE, true).apply();
+            finish();
+            return;
+        }
         show(getIntent().getIntExtra("step", 0), 0);  // adb: --ei step N opens a page directly
     }
 

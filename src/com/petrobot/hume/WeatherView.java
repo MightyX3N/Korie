@@ -16,7 +16,7 @@ import android.view.View;
  * and a 5-day list with temperature range bars coloured from cool blue to hot red.
  */
 final class WeatherView extends View {
-    static final float COMPACT_W = 236, COMPACT_H = 150, FULL_W = 380, FULL_H = 456;
+    static final float COMPACT_W = 214, COMPACT_H = 52, FULL_W = 380, FULL_H = 456;
 
     final boolean full;
     final float u;
@@ -50,32 +50,17 @@ final class WeatherView extends View {
         else drawCompact(c);
     }
 
+    /** A small glass pill: icon, temperature, then condition over place and high/low. */
     private void drawCompact(Canvas c) {
         Weather.Data d = data;
-        float w = getWidth(), pad = 14 * u, x0 = pad, x1 = w - pad;
-        // Place \u00b7 high/low
-        text(c, d.place.isEmpty() ? "Weather" : d.place, x0, pad + 11 * u, 12, medium, 0.75f, Paint.Align.LEFT);
-        text(c, "H:" + d.max + "\u00b0  L:" + d.min + "\u00b0", x1, pad + 11 * u, 12, medium, 0.75f, Paint.Align.RIGHT);
-        // Icon, temperature, condition
-        float top = pad + 20 * u, is = 36 * u;
-        icon(c, d.code, d.day, x0, top, is);
-        float tx = x0 + is + 8 * u;
-        float tw = text(c, d.temp + "\u00b0", tx, top + 31 * u, 34, regular, 1f, Paint.Align.LEFT);
-        float cx = tx + tw + 10 * u;
-        text(c, Weather.describe(d.code, d.day), cx, top + 15 * u, 13, semibold, 1f, Paint.Align.LEFT);
-        text(c, "Feels like " + d.feels + "\u00b0", cx, top + 31 * u, 11.5f, regular, 0.7f, Paint.Align.LEFT);
-        // Hairline + five days
-        float ly = top + is + 10 * u;
-        hairline(c, x0, x1, ly);
-        int n = Math.min(5, d.days.size());
-        float colW = (x1 - x0) / Math.max(1, n);
-        for (int i = 0; i < n; i++) {
-            Weather.Day day = d.days.get(i);
-            float mx = x0 + colW * (i + 0.5f);
-            text(c, i == 0 ? "Today" : day.label, mx, ly + 17 * u, 11.5f, medium, 0.7f, Paint.Align.CENTER);
-            icon(c, day.code, true, mx - 10 * u, ly + 22 * u, 20 * u);
-            text(c, day.max + "\u00b0", mx, ly + 57 * u, 12, semibold, 1f, Paint.Align.CENTER);
-        }
+        float h = getHeight(), pad = 12 * u, is = 30 * u;
+        icon(c, d.code, d.day, pad, (h - is) / 2f, is);
+        float tx = pad + is + 6 * u;
+        float tw = text(c, d.temp + "\u00b0", tx, h / 2f + 8 * u, 22, regular, 1f, Paint.Align.LEFT);
+        float cx = tx + tw + 9 * u;
+        text(c, Weather.describe(d.code, d.day), cx, h / 2f - 2 * u, 11.5f, semibold, 1f, Paint.Align.LEFT);
+        text(c, (d.place.isEmpty() ? "" : d.place + "  ") + "H:" + d.max + "\u00b0 L:" + d.min + "\u00b0",
+                cx, h / 2f + 12 * u, 11.5f, medium, 0.7f, Paint.Align.LEFT);
     }
 
     private void drawFull(Canvas c) {

@@ -467,6 +467,20 @@ public class SettingsActivity extends Activity {
                 d.dismiss();
             }).show();
         });
+        row("Full-screen carousel when idle", () -> {
+            int sec = Profiles.homePrefs(this).getInt("idle_sec", 20);
+            return sec == 0 ? "Off" : "After " + sec + " s";
+        }, () -> {
+            int[] secs = {0, 10, 20, 30, 60};
+            String[] names = {"Off", "After 10 seconds", "After 20 seconds  (default)", "After 30 seconds", "After 1 minute"};
+            int cur = Profiles.homePrefs(this).getInt("idle_sec", 20), sel = 2;
+            for (int i = 0; i < secs.length; i++) if (secs[i] == cur) sel = i;
+            dialog("Full-screen carousel").setMessage(null).setSingleChoiceItems(names, sel, (d, w) -> {
+                Profiles.homePrefs(this).edit().putInt("idle_sec", secs[w]).apply();
+                refreshAll();
+                d.dismiss();
+            }).show();
+        });
         row("Run setup again", () -> "", () -> startActivity(new Intent(this, SetupActivity.class)));
         row("Reset app layout", () -> "", () -> {
             Profiles.homePrefs(this).edit().remove("order").apply();

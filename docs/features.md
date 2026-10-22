@@ -95,8 +95,8 @@ which also turns the button on or off. Boxes without inputs (such as a Mi Box) s
 
 ## Weather
 
-- A glass **overview card** sits in the top-left corner, over the top shelf: city, current
-  conditions, today's high/low and the next five days. It fades with the top shelf like the time.
+- A small glass **weather pill** sits in the top-left corner: icon, temperature, condition, city and
+  today's high/low (the 5-day forecast is in the panel it opens). It fades with the top shelf like the time.
 - Press ← from the Suggestions tab to focus it; **OK** opens the forecast: current
   temperature, humidity and wind, the next six hours, and a 5-day list with temperature range bars
   (blue → red, with a dot for the current temperature), as in Apple Weather.
@@ -108,6 +108,15 @@ which also turns the button on or off. Boxes without inputs (such as a Mi Box) s
   internet comes back. The last forecast is cached, so it shows instantly and while offline.
 - Location comes from the internet address (ipapi.co, ipwho.is or geojs.io) unless you choose a
   city in Settings.
+
+## Idle full-screen carousel
+
+After 20 seconds without input on Home (Settings → Home → Full-screen carousel when idle: Off, 10,
+20, 30 or 60 s), the dock and app grid slide down, the weather pill and tab bar fade, and the
+carousel keeps playing full screen with its title and summary at the bottom. The first press of any
+key brings the Home Screen back (that press only wakes it; focus doesn't move).
+
+![Idle carousel](images/idle-carousel.jpg)
 
 ## Profiles
 
