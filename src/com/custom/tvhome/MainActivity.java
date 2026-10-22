@@ -815,7 +815,8 @@ public class MainActivity extends Activity {
         final Paint glow = new Paint(Paint.ANTI_ALIAS_FLAG);
         final Paint rim = new Paint(Paint.ANTI_ALIAS_FLAG);
         final android.graphics.RectF box = new android.graphics.RectF(), dst = new android.graphics.RectF();
-        final android.graphics.Path clip = new android.graphics.Path(), ring = new android.graphics.Path();
+        final android.graphics.Path clip = new android.graphics.Path(), ring = new android.graphics.Path(),
+                ringOuter = new android.graphics.Path();
         final int[] loc = new int[2];
 
         LiquidGlass(float r, int tint, Backdrop backdrop, int screenW, int screenH, float density) {
@@ -858,6 +859,12 @@ public class MainActivity extends Activity {
             float l = Math.min(lens, Math.min(box.width(), box.height()) / 3f);
             ring.addRoundRect(box.left + l, box.top + l, box.right - l, box.bottom - l,
                     Math.max(0, r - l), Math.max(0, r - l), android.graphics.Path.Direction.CW);
+            float l2 = l * 0.5f;
+            ringOuter.reset();
+            ringOuter.setFillType(android.graphics.Path.FillType.EVEN_ODD);
+            ringOuter.addRoundRect(box, r, r, android.graphics.Path.Direction.CW);
+            ringOuter.addRoundRect(box.left + l2, box.top + l2, box.right - l2, box.bottom - l2,
+                    Math.max(0, r - l2), Math.max(0, r - l2), android.graphics.Path.Direction.CW);
             float h = box.height();
             glow.setShader(new LinearGradient(0, box.top, 0, box.top + h * 0.5f,
                     0x1FFFFFFF, 0x00FFFFFF, Shader.TileMode.CLAMP));
@@ -877,11 +884,20 @@ public class MainActivity extends Activity {
                 c.drawBitmap(b, null, dst, bg);
                 if (lens > 0) {
                     // Edge lensing: the band along the rim shows the backdrop slightly magnified.
+                    // Two softer steps instead of one hard band, so the bend has no visible seam.
                     c.save();
                     c.clipPath(ring);
-                    c.scale(1.07f, 1.07f, box.centerX(), box.centerY());
+                    c.scale(1.035f, 1.035f, box.centerX(), box.centerY());
+                    bg.setAlpha(150);
                     c.drawBitmap(b, null, dst, bg);
                     c.restore();
+                    c.save();
+                    c.clipPath(ringOuter);
+                    c.scale(1.06f, 1.06f, box.centerX(), box.centerY());
+                    bg.setAlpha(150);
+                    c.drawBitmap(b, null, dst, bg);
+                    c.restore();
+                    bg.setAlpha(255);
                 }
             }
             c.drawRect(box, fill);
