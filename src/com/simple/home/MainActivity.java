@@ -1,4 +1,4 @@
-package com.custom.tvhome;
+package com.simple.home;
 
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;

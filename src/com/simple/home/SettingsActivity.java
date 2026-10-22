@@ -1,4 +1,4 @@
-package com.custom.tvhome;
+package com.simple.home;
 
 import android.app.Activity;
 import android.app.AlertDialog;
@@ -25,7 +25,7 @@ import java.util.Set;
  * auto-advance, TMDB token), home background and layout, and a shortcut to the TV's own settings.
  *
  * A TMDB token can also be supplied over adb:
- *   adb shell am start -n com.custom.tvhome/.SettingsActivity --es tmdb_token &lt;token&gt;
+ *   adb shell am start -n com.simple.home/.SettingsActivity --es tmdb_token &lt;token&gt;
  */
 public class SettingsActivity extends Activity {
 
@@ -129,7 +129,7 @@ public class SettingsActivity extends Activity {
 
         section("System");
         row("TV settings", () -> "", () -> Suggestions.start(this, new Intent(Settings.ACTION_SETTINGS)));
-        row("About", () -> "tvOS-style Home", () -> { });
+        row("About", () -> "Hume Launcher", () -> { });
 
         setContentView(root);
         if (list.getChildCount() > 1) list.getChildAt(1).requestFocus();

@@ -1,4 +1,4 @@
-package com.custom.tvhome;
+package com.simple.home;
 
 import android.app.Activity;
 import android.content.Context;
