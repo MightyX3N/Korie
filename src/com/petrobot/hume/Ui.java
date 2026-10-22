@@ -14,7 +14,7 @@ import android.widget.TextView;
  * every size scales with the connected display's actual resolution, not its declared density,
  * so 720p, 1080p and 4K outputs (and any density setting) get the same proportions.
  */
-final class Ui {
+public final class Ui {
     private Ui() { }
 
     /** Display size in pixels for the window this context is shown on. */
@@ -34,7 +34,7 @@ final class Ui {
         return Math.min(p.x / 960f, p.y / 540f);
     }
 
-    static int px(Context c, float units) {
+    public static int px(Context c, float units) {
         return Math.round(units * unit(c));
     }
 
@@ -44,7 +44,7 @@ final class Ui {
      * Inter (OFL, bundled): the closest open font to Apple's SF. "display" is Inter Display Bold for
      * large titles; "regular", "medium", "semibold" for UI and body text.
      */
-    static android.graphics.Typeface font(Context c, String weight) {
+    public static android.graphics.Typeface font(Context c, String weight) {
         android.graphics.Typeface t = FONTS.get(weight);
         if (t == null) {
             String file = weight.equals("display") ? "InterDisplay-Bold" : weight.equals("medium") ? "Inter-Medium"
@@ -114,7 +114,7 @@ final class Ui {
     }
 
     /** Text sized in design units so type scales with the display like everything else. */
-    static void textSize(TextView t, float units) {
+    public static void textSize(TextView t, float units) {
         t.setTextSize(TypedValue.COMPLEX_UNIT_PX, units * unit(t.getContext()));
     }
 }
