@@ -489,6 +489,24 @@ public class SettingsActivity extends Activity {
                 d.dismiss();
             }).show();
         });
+        section("Screensaver");
+        row("Screensaver on Home", () -> screensaverAllowed() ? "System screensaver" : "Hume carousel", () -> {
+            String[] names = {"System screensaver  (" + dreamLabel() + ")", "Hume full-screen carousel"};
+            dialog("Screensaver on Home").setSingleChoiceItems(names, screensaverAllowed() ? 0 : 1, (d, w) -> {
+                getSharedPreferences("screensaver", MODE_PRIVATE).edit().putBoolean("allow", w == 0).apply();
+                refreshAll();
+                d.dismiss();
+                Toast.makeText(this, w == 0 ? "The TV's screensaver starts when Home is idle"
+                        : "Home stays on and plays the carousel full screen instead", Toast.LENGTH_LONG).show();
+            }).show();
+        });
+        row("Screensaver", () -> dreamLabel(), this::openDreamSettings);
+        row("Start screensaver now", () -> "", () -> {
+            Intent i = new Intent(Intent.ACTION_MAIN).setClassName("com.android.systemui", "com.android.systemui.Somnambulator")
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            if (!Suggestions.start(this, i)) Toast.makeText(this, "This TV can't start the screensaver from an app", Toast.LENGTH_LONG).show();
+        });
+        section("Setup");
         row("Run setup again", () -> "", () -> startActivity(new Intent(this, SetupActivity.class)));
         row("Reset app layout", () -> "", () -> {
             Profiles.homePrefs(this).edit().remove("order").apply();
@@ -513,6 +531,38 @@ public class SettingsActivity extends Activity {
         row("Made by", () -> "Petrobot", () -> { });
         row("Weather", () -> Weather.sourceName(Weather.source(this)), () -> { });
         row("News", () -> News.sources(this).size() + " Indian newsrooms", () -> { });
+    }
+
+    boolean screensaverAllowed() {
+        return getSharedPreferences("screensaver", MODE_PRIVATE).getBoolean("allow", true);
+    }
+
+    /** The TV's chosen screensaver (readable without permission), e.g. "Aerial Views". */
+    String dreamLabel() {
+        String comp = Settings.Secure.getString(getContentResolver(), "screensaver_components");
+        if ("0".equals(Settings.Secure.getString(getContentResolver(), "screensaver_enabled"))) return "Off in TV settings";
+        if (comp == null || comp.isEmpty()) return "TV default";
+        android.content.ComponentName cn = android.content.ComponentName.unflattenFromString(comp.split(",")[0]);
+        if (cn == null) return "TV default";
+        try {
+            return getPackageManager().getApplicationLabel(getPackageManager().getApplicationInfo(cn.getPackageName(), 0)).toString();
+        } catch (Exception e) {
+            return "TV default";
+        }
+    }
+
+    /** Choose / set up the screensaver: the TV's screensaver settings, else the screensaver app itself. */
+    void openDreamSettings() {
+        if (Suggestions.start(this, new Intent("android.settings.DREAM_SETTINGS"))) return;
+        String comp = Settings.Secure.getString(getContentResolver(), "screensaver_components");
+        android.content.ComponentName cn = comp == null ? null : android.content.ComponentName.unflattenFromString(comp.split(",")[0]);
+        if (cn != null) {
+            Intent l = getPackageManager().getLeanbackLaunchIntentForPackage(cn.getPackageName());
+            if (l == null) l = getPackageManager().getLaunchIntentForPackage(cn.getPackageName());
+            if (l != null && Suggestions.start(this, l)) return;
+        }
+        Toast.makeText(this, "Choose the screensaver in TV Settings \u2192 Device Preferences \u2192 Screen saver", Toast.LENGTH_LONG).show();
+        Suggestions.start(this, new Intent(Settings.ACTION_SETTINGS));
     }
 
     String version() {

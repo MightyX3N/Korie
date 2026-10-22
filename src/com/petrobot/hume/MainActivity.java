@@ -337,6 +337,12 @@ public class MainActivity extends Activity {
             startActivity(new Intent(this, SetupActivity.class));
             return;
         }
+        // Screensaver: Hume never holds the screen on unless the user turned the screensaver off here.
+        if (getSharedPreferences("screensaver", MODE_PRIVATE).getBoolean("allow", true)) {
+            getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        } else {
+            getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        }
         updateWeather();
         applyTabs();
         resetIdle();
@@ -3607,7 +3613,10 @@ public class MainActivity extends Activity {
 
     /** Seconds without input before the dock slides away (Settings -> Home); 0 = never. */
     int idleSeconds() {
-        return Profiles.homePrefs(this).getInt("idle_sec", 20);
+        int sec = Profiles.homePrefs(this).getInt("idle_sec", 20);
+        // Hume carousel chosen as the screensaver: it always takes over when idle.
+        if (sec == 0 && !getSharedPreferences("screensaver", MODE_PRIVATE).getBoolean("allow", true)) sec = 20;
+        return sec;
     }
 
     final Runnable idleRunnable = this::enterIdle;
