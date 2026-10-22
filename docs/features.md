@@ -110,6 +110,14 @@ which also turns the button on or off. Boxes without inputs (such as a Mi Box) s
 - Location comes from the internet address (ipapi.co, ipwho.is or geojs.io) unless you choose a
   city in Settings.
 
+## AirPlay guard
+
+Only when the open-source AirPlay receiver (`io.github.jqssun.airplay`) is installed: on wake, when
+the network returns and every 15 minutes on Home, Hume asks the network (an mDNS query, as a Mac or
+iPhone does) whether the receiver is visible. If not, it restarts the receiver's server through the
+app's settings receiver, or starts the app through its start-up receiver if it was stopped —
+nothing appears on screen.
+
 ## Screensaver
 
 Hume never holds the screen on, so the TV's own screensaver (e.g. Aerial Views) starts after the
