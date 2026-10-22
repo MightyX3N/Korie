@@ -59,6 +59,44 @@ final class Ui {
         return t;
     }
 
+    /**
+     * Small, heavily blurred copy of an image (box blur, several passes). Used as the backdrop
+     * that Liquid Glass surfaces sample; at this size it costs a few milliseconds.
+     */
+    static android.graphics.Bitmap blur(android.graphics.Bitmap src, int w, int h, int radius, int passes) {
+        if (src == null) return null;
+        android.graphics.Bitmap b = android.graphics.Bitmap.createScaledBitmap(src, w, h, true)
+                .copy(android.graphics.Bitmap.Config.ARGB_8888, true);
+        int[] px = new int[w * h], tmp = new int[w * h];
+        b.getPixels(px, 0, w, 0, 0, w, h);
+        for (int p = 0; p < passes; p++) {
+            boxBlur(px, tmp, w, h, radius, true);
+            boxBlur(tmp, px, w, h, radius, false);
+        }
+        b.setPixels(px, 0, w, 0, 0, w, h);
+        return b;
+    }
+
+    private static void boxBlur(int[] in, int[] out, int w, int h, int r, boolean horizontal) {
+        int len = horizontal ? w : h, lines = horizontal ? h : w;
+        for (int l = 0; l < lines; l++) {
+            int ra = 0, ga = 0, ba = 0, n = 0;
+            for (int i = -r; i <= r; i++) {
+                int k = Math.max(0, Math.min(len - 1, i));
+                int c = in[horizontal ? l * w + k : k * w + l];
+                ra += (c >> 16) & 0xFF; ga += (c >> 8) & 0xFF; ba += c & 0xFF; n++;
+            }
+            for (int i = 0; i < len; i++) {
+                out[horizontal ? l * w + i : i * w + l] = 0xFF000000 | ((ra / n) << 16) | ((ga / n) << 8) | (ba / n);
+                int outI = Math.max(0, Math.min(len - 1, i - r)), inI = Math.max(0, Math.min(len - 1, i + r + 1));
+                int co = in[horizontal ? l * w + outI : outI * w + l], ci = in[horizontal ? l * w + inI : inI * w + l];
+                ra += ((ci >> 16) & 0xFF) - ((co >> 16) & 0xFF);
+                ga += ((ci >> 8) & 0xFF) - ((co >> 8) & 0xFF);
+                ba += (ci & 0xFF) - (co & 0xFF);
+            }
+        }
+    }
+
     /** Text sized in design units so type scales with the display like everything else. */
     static void textSize(TextView t, float units) {
         t.setTextSize(TypedValue.COMPLEX_UNIT_PX, units * unit(t.getContext()));

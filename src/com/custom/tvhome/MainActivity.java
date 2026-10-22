@@ -146,6 +146,10 @@ public class MainActivity extends Activity {
     boolean heroShown;          // carousel currently forms the background
     int heroVersion = -1;       // Suggestions.version() the items were loaded for
     String wallStyle;
+    /** What Liquid Glass samples: a blurred copy of the wallpaper or of the carousel artwork. */
+    Bitmap wallBlur, heroBlur, glassBg;
+    final LiquidGlass.Backdrop glassSource = () -> glassBg;
+    View dockRow;
     boolean returningFromSettings;
     final java.util.concurrent.ExecutorService io = java.util.concurrent.Executors.newSingleThreadExecutor();
     final Runnable heroAdvance = () -> heroStep(1, false);
@@ -201,38 +205,6 @@ public class MainActivity extends Activity {
         buildGrid();
         focusIndex(0);
         registerPackageReceiver();
-        probeTvRows();
-    }
-
-    /**
-     * Diagnostic: checks which TvProvider tables this launcher can read with READ_EPG_DATA.
-     * Results go to logcat under "TvHomeProbe" (row counts per publishing app).
-     */
-    void probeTvRows() {
-        new Thread(() -> {
-            String[] uris = {"content://android.media.tv/channel", "content://android.media.tv/preview_program",
-                    "content://android.media.tv/watch_next_program"};
-            for (String u : uris) {
-                Map<String, Integer> perPkg = new LinkedHashMap<>();
-                String sample = "";
-                try (android.database.Cursor c = getContentResolver().query(Uri.parse(u), null, null, null, null)) {
-                    if (c == null) {
-                        android.util.Log.i("TvHomeProbe", u + " -> null cursor");
-                        continue;
-                    }
-                    int pkgCol = c.getColumnIndex("package_name");
-                    int titleCol = c.getColumnIndex("title");
-                    while (c.moveToNext()) {
-                        String pkg = pkgCol >= 0 ? c.getString(pkgCol) : "?";
-                        perPkg.put(pkg, perPkg.containsKey(pkg) ? perPkg.get(pkg) + 1 : 1);
-                        if (sample.isEmpty() && titleCol >= 0) sample = c.getString(titleCol);
-                    }
-                    android.util.Log.i("TvHomeProbe", u + " -> " + c.getCount() + " rows " + perPkg + " sample=" + sample);
-                } catch (Exception e) {
-                    android.util.Log.i("TvHomeProbe", u + " -> " + e);
-                }
-            }
-        }).start();
     }
 
     @Override
@@ -268,7 +240,7 @@ public class MainActivity extends Activity {
         String ws = getSharedPreferences("home", MODE_PRIVATE).getString("wallpaper", "aurora");
         if (!ws.equals(wallStyle)) {
             wallStyle = ws;
-            wallView.setImageBitmap(makeWallpaper(ws));
+            setWallpaper(ws);
         }
         if (returningFromSettings && !folderMode && launchOverlay == null && moveIndex < 0) reload(currentKey());
         returningFromSettings = false;
@@ -301,9 +273,7 @@ public class MainActivity extends Activity {
         wallView = new ImageView(this);
         wallView.setScaleType(ImageView.ScaleType.CENTER_CROP);
         wallStyle = getSharedPreferences("home", MODE_PRIVATE).getString("wallpaper", "aurora");
-        wallView.setImageBitmap(makeWallpaper(wallStyle));
-        wallView.setScaleX(1.18f);
-        wallView.setScaleY(1.18f);
+        setWallpaper(wallStyle);
         root.addView(wallView, match());
 
         heroBack = heroLayer();
@@ -330,6 +300,7 @@ public class MainActivity extends Activity {
         scroll.setFillViewport(true);
         scroll.setOnScrollChangeListener((v, x, y, ox, oy) -> {
             if (launchOverlay == null && !clockBox.isFocused()) clockBox.setAlpha(clockAlpha());
+            if (dockRow != null) dockRow.invalidate();
         });
 
         content = new LinearLayout(this);
@@ -387,8 +358,9 @@ public class MainActivity extends Activity {
         clockBox.setOrientation(LinearLayout.HORIZONTAL);
         clockBox.setGravity(Gravity.CENTER_VERTICAL);
         clockBox.setPadding(dp(13), 0, dp(2), 0);
-        FrostedGlass pillGlass = new FrostedGlass(pillH / 2f, 0x2E000000, grain(), unit);
-        pillGlass.rimStrength = 0.45f;
+        LiquidGlass pillGlass = new LiquidGlass(pillH / 2f, 0x1F000000, glassSource, screenW, screenH, unit);
+        pillGlass.rimStrength = 0.6f;
+        pillGlass.lens = dp(5);
         clockBox.setBackground(pillGlass);
         TextClock time = new TextClock(this);
         Ui.textSize(time, 13);
@@ -415,7 +387,7 @@ public class MainActivity extends Activity {
         clockBox.setOnFocusChangeListener((v, has) -> {
             v.animate().scaleX(has ? 1.12f : 1f).scaleY(has ? 1.12f : 1f).setDuration(200).setInterpolator(LIFT).start();
             v.setAlpha(1f);
-            ((FrostedGlass) v.getBackground()).setLit(has);
+            ((LiquidGlass) v.getBackground()).setLit(has);
         });
         clockBox.setOnClickListener(v -> {
             returningFromSettings = true;
@@ -463,6 +435,7 @@ public class MainActivity extends Activity {
                     rlp.rightMargin = side - dockInset;
                     rlp.bottomMargin = dockGapBelow();
                     row.setBackground(dockBackground());
+                    dockRow = row;
                 }
                 content.addView(row, rlp);
             }
@@ -581,6 +554,20 @@ public class MainActivity extends Activity {
     }
 
     /** tvOS-style ambient colour field: soft glows of indigo, teal, magenta and amber on navy. */
+    void setWallpaper(String style) {
+        Bitmap wp = makeWallpaper(style);
+        wallView.setImageBitmap(wp);
+        wallBlur = Ui.blur(wp, 192, 108, 3, 2);
+        if (!heroShown || heroBlur == null) glassBg = wallBlur;
+        invalidateGlass();
+    }
+
+    void invalidateGlass() {
+        if (dockRow != null) dockRow.invalidate();
+        if (clockBox != null) clockBox.invalidate();
+        if (menuLayer != null && menuLayer.getChildCount() > 0) menuLayer.getChildAt(0).invalidate();
+    }
+
     static final String[] WALL_KEYS = {"aurora", "midnight", "sunset", "ocean", "graphite"};
     static final String[] WALL_NAMES = {"Aurora", "Midnight", "Sunset", "Ocean", "Graphite"};
 
@@ -784,7 +771,9 @@ public class MainActivity extends Activity {
     /** Frosted glass dock (tvOS 26): big radius, dark-tinted translucent fill, sheen and rim. */
     Drawable dockBackground() {
         // Apple's dock corner is ~2x the card corner (36 px vs ~18 px at 1080p).
-        return new FrostedGlass(radius * 2f, 0x1CFFFFFF, grain(), unit);
+        LiquidGlass g = new LiquidGlass(radius * 2f, 0x0FFFFFFF, glassSource, screenW, screenH, unit);
+        g.lens = dp(12);
+        return g;
     }
 
     Bitmap grainBitmap;
@@ -801,6 +790,110 @@ public class MainActivity extends Activity {
         }
         grainBitmap = Bitmap.createBitmap(px, n, n, Bitmap.Config.ARGB_8888);
         return grainBitmap;
+    }
+
+    /**
+     * Liquid Glass (iOS/tvOS 26), drawn from what is actually behind the surface: a blurred,
+     * colour-boosted copy of the backdrop aligned to the surface's screen position; a band along
+     * the edges that magnifies it (lensing, like thick glass); a light tint; and a specular rim
+     * that is bright top-left and softer bottom-right. No grain.
+     */
+    static class LiquidGlass extends Drawable {
+        interface Backdrop {
+            Bitmap get();
+        }
+
+        final float r, density;
+        final Backdrop backdrop;
+        final int screenW, screenH;
+        int tint;
+        final int baseTint;
+        float lens;
+        float rimStrength = 1f;
+        final Paint bg = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG | Paint.DITHER_FLAG);
+        final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG);
+        final Paint glow = new Paint(Paint.ANTI_ALIAS_FLAG);
+        final Paint rim = new Paint(Paint.ANTI_ALIAS_FLAG);
+        final android.graphics.RectF box = new android.graphics.RectF(), dst = new android.graphics.RectF();
+        final android.graphics.Path clip = new android.graphics.Path(), ring = new android.graphics.Path();
+        final int[] loc = new int[2];
+
+        LiquidGlass(float r, int tint, Backdrop backdrop, int screenW, int screenH, float density) {
+            this.r = r;
+            this.tint = tint;
+            this.baseTint = tint;
+            this.backdrop = backdrop;
+            this.screenW = screenW;
+            this.screenH = screenH;
+            this.density = density;
+            android.graphics.ColorMatrix cm = new android.graphics.ColorMatrix();
+            cm.setSaturation(1.6f);
+            cm.postConcat(new android.graphics.ColorMatrix(new float[]{
+                    1.05f, 0, 0, 0, 14,
+                    0, 1.05f, 0, 0, 14,
+                    0, 0, 1.05f, 0, 14,
+                    0, 0, 0, 1, 0}));
+            bg.setColorFilter(new android.graphics.ColorMatrixColorFilter(cm));
+            fill.setColor(tint);
+            rim.setStyle(Paint.Style.STROKE);
+            rim.setStrokeWidth(1.1f * density);
+        }
+
+        void setLit(boolean lit) {
+            fill.setColor(lit ? 0x52FFFFFF : baseTint);
+            invalidateSelf();
+        }
+
+        int rimA(int a) {
+            return (Math.round(a * rimStrength) << 24) | 0xFFFFFF;
+        }
+
+        @Override protected void onBoundsChange(Rect b) {
+            box.set(b);
+            clip.reset();
+            clip.addRoundRect(box, r, r, android.graphics.Path.Direction.CW);
+            ring.reset();
+            ring.setFillType(android.graphics.Path.FillType.EVEN_ODD);
+            ring.addRoundRect(box, r, r, android.graphics.Path.Direction.CW);
+            float l = Math.min(lens, Math.min(box.width(), box.height()) / 3f);
+            ring.addRoundRect(box.left + l, box.top + l, box.right - l, box.bottom - l,
+                    Math.max(0, r - l), Math.max(0, r - l), android.graphics.Path.Direction.CW);
+            float h = box.height();
+            glow.setShader(new LinearGradient(0, box.top, 0, box.top + h * 0.5f,
+                    0x1FFFFFFF, 0x00FFFFFF, Shader.TileMode.CLAMP));
+            rim.setShader(new LinearGradient(box.left, box.top, box.right, box.bottom,
+                    new int[]{rimA(0xD9), rimA(0x40), rimA(0x14), rimA(0x26), rimA(0x8C)},
+                    new float[]{0f, 0.22f, 0.5f, 0.78f, 1f}, Shader.TileMode.CLAMP));
+        }
+
+        @Override public void draw(Canvas c) {
+            Bitmap b = backdrop.get();
+            Object cb = getCallback();
+            if (cb instanceof View) ((View) cb).getLocationOnScreen(loc);
+            c.save();
+            c.clipPath(clip);
+            if (b != null) {
+                dst.set(box.left - loc[0], box.top - loc[1], box.left - loc[0] + screenW, box.top - loc[1] + screenH);
+                c.drawBitmap(b, null, dst, bg);
+                if (lens > 0) {
+                    // Edge lensing: the band along the rim shows the backdrop slightly magnified.
+                    c.save();
+                    c.clipPath(ring);
+                    c.scale(1.07f, 1.07f, box.centerX(), box.centerY());
+                    c.drawBitmap(b, null, dst, bg);
+                    c.restore();
+                }
+            }
+            c.drawRect(box, fill);
+            c.drawRect(box, glow);
+            c.restore();
+            float in = rim.getStrokeWidth() / 2f;
+            c.drawRoundRect(box.left + in, box.top + in, box.right - in, box.bottom - in, r - in, r - in, rim);
+        }
+
+        @Override public void setAlpha(int a) { }
+        @Override public void setColorFilter(android.graphics.ColorFilter cf) { }
+        @Override public int getOpacity() { return android.graphics.PixelFormat.TRANSLUCENT; }
     }
 
     /**
@@ -1080,6 +1173,8 @@ public class MainActivity extends Activity {
         show = show && !heroItems.isEmpty() && !folderMode;
         if (show == heroShown) return;
         heroShown = show;
+        glassBg = show && heroBlur != null ? heroBlur : wallBlur;
+        invalidateGlass();
         float a = show ? 1f : 0f;
         heroFront.animate().alpha(a).setDuration(450).start();
         heroScrim.animate().alpha(a).setDuration(450).start();
@@ -1113,12 +1208,20 @@ public class MainActivity extends Activity {
         int want = index;
         io.execute(() -> {
             Bitmap bd = Suggestions.image(this, it.backdrop, "w1280", Math.min(1280, screenW));
+            Bitmap bdBlur = Ui.blur(bd, 160, 90, 3, 3);
             String logoPath = Suggestions.logoFor(this, it);
             Bitmap logo = logoPath.isEmpty() ? null : Suggestions.image(this, logoPath, "w500", 500);
             handler.post(() -> {
                 if (heroIndex != want || heroItems.isEmpty()) return;
                 applyHeroInfo(it, logo, dir);
                 if (bd != null) crossfadeHero(bd, dir);
+                if (bdBlur != null) {
+                    heroBlur = bdBlur;
+                    if (heroShown) {
+                        glassBg = heroBlur;
+                        invalidateGlass();
+                    }
+                }
             });
         });
     }
@@ -1199,7 +1302,8 @@ public class MainActivity extends Activity {
             heroBtnBg.setColor(0xFFFFFFFF);
             heroBtnText.setTextColor(0xFF111114);
             scroll.smoothScrollTo(0, 0);
-            scroll.animate().translationY(screenH - shelfH + dp(30)).setDuration(500).setInterpolator(EASE).start();
+            scroll.animate().translationY(screenH - shelfH + dp(30)).setDuration(500).setInterpolator(EASE)
+                    .setUpdateListener(an -> invalidateGlass()).start();
             heroInfo.animate().translationY(0).setDuration(500).setInterpolator(EASE).start();
             heroDots.animate().translationY(0).setDuration(500).setInterpolator(EASE).start();
             heroOverview.setVisibility(View.VISIBLE);
@@ -1212,7 +1316,8 @@ public class MainActivity extends Activity {
             heroButton.setElevation(0);
             heroBtnBg.setColor(0x47FFFFFF);
             heroBtnText.setTextColor(Color.WHITE);
-            scroll.animate().translationY(0).setDuration(450).setInterpolator(EASE).start();
+            scroll.animate().translationY(0).setDuration(450).setInterpolator(EASE)
+                    .setUpdateListener(an -> invalidateGlass()).start();
             heroInfo.animate().translationY(heroInfoRestY()).setDuration(450).setInterpolator(EASE).start();
             heroDots.animate().translationY(heroDotsRestY()).setDuration(450).setInterpolator(EASE).start();
             heroOverview.animate().alpha(0f).setDuration(160).setStartDelay(0)
@@ -1975,8 +2080,9 @@ public class MainActivity extends Activity {
         LinearLayout panel = new LinearLayout(this);
         panel.setOrientation(LinearLayout.VERTICAL);
         panel.setPadding(dp(8), dp(12), dp(8), dp(8));
-        FrostedGlass glass = new FrostedGlass(dp(20), 0xF0222228, grain(), unit);
-        glass.rimStrength = 0.6f;
+        // "Regular" Liquid Glass: heavier dimming so the menu text stays legible over anything.
+        LiquidGlass glass = new LiquidGlass(dp(20), 0xB81A1A20, glassSource, screenW, screenH, unit);
+        glass.lens = dp(8);
         panel.setBackground(glass);
         panel.setElevation(dp(30));
         panel.setClipChildren(false);
