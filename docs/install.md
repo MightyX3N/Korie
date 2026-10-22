@@ -33,8 +33,9 @@ Press Home on the remote — Hume Launcher opens.
 
 ## One-time permissions
 
-Android TV has no on-screen switches for these, so they are granted once over adb. Each feature
-explains what it needs (and shows the command) if it isn't granted yet.
+Hume asks for these **on screen** (setup's last page and Settings → Permissions): Android's prompts,
+the system's own settings screens, or Hume's accessibility switch. The commands below are only a
+last resort for TVs that have no such screen.
 
 | Feature | Command |
 |---|---|

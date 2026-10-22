@@ -3,11 +3,20 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-export JAVA_HOME="$HOME/.local/jdk-17.0.20.1+1/Contents/Home"
-export PATH="$JAVA_HOME/bin:$PATH"
-SDK="$HOME/Library/Android/sdk"
+# JDK 17+ and the Android SDK (build-tools 34.0.0, platform android-34). Override with the usual
+# variables: JAVA_HOME, ANDROID_HOME (or ANDROID_SDK_ROOT).
+if [ -z "${JAVA_HOME:-}" ] && [ -d "$HOME/.local/jdk-17.0.20.1+1/Contents/Home" ]; then
+    JAVA_HOME="$HOME/.local/jdk-17.0.20.1+1/Contents/Home"
+fi
+if [ -n "${JAVA_HOME:-}" ]; then export JAVA_HOME; export PATH="$JAVA_HOME/bin:$PATH"; fi
+SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$HOME/Library/Android/sdk}}"
+[ -d "$SDK" ] || SDK="$HOME/Android/Sdk"  # Linux default
 BT="$SDK/build-tools/34.0.0"
 JAR="$SDK/platforms/android-34/android.jar"
+for f in "$BT/aapt2" "$BT/d8" "$JAR"; do
+    [ -e "$f" ] || { echo "Missing $f — install build-tools 34.0.0 and platform android-34 (sdkmanager), or set ANDROID_HOME." >&2; exit 1; }
+done
+command -v javac >/dev/null || { echo "javac not found — install JDK 17+ or set JAVA_HOME." >&2; exit 1; }
 
 rm -rf build && mkdir -p build/gen build/classes build/dex
 

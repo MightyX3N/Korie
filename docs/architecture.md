@@ -11,19 +11,22 @@ source (Nayuki, MIT) under `src/io/nayuki/qrcodegen`.
 
 | Path | Responsibility |
 |---|---|
-| `MainActivity.java` | Home screen: grid/dock, focus & move, launch zoom, top shelf (suggestions / Continue Watching), Liquid Glass, Control Center, profile switcher, menus |
+| `MainActivity.java` | Home screen: grid/dock, focus & move, launch zoom, carousel (Continue Watching + news + recommendations), status row, Liquid Glass, Control Center (incl. Memory/Clean), profile switcher, idle mode, menus |
 | `SetupActivity.java` | First-time setup pages (Apple-style, one question per page) |
 | `SettingsActivity.java` | All settings, tvOS list layout |
 | `Suggestions.java` | JustWatch / TMDB fetch, cache, artwork, deep links |
 | `MediaWatchService.java` | Notification listener → media sessions → Continue Watching store; DND access |
 | `Profiles.java` | Profiles (max 3), unique emoji avatars, per-profile storage names |
-| `SleepReceiver.java` | Sleep via force-lock device admin; sleep timer alarm |
+| `SleepReceiver.java` | Sleep via device admin (or PowerService); sleep timer alarm |
 | `Inputs.java` | TV inputs from the TV input framework; switching via the passthrough channel URI |
 | `News.java` | News for the top shelf: Indian newsrooms' RSS (India, local city, world), images, freshness |
 | `Perms.java` | On-screen permission and default-home requests, with adb only as a last resort |
 | `Weather.java` | Forecast from Open-Meteo, MET Norway or wttr.in (with fallback) in one format, IP location / city search, cache, refresh schedule |
 | `WeatherView.java`, `WeatherIcons.java` | Weather overview card and forecast panel (drawn in code), multicolour weather icons |
-| `Glyphs.java` | Line glyphs drawn in code (Control Center, Presentation tile) |
+| `Clicks.java` | Navigation sounds (Android TV system sound effects at 60%) |
+| `PowerService.java` | Accessibility service the user turns on: sleep (Power Off / Sleep Timer) where device admin is unavailable; Force stop for Clean |
+| `AirPlayGuard.java` | Keeps the AirPlay receiver app visible: mDNS check, restart via its settings / start-up receivers |
+| `Glyphs.java` | Line glyphs drawn in code (Control Center, Presentation tile, inputs, refresh) |
 | `Ui.java` | Resolution-based sizing (960×540 design grid), fonts |
 | `present/Presenter.java` | Presentation entry point: settings, server lifecycle, player bridge, boot start |
 | `present/AdminServer.java` | HTTP server (port 8080), API, streaming multipart uploads |

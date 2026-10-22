@@ -1,25 +1,60 @@
 # Hume Launcher
 
-A tvOS 26–style home screen for Android TV, built for the Xiaomi Mi Box (Android 12) and other
-Android TV boxes. Plain Java, no Gradle, no third-party runtime libraries.
+A tvOS 26–style home screen for Android TV, by Petrobot. It replaces the stock launcher with one
+modelled on Apple TV — glass dock, full-screen carousel, Control Center, profiles — and is built to
+stay smooth on low-end TV boxes like the Xiaomi Mi Box. Plain Java, no Gradle, no third-party
+runtime libraries; the APK is about 1 MB.
 
 ![Home screen](docs/images/home-dock-glass.jpg)
 
-- **Home**: glass dock, 6-across app grid with Apple's measured proportions, focus lift and
-  zoom-to-open animation, More Apps folder.
-- **Top shelf**: Suggestions (popular in India on your services) or Continue Watching.
-- **Profiles**: up to 3, each with its own layout, background and Continue Watching.
-- **Control Center**: sleep, Wi-Fi, Do Not Disturb, audio, sleep timer, shortcuts.
-- **Inputs**: a movable Inputs card and status-row button to switch HDMI/AV/TV inputs.
-- **Weather**: an overview card under the status row and a 5-day forecast (Open-Meteo, no key).
-- **Presentation mode**: send images, videos and webpages from a browser and play them full
-  screen; optionally starts on boot.
+## Features
 
-Documentation: **[docs/](docs/README.md)** — [install](docs/install.md) ·
-[features](docs/features.md) · [presentation](docs/presentation.md) ·
-[architecture](docs/architecture.md)
+- **Home**: Liquid Glass dock, 6-across app grid in Apple's measured proportions, focus lift and
+  zoom-to-open, More Apps folder, five backgrounds.
+- **Carousel**: Continue Watching first (Resume / Remove, expires after 7 days), then Indian news
+  (India, your city, world) and rotating recommendations from your streaming services. Goes full
+  screen when Home is idle.
+- **Status row**: internet indicator, time, Refresh, Control Center, profile avatar.
+- **Weather**: a glass pill with a 5-day forecast panel (Open-Meteo, MET Norway or wttr.in — no keys).
+- **Control Center**: Power Off, Memory/Clean, Wi-Fi, Do Not Disturb, audio, sleep timer, inputs,
+  settings, search.
+- **Profiles**: up to 3, each with its own layout, background and carousel; full-screen switcher.
+- **Inputs**: HDMI/AV/TV picker with connector icons, on TVs that have inputs.
+- **Presentation mode**: send images, videos and webpages from a browser and loop them full screen;
+  can start with the TV (signage).
+- **First-time setup** in Apple's style, **multi-page Settings**, permissions asked **on screen**
+  (adb only as a last resort), system or carousel **screensaver**, an **AirPlay guard** for the
+  open-source AirPlay receiver, and Android TV navigation sounds.
+
+Full list with screenshots: **[docs/features.md](docs/features.md)**.
+
+## Quick start
 
 ```sh
+# needs JDK 17+ and Android SDK build-tools 34.0.0 + platform android-34 (see getting started)
 ./build.sh                                   # → build/tvos-home.apk
+adb connect <tv-ip>:5555
 adb install -r build/tvos-home.apk
+adb shell am start -n com.petrobot.hume/.MainActivity
 ```
+
+## Documentation
+
+| | |
+|---|---|
+| **[Getting started](docs/getting-started.md)** | Install the tools, build, run on a TV or the emulator, developer shortcuts |
+| **[Features](docs/features.md)** | Everything Hume does, by area |
+| **[Install and set up](docs/install.md)** | Make it the home screen, permissions, undo |
+| **[Presentation mode](docs/presentation.md)** | Sending content from a browser, the player, the web API |
+| **[Architecture](docs/architecture.md)** | Code map, build, design decisions, performance |
+| **[Contributing](CONTRIBUTING.md)** | Workflow, code style, design and performance rules, testing, pull requests |
+
+## Requirements
+
+Android TV 7.0+ (API 24). Developed and tested on a Xiaomi Mi Box 4 (Android 12) and an Android 9
+TV with 1 GB RAM.
+
+## Credits
+
+Inter font (SIL OFL) · Nayuki QR Code generator (MIT) · weather from Open-Meteo, MET Norway and
+wttr.in · recommendations from JustWatch / TMDB · news from Indian newsrooms' public RSS feeds.
