@@ -77,6 +77,22 @@ final class Ui {
         return b;
     }
 
+    /** Liquid Glass backdrop: blurred image with boosted saturation and a slight lift, baked once. */
+    static android.graphics.Bitmap glassBackdrop(android.graphics.Bitmap src, int w, int h) {
+        android.graphics.Bitmap blurred = blur(src, w, h, 3, 3);
+        if (blurred == null) return null;
+        android.graphics.Bitmap out = android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888);
+        android.graphics.ColorMatrix cm = new android.graphics.ColorMatrix();
+        cm.setSaturation(1.6f);
+        cm.postConcat(new android.graphics.ColorMatrix(new float[]{
+                1.05f, 0, 0, 0, 14, 0, 1.05f, 0, 0, 14, 0, 0, 1.05f, 0, 14, 0, 0, 0, 1, 0}));
+        android.graphics.Paint p = new android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG);
+        p.setColorFilter(new android.graphics.ColorMatrixColorFilter(cm));
+        new android.graphics.Canvas(out).drawBitmap(blurred, 0, 0, p);
+        blurred.recycle();
+        return out;
+    }
+
     private static void boxBlur(int[] in, int[] out, int w, int h, int r, boolean horizontal) {
         int len = horizontal ? w : h, lines = horizontal ? h : w;
         for (int l = 0; l < lines; l++) {

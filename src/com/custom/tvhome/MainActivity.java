@@ -130,7 +130,7 @@ public class MainActivity extends Activity {
     ImageView wallView;
     /** Top shelf carousel: two crossfading backdrops + info panel. */
     ImageView heroBack, heroFront;
-    View heroScrim;
+    View heroScrim, shade;
     FrameLayout shelfView;
     LinearLayout heroInfo, heroDots;
     ImageView heroLogo;
@@ -181,6 +181,9 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle b) {
         super.onCreate(b);
+        // The wallpaper/artwork always covers the screen: skip the window's own full-screen fill
+        // (this Mali-450 GPU is fill-rate bound, so every hidden full-screen layer costs frames).
+        getWindow().setBackgroundDrawable(null);
         prefs = getSharedPreferences("home", MODE_PRIVATE);
 
         android.graphics.Point size = Ui.screen(this);
@@ -266,7 +269,7 @@ public class MainActivity extends Activity {
 
     void buildChrome() {
         root = new FrameLayout(this);
-        root.setBackgroundColor(0xFF0B0B0F);
+        root.setBackground(null);
 
         // One ambient wallpaper for every app. It is drawn tiny and upscaled, so it is already
         // soft; a slow drift keeps it alive without a per-frame blur on this weak GPU.
@@ -281,10 +284,11 @@ public class MainActivity extends Activity {
         root.addView(heroBack, match());
         root.addView(heroFront, match());
 
-        View shade = new View(this);
+        shade = new View(this);
         shade.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
                 new int[]{0x14000000, 0x40000000, 0xB3000000}));
         root.addView(shade, match());
+        shade.setVisibility(View.GONE);  // baked into wallpaper + artwork instead
 
         // Left-side scrim so the carousel's title and text stay legible over any artwork.
         heroScrim = new View(this);
@@ -557,7 +561,7 @@ public class MainActivity extends Activity {
     void setWallpaper(String style) {
         Bitmap wp = makeWallpaper(style);
         wallView.setImageBitmap(wp);
-        wallBlur = Ui.blur(wp, 192, 108, 3, 2);
+        wallBlur = Ui.glassBackdrop(wp, 192, 108);
         if (!heroShown || heroBlur == null) glassBg = wallBlur;
         invalidateGlass();
     }
@@ -572,6 +576,19 @@ public class MainActivity extends Activity {
     static final String[] WALL_NAMES = {"Aurora", "Midnight", "Sunset", "Ocean", "Graphite"};
 
     Bitmap makeWallpaper(String style) {
+        return bakeShade(makeWallpaperBase(style));
+    }
+
+    /** The bottom darkening that keeps the dock and labels legible, painted into the image. */
+    static Bitmap bakeShade(Bitmap b) {
+        Paint p = new Paint(Paint.DITHER_FLAG);
+        p.setShader(new LinearGradient(0, 0, 0, b.getHeight(), new int[]{0x14000000, 0x40000000, 0xB3000000},
+                null, Shader.TileMode.CLAMP));
+        new Canvas(b).drawRect(0, 0, b.getWidth(), b.getHeight(), p);
+        return b;
+    }
+
+    Bitmap makeWallpaperBase(String style) {
         int w = 192, h = 108;
         Bitmap b = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
         Canvas c = new Canvas(b);
@@ -806,36 +823,35 @@ public class MainActivity extends Activity {
         final float r, density;
         final Backdrop backdrop;
         final int screenW, screenH;
-        int tint;
         final int baseTint;
         float lens;
         float rimStrength = 1f;
-        final Paint bg = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG | Paint.DITHER_FLAG);
+        // Every layer is a single rounded-rect draw (shader-filled), which the GPU does cheaply;
+        // there is no clipping and no off-screen/software rendering at draw time.
+        final Paint body = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+        final Paint lens1 = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+        final Paint lens2 = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
         final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG);
         final Paint glow = new Paint(Paint.ANTI_ALIAS_FLAG);
         final Paint rim = new Paint(Paint.ANTI_ALIAS_FLAG);
-        final android.graphics.RectF box = new android.graphics.RectF(), dst = new android.graphics.RectF();
-        final android.graphics.Path clip = new android.graphics.Path(), ring = new android.graphics.Path(),
-                ringOuter = new android.graphics.Path();
+        final android.graphics.RectF box = new android.graphics.RectF(), tmp = new android.graphics.RectF();
+        final android.graphics.Matrix m = new android.graphics.Matrix();
         final int[] loc = new int[2];
+        Bitmap shaderFor;
+        android.graphics.BitmapShader shader1, shader2, shader3;
 
         LiquidGlass(float r, int tint, Backdrop backdrop, int screenW, int screenH, float density) {
             this.r = r;
-            this.tint = tint;
             this.baseTint = tint;
             this.backdrop = backdrop;
             this.screenW = screenW;
             this.screenH = screenH;
             this.density = density;
-            android.graphics.ColorMatrix cm = new android.graphics.ColorMatrix();
-            cm.setSaturation(1.6f);
-            cm.postConcat(new android.graphics.ColorMatrix(new float[]{
-                    1.05f, 0, 0, 0, 14,
-                    0, 1.05f, 0, 0, 14,
-                    0, 0, 1.05f, 0, 14,
-                    0, 0, 0, 1, 0}));
-            bg.setColorFilter(new android.graphics.ColorMatrixColorFilter(cm));
             fill.setColor(tint);
+            lens1.setStyle(Paint.Style.STROKE);
+            lens2.setStyle(Paint.Style.STROKE);
+            lens1.setAlpha(150);
+            lens2.setAlpha(150);
             rim.setStyle(Paint.Style.STROKE);
             rim.setStrokeWidth(1.1f * density);
         }
@@ -851,88 +867,57 @@ public class MainActivity extends Activity {
 
         @Override protected void onBoundsChange(Rect b) {
             box.set(b);
-            clip.reset();
-            clip.addRoundRect(box, r, r, android.graphics.Path.Direction.CW);
-            ring.reset();
-            ring.setFillType(android.graphics.Path.FillType.EVEN_ODD);
-            ring.addRoundRect(box, r, r, android.graphics.Path.Direction.CW);
-            float l = Math.min(lens, Math.min(box.width(), box.height()) / 3f);
-            ring.addRoundRect(box.left + l, box.top + l, box.right - l, box.bottom - l,
-                    Math.max(0, r - l), Math.max(0, r - l), android.graphics.Path.Direction.CW);
-            float l2 = l * 0.5f;
-            ringOuter.reset();
-            ringOuter.setFillType(android.graphics.Path.FillType.EVEN_ODD);
-            ringOuter.addRoundRect(box, r, r, android.graphics.Path.Direction.CW);
-            ringOuter.addRoundRect(box.left + l2, box.top + l2, box.right - l2, box.bottom - l2,
-                    Math.max(0, r - l2), Math.max(0, r - l2), android.graphics.Path.Direction.CW);
             float h = box.height();
             glow.setShader(new LinearGradient(0, box.top, 0, box.top + h * 0.5f,
                     0x1FFFFFFF, 0x00FFFFFF, Shader.TileMode.CLAMP));
             rim.setShader(new LinearGradient(box.left, box.top, box.right, box.bottom,
                     new int[]{rimA(0xD9), rimA(0x40), rimA(0x14), rimA(0x26), rimA(0x8C)},
                     new float[]{0f, 0.22f, 0.5f, 0.78f, 1f}, Shader.TileMode.CLAMP));
+            float l = Math.min(lens, Math.min(box.width(), box.height()) / 3f);
+            lens1.setStrokeWidth(l);
+            lens2.setStrokeWidth(l / 2f);
         }
 
-        // Cache: the glass body (backdrop, lensing, tint, glow) is rendered off-screen at half
-        // resolution and only rebuilt when what's behind it changes; each frame is then a single
-        // bitmap draw plus the crisp rim. Keeps this weak GPU at 60 fps.
-        Bitmap cache, cacheBg;
-        int cacheX = Integer.MIN_VALUE, cacheY, cacheW, cacheH, cacheFill;
-        final Paint blit = new Paint(Paint.FILTER_BITMAP_FLAG);
+        /** Maps the full-screen backdrop onto this surface's on-screen spot, optionally magnified. */
+        void place(android.graphics.BitmapShader sh, Bitmap b, float zoom) {
+            m.reset();
+            m.setScale(screenW / (float) b.getWidth(), screenH / (float) b.getHeight());
+            m.postTranslate(box.left - loc[0], box.top - loc[1]);
+            if (zoom != 1f) m.postScale(zoom, zoom, box.centerX(), box.centerY());
+            sh.setLocalMatrix(m);
+        }
 
         @Override public void draw(Canvas c) {
             Bitmap b = backdrop.get();
             Object cb = getCallback();
             if (cb instanceof View) ((View) cb).getLocationOnScreen(loc);
-            int w = Math.max(1, Math.round(box.width() / 2f)), h = Math.max(1, Math.round(box.height() / 2f));
-            if (cache == null || b != cacheBg || loc[0] != cacheX || loc[1] != cacheY
-                    || w != cacheW || h != cacheH || fill.getColor() != cacheFill) {
-                if (cache == null || cache.getWidth() != w || cache.getHeight() != h) {
-                    cache = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
-                } else {
-                    cache.eraseColor(0);
+            if (b != null) {
+                if (b != shaderFor) {
+                    shader1 = new android.graphics.BitmapShader(b, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP);
+                    shader2 = new android.graphics.BitmapShader(b, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP);
+                    shader3 = new android.graphics.BitmapShader(b, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP);
+                    body.setShader(shader1);
+                    lens1.setShader(shader2);
+                    lens2.setShader(shader3);
+                    shaderFor = b;
                 }
-                Canvas k = new Canvas(cache);
-                k.scale(w / box.width(), h / box.height());
-                k.translate(-box.left, -box.top);
-                renderBody(k, b);
-                cacheBg = b;
-                cacheX = loc[0];
-                cacheY = loc[1];
-                cacheW = w;
-                cacheH = h;
-                cacheFill = fill.getColor();
+                place(shader1, b, 1f);
+                c.drawRoundRect(box, r, r, body);
+                if (lens > 0) {
+                    // Edge lensing: the band along the rim shows the backdrop magnified (two soft steps).
+                    float w1 = lens1.getStrokeWidth(), w2 = lens2.getStrokeWidth();
+                    place(shader2, b, 1.035f);
+                    tmp.set(box.left + w1 / 2, box.top + w1 / 2, box.right - w1 / 2, box.bottom - w1 / 2);
+                    c.drawRoundRect(tmp, r - w1 / 2, r - w1 / 2, lens1);
+                    place(shader3, b, 1.06f);
+                    tmp.set(box.left + w2 / 2, box.top + w2 / 2, box.right - w2 / 2, box.bottom - w2 / 2);
+                    c.drawRoundRect(tmp, r - w2 / 2, r - w2 / 2, lens2);
+                }
             }
-            c.drawBitmap(cache, null, box, blit);
+            c.drawRoundRect(box, r, r, fill);
+            c.drawRoundRect(box, r, r, glow);
             float in = rim.getStrokeWidth() / 2f;
             c.drawRoundRect(box.left + in, box.top + in, box.right - in, box.bottom - in, r - in, r - in, rim);
-        }
-
-        void renderBody(Canvas c, Bitmap b) {
-            c.save();
-            c.clipPath(clip);
-            if (b != null) {
-                dst.set(box.left - loc[0], box.top - loc[1], box.left - loc[0] + screenW, box.top - loc[1] + screenH);
-                c.drawBitmap(b, null, dst, bg);
-                if (lens > 0) {
-                    // Two softer steps instead of one hard band, so the bend has no visible seam.
-                    c.save();
-                    c.clipPath(ring);
-                    c.scale(1.035f, 1.035f, box.centerX(), box.centerY());
-                    bg.setAlpha(150);
-                    c.drawBitmap(b, null, dst, bg);
-                    c.restore();
-                    c.save();
-                    c.clipPath(ringOuter);
-                    c.scale(1.06f, 1.06f, box.centerX(), box.centerY());
-                    c.drawBitmap(b, null, dst, bg);
-                    c.restore();
-                    bg.setAlpha(255);
-                }
-            }
-            c.drawRect(box, fill);
-            c.drawRect(box, glow);
-            c.restore();
         }
 
         @Override public void setAlpha(int a) { }
@@ -1134,6 +1119,26 @@ public class MainActivity extends Activity {
         shelf.setOnFocusChangeListener((v, has) -> heroFocused(has));
     }
 
+    /**
+     * Darkening for legibility (left side for the text, bottom for the dock), painted into the
+     * artwork once when it loads, so the GPU draws one full-screen image instead of three layers.
+     */
+    Bitmap bakeScrims(Bitmap src) {
+        if (src == null) return null;
+        Bitmap b = src.isMutable() ? src : src.copy(Bitmap.Config.ARGB_8888, true);
+        if (b != src) src.recycle();
+        int w = b.getWidth(), h = b.getHeight();
+        Canvas c = new Canvas(b);
+        Paint p = new Paint(Paint.DITHER_FLAG);
+        p.setShader(new LinearGradient(0, 0, w * 0.75f, 0, new int[]{0xCC000000, 0x66000000, 0x00000000},
+                null, Shader.TileMode.CLAMP));
+        c.drawRect(0, 0, w * 0.75f, h, p);
+        p.setShader(new LinearGradient(0, 0, 0, h, new int[]{0x14000000, 0x40000000, 0xB3000000},
+                null, Shader.TileMode.CLAMP));
+        c.drawRect(0, 0, w, h, p);
+        return b;
+    }
+
     /** Info block sits just above the dock while a dock app is focused... */
     float heroInfoRestY() {
         return -(screenH - shelfH) + dp(40) - dp(36);
@@ -1220,9 +1225,13 @@ public class MainActivity extends Activity {
         glassBg = show && heroBlur != null ? heroBlur : wallBlur;
         invalidateGlass();
         float a = show ? 1f : 0f;
-        heroFront.animate().alpha(a).setDuration(450).start();
-        heroScrim.animate().alpha(a).setDuration(450).start();
-        heroInfo.animate().alpha(a).setDuration(350).start();
+        if (!show) wallView.setVisibility(View.VISIBLE);
+        heroFront.animate().alpha(a).setDuration(450).withEndAction(() -> {
+            if (heroShown && heroFront.getAlpha() >= 1f) wallView.setVisibility(View.INVISIBLE);
+        }).start();
+        heroScrim.setVisibility(View.GONE);
+
+        heroInfo.animate().withLayer().alpha(a).setDuration(350).start();
         heroDots.animate().alpha(a).setDuration(350).start();
         chevron.animate().alpha(1f - a).setDuration(350).start();
         heroBack.animate().alpha(0f).setDuration(450).start();
@@ -1251,8 +1260,8 @@ public class MainActivity extends Activity {
         }
         int want = index;
         io.execute(() -> {
-            Bitmap bd = Suggestions.image(this, it.backdrop, "w1280", Math.min(1280, screenW));
-            Bitmap bdBlur = Ui.blur(bd, 160, 90, 3, 3);
+            Bitmap bd = bakeScrims(Suggestions.image(this, it.backdrop, "w1280", Math.min(1280, screenW)));
+            Bitmap bdBlur = Ui.glassBackdrop(bd, 160, 90);
             String logoPath = Suggestions.logoFor(this, it);
             Bitmap logo = logoPath.isEmpty() ? null : Suggestions.image(this, logoPath, "w500", 500);
             handler.post(() -> {
@@ -1299,7 +1308,7 @@ public class MainActivity extends Activity {
             heroInfo.animate().cancel();
             heroInfo.setAlpha(0f);
             heroInfo.setTranslationX(dp(28) * dir);
-            heroInfo.animate().alpha(1f).translationX(0).setDuration(520).setInterpolator(EASE).start();
+            heroInfo.animate().withLayer().alpha(1f).translationX(0).setDuration(520).setInterpolator(EASE).start();
         }
     }
 
@@ -1323,9 +1332,9 @@ public class MainActivity extends Activity {
         }
         next.setTranslationX(screenW * 0.12f * dir);
         next.setAlpha(0f);
-        next.animate().withLayer().translationX(0).alpha(1f).setDuration(650).setInterpolator(EASE).start();
+        next.animate().translationX(0).alpha(1f).setDuration(650).setInterpolator(EASE).start();
         old.animate().cancel();
-        old.animate().withLayer().translationX(-screenW * 0.06f * dir).alpha(0f).setDuration(650)
+        old.animate().translationX(-screenW * 0.06f * dir).alpha(0f).setDuration(650)
                 .setInterpolator(EASE).withEndAction(() -> old.setTranslationX(0)).start();
     }
 
@@ -1346,10 +1355,10 @@ public class MainActivity extends Activity {
             heroBtnBg.setColor(0xFFFFFFFF);
             heroBtnText.setTextColor(0xFF111114);
             scroll.smoothScrollTo(0, 0);
-            scroll.animate().translationY(screenH - shelfH + dp(30)).setDuration(500).setInterpolator(EASE)
-                    .setUpdateListener(an -> invalidateGlass()).start();
-            heroInfo.animate().translationY(0).setDuration(500).setInterpolator(EASE).start();
-            heroDots.animate().translationY(0).setDuration(500).setInterpolator(EASE).start();
+            scroll.animate().withLayer().translationY(screenH - shelfH + dp(30)).setDuration(500).setInterpolator(EASE)
+                    .setUpdateListener(null).withEndAction(this::invalidateGlass).start();
+            heroInfo.animate().withLayer().translationY(0).setDuration(500).setInterpolator(EASE).start();
+            heroDots.animate().withLayer().translationY(0).setDuration(500).setInterpolator(EASE).start();
             heroOverview.setVisibility(View.VISIBLE);
             heroButton.setVisibility(View.VISIBLE);
             heroOverview.animate().alpha(0.85f).setDuration(400).setStartDelay(120).start();
@@ -1360,10 +1369,10 @@ public class MainActivity extends Activity {
             heroButton.setElevation(0);
             heroBtnBg.setColor(0x47FFFFFF);
             heroBtnText.setTextColor(Color.WHITE);
-            scroll.animate().translationY(0).setDuration(450).setInterpolator(EASE)
-                    .setUpdateListener(an -> invalidateGlass()).start();
-            heroInfo.animate().translationY(heroInfoRestY()).setDuration(450).setInterpolator(EASE).start();
-            heroDots.animate().translationY(heroDotsRestY()).setDuration(450).setInterpolator(EASE).start();
+            scroll.animate().withLayer().translationY(0).setDuration(450).setInterpolator(EASE)
+                    .setUpdateListener(null).withEndAction(this::invalidateGlass).start();
+            heroInfo.animate().withLayer().translationY(heroInfoRestY()).setDuration(450).setInterpolator(EASE).start();
+            heroDots.animate().withLayer().translationY(heroDotsRestY()).setDuration(450).setInterpolator(EASE).start();
             heroOverview.animate().alpha(0f).setDuration(160).setStartDelay(0)
                     .withEndAction(() -> heroOverview.setVisibility(View.GONE)).start();
             heroButton.animate().alpha(0f).setDuration(160).setStartDelay(0)
@@ -1501,7 +1510,8 @@ public class MainActivity extends Activity {
         zoom.addUpdateListener(an -> art.setProgress((float) an.getAnimatedValue()));
         zoom.start();
 
-        scroll.animate().scaleX(0.9f).scaleY(0.9f).alpha(0f).setDuration(420).setInterpolator(EASE).start();
+        scroll.animate().withLayer().scaleX(0.9f).scaleY(0.9f).alpha(0f).setDuration(420).setInterpolator(EASE)
+                .setUpdateListener(null).start();
         clockBox.animate().alpha(0f).setDuration(250).start();
 
         handler.postDelayed(() -> {
@@ -1527,10 +1537,11 @@ public class MainActivity extends Activity {
 
         scroll.setScaleX(1.06f);
         scroll.setScaleY(1.06f);
-        scroll.animate().scaleX(1f).scaleY(1f).alpha(1f).setDuration(420).setInterpolator(EASE).start();
+        scroll.animate().withLayer().scaleX(1f).scaleY(1f).alpha(1f).setDuration(420).setInterpolator(EASE)
+                .setUpdateListener(null).withEndAction(this::invalidateGlass).start();
         clockBox.animate().alpha(clockAlpha()).setDuration(420).start();
         if (tile != null) tile.animate().alpha(1f).setDuration(300).start();
-        ov.animate().alpha(0f).scaleX(0.96f).scaleY(0.96f).setDuration(300)
+        ov.animate().withLayer().alpha(0f).scaleX(0.96f).scaleY(0.96f).setDuration(300)
                 .setListener(new AnimatorListenerAdapter() {
                     @Override public void onAnimationEnd(Animator animation) {
                         root.removeView(ov);
@@ -1667,10 +1678,6 @@ public class MainActivity extends Activity {
             float W = b.width(), H = b.height();
             o.set(lerp(card.left, 0, f), lerp(card.top, 0, f), lerp(card.right, W, f), lerp(card.bottom, H, f));
             float rad = r0 * (1f - f);
-            clip.reset();
-            clip.addRoundRect(o, rad, rad, android.graphics.Path.Direction.CW);
-            c.save();
-            c.clipPath(clip);
             if (art != null) {
                 // Banner rect: starts as the card itself, ends centred at 42% of the screen.
                 float bw = lerp(card.width(), W * 0.42f, f), bh = lerp(card.height(), H * 0.42f, f);
@@ -1679,11 +1686,11 @@ public class MainActivity extends Activity {
                 m.setScale(scale, scale);
                 m.postTranslate(br.centerX() - art.getWidth() * scale / 2, br.centerY() - art.getHeight() * scale / 2);
                 artPaint.getShader().setLocalMatrix(m);
-                c.drawRect(o, artPaint);
+                c.drawRoundRect(o, rad, rad, artPaint);
             } else {
                 float t = Math.max(0f, Math.min(1f, (f - 0.55f) / 0.45f));
                 fill.setColor(blend(color0, color1, t));
-                c.drawRect(o, fill);
+                c.drawRoundRect(o, rad, rad, fill);
                 if (icon != null) {
                     float s = lerp(card.height() * 0.55f, H * 0.27f, f);
                     Rect old = icon.copyBounds();
@@ -1693,7 +1700,6 @@ public class MainActivity extends Activity {
                     icon.setBounds(old);
                 }
             }
-            c.restore();
         }
 
         @Override public void setAlpha(int a) { }
