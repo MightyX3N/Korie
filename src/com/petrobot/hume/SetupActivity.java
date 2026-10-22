@@ -439,8 +439,7 @@ public class SetupActivity extends Activity {
         });
         if (on) {
             boolean boot = com.petrobot.hume.present.Presenter.startOnBoot(this),
-                    awake = com.petrobot.hume.present.Presenter.keepAwake(this),
-                    code = com.petrobot.hume.present.Presenter.showInfoOnStart(this);
+                    awake = com.petrobot.hume.present.Presenter.keepAwake(this);
             option(l, "Start with the TV", "Play as soon as the TV turns on (signage)", boot, () -> {
                 com.petrobot.hume.present.Presenter.set(this, com.petrobot.hume.present.Presenter.KEY_BOOT, !boot);
                 show(index, 0);
@@ -450,11 +449,6 @@ public class SetupActivity extends Activity {
                 com.petrobot.hume.present.Presenter.set(this, com.petrobot.hume.present.Presenter.KEY_AWAKE, !awake);
                 show(index, 0);
                 focusRow(2);
-            });
-            option(l, "Show Code When Starting", "The address and pairing code, for a few seconds", code, () -> {
-                com.petrobot.hume.present.Presenter.set(this, com.petrobot.hume.present.Presenter.KEY_INFO, !code);
-                show(index, 0);
-                focusRow(3);
             });
         }
         option(l, "Continue", null, false, this::next);

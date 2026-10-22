@@ -10,8 +10,7 @@ Back goes back):
 3. **Choose a look**: this profile's background, previewed live behind the page.
 4. **Your Home Screen** (per profile): Recommendations on/off and News on/off.
 5. **Weather**: use my location (shows the detected city), choose a city, or don't show weather.
-6. **Presentation** (whole TV): use Presentation, and if on: start with the TV, keep screen awake,
-   show code when starting — all on one page, so nothing needs configuring in Settings afterwards.
+6. **Presentation** (whole TV): use Presentation, and if on: start with the TV  and keep screen awake — all on one page, so nothing needs configuring in Settings afterwards.
 7. **Finish setting up**: Android's location prompt appears right away; make Hume the home screen
    and allow whatever else the TV supports (each ticks when done; unsupported ones are left out).
 8. **You're all set** → Home.

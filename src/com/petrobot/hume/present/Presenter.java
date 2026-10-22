@@ -40,7 +40,7 @@ public final class Presenter {
     }
 
     public static boolean showInfoOnStart(Context c) {
-        return prefs(c).getBoolean(K_INFO, true);
+        return true;  // the address and pairing code always show when a presentation starts
     }
 
     public static void set(Context c, String key, boolean on) {

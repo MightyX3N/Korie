@@ -26,9 +26,10 @@ Settings → **Presentation**:
 | Presentation mode | Starts the web server on port 8080 and adds a **Presentation** tile to Home |
 | Start on boot | Opens the presentation full screen as soon as the TV starts |
 | Keep screen awake | Stops the TV sleeping or starting the screensaver while presenting |
-| Show code when starting | Shows the address/QR/pairing card for a few seconds when it opens |
 | Address & pairing code | Shows the address, QR code and pairing code |
 | Start presentation now | Opens the presentation full screen |
+
+The address, QR code and pairing code always show for a few seconds when a presentation starts.
 
 ## Send content from a browser
 

@@ -370,9 +370,6 @@ public class SettingsActivity extends Activity {
         row("Keep screen awake", () -> com.petrobot.hume.present.Presenter.keepAwake(this) ? "On" : "Off", () ->
                 com.petrobot.hume.present.Presenter.set(this, com.petrobot.hume.present.Presenter.KEY_AWAKE,
                         !com.petrobot.hume.present.Presenter.keepAwake(this)));
-        row("Show code when starting", () -> com.petrobot.hume.present.Presenter.showInfoOnStart(this) ? "On" : "Off", () ->
-                com.petrobot.hume.present.Presenter.set(this, com.petrobot.hume.present.Presenter.KEY_INFO,
-                        !com.petrobot.hume.present.Presenter.showInfoOnStart(this)));
         row("Address & pairing code", () -> com.petrobot.hume.present.Presenter.enabled(this)
                 ? com.petrobot.hume.present.Presenter.address().replace("http://", "") : "Turn on first", this::showPresentInfo);
         row("Start presentation now", () -> "", () -> {
