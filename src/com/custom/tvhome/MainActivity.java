@@ -1926,18 +1926,18 @@ public class MainActivity extends Activity {
         labels.add("Open");
         actions.add(() -> launchAnimated(tile, a));
         if (folderMode) {
-            labels.add("Show on Home");
+            labels.add("Show on Home Screen");
             actions.add(() -> setHidden(a, false));
         } else {
             labels.add("Move");
             actions.add(() -> startMove(index));
             if (!isSettings(a)) {
-                labels.add("Hide (move to More Apps)");
+                labels.add("Hide");
                 actions.add(() -> setHidden(a, true));
             }
         }
         if (!isSettings(a)) {
-            labels.add("App info");
+            labels.add("App Info");
             actions.add(() -> startSafe(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
                     Uri.parse("package:" + a.pkg))));
             if (!a.system) {
@@ -1946,7 +1946,7 @@ public class MainActivity extends Activity {
             }
         }
         if (!folderMode) {
-            labels.add("Reset layout");
+            labels.add("Reset Layout");
             actions.add(() -> {
                 prefs.edit().remove(PREF_ORDER).apply();
                 reload(a.key);
@@ -1975,7 +1975,7 @@ public class MainActivity extends Activity {
         LinearLayout panel = new LinearLayout(this);
         panel.setOrientation(LinearLayout.VERTICAL);
         panel.setPadding(dp(8), dp(12), dp(8), dp(8));
-        FrostedGlass glass = new FrostedGlass(dp(20), 0xB81C1C22, grain(), unit);
+        FrostedGlass glass = new FrostedGlass(dp(20), 0xF0222228, grain(), unit);
         glass.rimStrength = 0.6f;
         panel.setBackground(glass);
         panel.setElevation(dp(30));
