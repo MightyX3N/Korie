@@ -77,6 +77,10 @@ final class Suggestions {
         String type, title, overview, backdrop, logo, year, genres;
         /** Exact title page on the service (JustWatch), opened directly in the app when it supports it. */
         String link = "";
+        /** Continue Watching entries: the app that played it, its store key, and progress. */
+        String pkg = "", key = "";
+        float progress = -1f;
+        int remainingMin = -1;
         double rating;
 
         JSONObject toJson() throws Exception {
@@ -419,6 +423,15 @@ final class Suggestions {
     /** TMDB image, cached on disk, decoded no larger than maxWidth (the box has little RAM). */
     static Bitmap image(Context c, String path, String size, int maxWidth) {
         if (path == null || path.isEmpty()) return null;
+        if (path.startsWith("/")) {  // local artwork (Continue Watching)
+            BitmapFactory.Options o = new BitmapFactory.Options();
+            o.inJustDecodeBounds = true;
+            BitmapFactory.decodeFile(path, o);
+            o.inSampleSize = 1;
+            while (o.outWidth / (o.inSampleSize * 2) >= maxWidth) o.inSampleSize *= 2;
+            o.inJustDecodeBounds = false;
+            return BitmapFactory.decodeFile(path, o);
+        }
         try {
             File dir = new File(c.getCacheDir(), "tmdb");
             dir.mkdirs();

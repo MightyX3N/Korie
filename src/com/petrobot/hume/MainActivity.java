@@ -217,6 +217,7 @@ public class MainActivity extends Activity {
         if (moveIndex >= 0) endMove();
         if (folderMode) {
             folderMode = false;
+            switcher.setAlpha(1f);
             launchTile = null;
             buildGrid();
             shelfEntry = null;
@@ -304,6 +305,7 @@ public class MainActivity extends Activity {
         scroll.setFillViewport(true);
         scroll.setOnScrollChangeListener((v, x, y, ox, oy) -> {
             if (launchOverlay == null && !clockBox.isFocused()) clockBox.setAlpha(clockAlpha());
+            if (launchOverlay == null && !switcher.isFocused()) switcher.setAlpha(folderMode ? 0f : clockAlpha());
             if (dockRow != null) dockRow.invalidate();
         });
 
@@ -1114,6 +1116,25 @@ public class MainActivity extends Activity {
         root.addView(heroDots, dlp);
         heroDots.setTranslationY(heroDotsRestY());
 
+        // Up Next strip (Continue Watching): thumbnails with progress, shown while the shelf is focused.
+        heroStrip = new LinearLayout(this);
+        heroStrip.setOrientation(LinearLayout.HORIZONTAL);
+        heroStrip.setClipChildren(false);
+        heroStrip.setClipToPadding(false);
+        heroStrip.setVisibility(View.GONE);
+        LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(64));
+        slp.topMargin = dp(16);
+        heroInfo.addView(heroStrip, slp);
+
+        // Empty state for Continue Watching.
+        shelfEmpty = text(15, Ui.font(this, "medium"), 0f);
+        shelfEmpty.setGravity(Gravity.CENTER);
+        FrameLayout.LayoutParams elp = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER);
+        shelf.addView(shelfEmpty, elp);
+
+        buildSwitcher();
+
         // The shelf itself is the carousel's focus target (UP from the dock).
         shelf.setFocusable(false);
         shelf.setOnFocusChangeListener((v, has) -> heroFocused(has));
@@ -1149,8 +1170,91 @@ public class MainActivity extends Activity {
         return -(screenH - shelfH) + dp(22) - dp(12);
     }
 
+    /** tvOS-style top tab bar: a glass capsule, top centre, with two text tabs. */
+    void buildSwitcher() {
+        shelfMode = getSharedPreferences("home", MODE_PRIVATE).getString("shelf_mode", "suggest");
+        switcher = new LinearLayout(this);
+        switcher.setOrientation(LinearLayout.HORIZONTAL);
+        switcher.setGravity(Gravity.CENTER_VERTICAL);
+        int h = dp(30);
+        switcher.setPadding(dp(3), 0, dp(3), 0);
+        LiquidGlass g = new LiquidGlass(h / 2f, 0x1F000000, glassSource, screenW, screenH, unit);
+        g.rimStrength = 0.6f;
+        g.lens = dp(5);
+        switcher.setBackground(g);
+        switcher.setFocusable(true);
+        tabSuggestBg = new GradientDrawable();
+        tabContinueBg = new GradientDrawable();
+        tabSuggest = tab("Suggestions", tabSuggestBg);
+        tabContinue = tab("Continue Watching", tabContinueBg);
+        switcher.addView(tabSuggest, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, h - dp(6)));
+        switcher.addView(tabContinue, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, h - dp(6)));
+        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, h,
+                Gravity.TOP | Gravity.CENTER_HORIZONTAL);
+        lp.topMargin = dp(26);
+        root.addView(switcher, lp);
+        switcher.setOnFocusChangeListener((v, has) -> {
+            styleTabs();
+            v.animate().scaleX(has ? 1.08f : 1f).scaleY(has ? 1.08f : 1f).setDuration(200).setInterpolator(LIFT).start();
+            if (has) setHeroShown(!heroItems.isEmpty());
+        });
+        styleTabs();
+    }
+
+    TextView tab(String label, GradientDrawable bg) {
+        TextView t = text(12.5f, Ui.font(this, "medium"), 1f);
+        t.setText(label);
+        t.setShadowLayer(0, 0, 0, 0);
+        t.setGravity(Gravity.CENTER);
+        t.setPadding(dp(14), 0, dp(14), 0);
+        bg.setCornerRadius(dp(12));
+        t.setBackground(bg);
+        return t;
+    }
+
+    /** Selected tab: soft glass pill; white with dark text while the tab bar has focus (tvOS). */
+    void styleTabs() {
+        boolean focused = switcher.isFocused();
+        boolean sug = !"continue".equals(shelfMode);
+        TextView on = sug ? tabSuggest : tabContinue, off = sug ? tabContinue : tabSuggest;
+        GradientDrawable onBg = sug ? tabSuggestBg : tabContinueBg, offBg = sug ? tabContinueBg : tabSuggestBg;
+        onBg.setColor(focused ? 0xFFFFFFFF : 0x33FFFFFF);
+        on.setTextColor(focused ? 0xFF111114 : Color.WHITE);
+        offBg.setColor(Color.TRANSPARENT);
+        off.setTextColor(0xB3FFFFFF);
+    }
+
+    void setShelfMode(String mode) {
+        if (mode.equals(shelfMode)) return;
+        shelfMode = mode;
+        getSharedPreferences("home", MODE_PRIVATE).edit().putString("shelf_mode", mode).apply();
+        styleTabs();
+        heroItems = new ArrayList<>();
+        heroIndex = 0;
+        heroVersion = -1;
+        heroFront.setImageDrawable(null);
+        heroBack.setImageDrawable(null);
+        setHeroShown(false);
+        loadHero();
+    }
+
+    boolean continueMode() {
+        return "continue".equals(shelfMode);
+    }
+
     /** Loads cached suggestions at once and refreshes them in the background when stale or reconfigured. */
     void loadHero() {
+        if (continueMode()) {
+            io.execute(() -> {
+                List<Suggestions.Item> items = MediaWatchService.Store.list(this);
+                handler.post(() -> {
+                    setHeroItems(items);
+                    updateEmpty();
+                });
+            });
+            return;
+        }
+        updateEmpty();
         if (!Suggestions.enabled(this) || !Suggestions.ready(this)) {
             heroItems = new ArrayList<>();
             shelfView.setFocusable(false);
@@ -1177,6 +1281,16 @@ public class MainActivity extends Activity {
         });
     }
 
+    void updateEmpty() {
+        boolean show = continueMode() && heroItems.isEmpty() && !folderMode;
+        if (show) {
+            shelfEmpty.setText(MediaWatchService.granted(this)
+                    ? "Shows and movies you play will appear here."
+                    : "Turn on Continue Watching in Settings (profile, top right).");
+        }
+        shelfEmpty.animate().alpha(show ? 0.75f : 0f).setDuration(250).start();
+    }
+
     void setHeroItems(List<Suggestions.Item> items) {
         // Keep the carousel where it was when the list is refreshed (same title -> same position).
         String curTitle = heroItems.isEmpty() ? null : heroItems.get(Math.min(heroIndex, heroItems.size() - 1)).title;
@@ -1188,7 +1302,7 @@ public class MainActivity extends Activity {
         heroIndex = keep;
         shelfView.setFocusable(!items.isEmpty());
         heroDots.removeAllViews();
-        for (int i = 0; i < items.size() && items.size() > 1; i++) {
+        for (int i = 0; i < items.size() && items.size() > 1 && !continueMode(); i++) {
             View d = new View(this);
             GradientDrawable g = new GradientDrawable();
             g.setShape(GradientDrawable.OVAL);
@@ -1198,6 +1312,7 @@ public class MainActivity extends Activity {
             lp.rightMargin = dp(5);
             heroDots.addView(d, lp);
         }
+        buildStrip(items);
         if (items.isEmpty()) {
             setHeroShown(false);
             return;
@@ -1241,6 +1356,7 @@ public class MainActivity extends Activity {
 
     void scheduleAdvance() {
         handler.removeCallbacks(heroAdvance);
+        if (continueMode()) return;  // Up Next stays put
         int sec = Suggestions.advanceSeconds(this);
         if (sec > 0 && heroShown && resumed) handler.postDelayed(heroAdvance, sec * 1000L);
     }
@@ -1285,6 +1401,30 @@ public class MainActivity extends Activity {
         heroTitle.setVisibility(View.VISIBLE);
         heroLogo.setImageDrawable(null);
         heroLogo.setVisibility(View.GONE);
+        selectStrip(heroIndex);
+        if (!it.pkg.isEmpty()) {  // Continue Watching entry
+            List<String> meta = new ArrayList<>();
+            meta.add(appLabel(it.pkg));
+            if (it.remainingMin > 0) meta.add(it.remainingMin >= 60
+                    ? (it.remainingMin / 60) + " h " + (it.remainingMin % 60) + " min left" : it.remainingMin + " min left");
+            heroMeta.setText(String.join("  \u00B7  ", meta));
+            heroOverview.setText(it.overview);
+            heroBtnText.setText("\u25B6  Resume");
+            try {
+                heroProvider.setImageDrawable(getPackageManager().getApplicationIcon(it.pkg));
+                heroProvider.setVisibility(View.VISIBLE);
+            } catch (PackageManager.NameNotFoundException e) {
+                heroProvider.setVisibility(View.GONE);
+            }
+            heroBtnIcon.setVisibility(View.GONE);
+            if (heroShown && dir != 0) {
+                heroInfo.animate().cancel();
+                heroInfo.setAlpha(0f);
+                heroInfo.setTranslationX(dp(28) * dir);
+                heroInfo.animate().withLayer().alpha(1f).translationX(0).setDuration(520).setInterpolator(EASE).start();
+            }
+            return;
+        }
         List<String> meta = new ArrayList<>();
         if (!it.year.isEmpty()) meta.add(it.year);
         meta.add(it.type.equals("tv") ? "Series" : "Movie");
@@ -1341,6 +1481,14 @@ public class MainActivity extends Activity {
     /** Carousel focused: the dock slides away and the artwork takes the whole screen (tvOS Top Shelf). */
     boolean heroRequested;
 
+    /** Top shelf content: "suggest" (carousel) or "continue" (Continue Watching). */
+    String shelfMode;
+    LinearLayout switcher;
+    TextView tabSuggest, tabContinue;
+    GradientDrawable tabSuggestBg, tabContinueBg;
+    LinearLayout heroStrip;
+    TextView shelfEmpty;
+
     void heroFocused(boolean has) {
         if (has && !heroRequested) {
             // Android parked focus here on its own (startup/rebuild): hand it back to the dock.
@@ -1361,6 +1509,7 @@ public class MainActivity extends Activity {
             heroDots.animate().withLayer().translationY(0).setDuration(500).setInterpolator(EASE).start();
             heroOverview.setVisibility(View.VISIBLE);
             heroButton.setVisibility(View.VISIBLE);
+            if (continueMode() && heroStrip.getChildCount() > 0) heroStrip.setVisibility(View.VISIBLE);
             heroOverview.animate().alpha(0.85f).setDuration(400).setStartDelay(120).start();
             heroButton.animate().alpha(1f).setDuration(400).setStartDelay(120).start();
             handler.removeCallbacks(heroAdvance);
@@ -1377,6 +1526,7 @@ public class MainActivity extends Activity {
                     .withEndAction(() -> heroOverview.setVisibility(View.GONE)).start();
             heroButton.animate().alpha(0f).setDuration(160).setStartDelay(0)
                     .withEndAction(() -> heroButton.setVisibility(View.GONE)).start();
+            heroStrip.setVisibility(View.GONE);
             scheduleAdvance();
         }
     }
@@ -1394,9 +1544,25 @@ public class MainActivity extends Activity {
                 case KeyEvent.KEYCODE_DPAD_RIGHT: if (down) heroStep(1, true); return true;
                 case KeyEvent.KEYCODE_DPAD_CENTER:
                 case KeyEvent.KEYCODE_ENTER:
-                    if (!down && !heroItems.isEmpty()) Suggestions.open(this, heroItems.get(heroIndex));
+                    if (!down && !heroItems.isEmpty()) openHeroItem(heroItems.get(heroIndex));
                     return true;
-                case KeyEvent.KEYCODE_DPAD_UP: if (down) clockBox.requestFocus(); return true;
+                case KeyEvent.KEYCODE_MENU:
+                    if (!down && continueMode() && !heroItems.isEmpty()) {
+                        Suggestions.Item it = heroItems.get(heroIndex);
+                        List<String> l = new ArrayList<>();
+                        List<Runnable> act = new ArrayList<>();
+                        l.add("Resume");
+                        act.add(() -> openHeroItem(it));
+                        l.add("Remove from Continue Watching");
+                        act.add(() -> {
+                            MediaWatchService.Store.remove(this, it.key);
+                            heroItems = new ArrayList<>();
+                            loadHero();
+                        });
+                        showMenu(heroButton, it.title, l, act, 1);
+                    }
+                    return true;
+                case KeyEvent.KEYCODE_DPAD_UP: if (down) switcher.requestFocus(); return true;
                 case KeyEvent.KEYCODE_DPAD_DOWN:
                 case KeyEvent.KEYCODE_BACK:
                     if (down) focusIndex(Math.min(focusedIndex, COLS - 1));
@@ -1404,15 +1570,32 @@ public class MainActivity extends Activity {
                 default: return false;
             }
         }
+        if (f == switcher) {
+            switch (k) {
+                case KeyEvent.KEYCODE_DPAD_LEFT: if (down) setShelfMode("suggest"); return true;
+                case KeyEvent.KEYCODE_DPAD_RIGHT: if (down) setShelfMode("continue"); return true;
+                case KeyEvent.KEYCODE_DPAD_CENTER:
+                case KeyEvent.KEYCODE_ENTER:
+                    if (!down) setShelfMode(continueMode() ? "suggest" : "continue");
+                    return true;
+                case KeyEvent.KEYCODE_DPAD_UP: if (down) clockBox.requestFocus(); return true;
+                case KeyEvent.KEYCODE_DPAD_DOWN:
+                case KeyEvent.KEYCODE_BACK:
+                    if (down) {
+                        if (heroActive) {
+                            heroRequested = true;
+                            shelfView.requestFocus();
+                        } else {
+                            focusIndex(Math.min(focusedIndex, COLS - 1));
+                        }
+                    }
+                    return true;
+                default: return false;
+            }
+        }
         if (f == clockBox) {
             if (k == KeyEvent.KEYCODE_DPAD_DOWN || k == KeyEvent.KEYCODE_BACK) {
-                if (down) {
-                    if (heroActive) {
-                    heroRequested = true;
-                    shelfView.requestFocus();
-                }
-                    else focusIndex(Math.min(focusedIndex, COLS - 1));
-                }
+                if (down) switcher.requestFocus();
                 return true;
             }
             return k == KeyEvent.KEYCODE_DPAD_LEFT || k == KeyEvent.KEYCODE_DPAD_RIGHT || k == KeyEvent.KEYCODE_DPAD_UP;
@@ -1427,12 +1610,23 @@ public class MainActivity extends Activity {
                 if (heroActive) {
                     heroRequested = true;
                     shelfView.requestFocus();
+                } else {
+                    switcher.requestFocus();
                 }
-                else clockBox.requestFocus();
             }
             return true;
         }
         return false;
+    }
+
+    void openHeroItem(Suggestions.Item it) {
+        if (it.pkg.isEmpty()) {
+            Suggestions.open(this, it);
+            return;
+        }
+        Intent i = getPackageManager().getLeanbackLaunchIntentForPackage(it.pkg);
+        if (i == null) i = getPackageManager().getLaunchIntentForPackage(it.pkg);
+        if (i != null) Suggestions.start(this, i);
     }
 
     // ---------------------------------------------------------------- focus sway
@@ -1513,6 +1707,7 @@ public class MainActivity extends Activity {
         scroll.animate().withLayer().scaleX(0.9f).scaleY(0.9f).alpha(0f).setDuration(420).setInterpolator(EASE)
                 .setUpdateListener(null).start();
         clockBox.animate().alpha(0f).setDuration(250).start();
+        switcher.animate().alpha(0f).setDuration(250).start();
 
         handler.postDelayed(() -> {
             try {
@@ -1540,6 +1735,7 @@ public class MainActivity extends Activity {
         scroll.animate().withLayer().scaleX(1f).scaleY(1f).alpha(1f).setDuration(420).setInterpolator(EASE)
                 .setUpdateListener(null).withEndAction(this::invalidateGlass).start();
         clockBox.animate().alpha(clockAlpha()).setDuration(420).start();
+        switcher.animate().alpha(folderMode ? 0f : clockAlpha()).setDuration(420).start();
         if (tile != null) tile.animate().alpha(1f).setDuration(300).start();
         ov.animate().withLayer().alpha(0f).scaleX(0.96f).scaleY(0.96f).setDuration(300)
                 .setListener(new AnimatorListenerAdapter() {
@@ -1622,6 +1818,66 @@ public class MainActivity extends Activity {
         }
         b.recycle();
         return Color.rgb(r / px.length, g / px.length, bl / px.length);
+    }
+
+    String appLabel(String pkg) {
+        AppEntry e = null;
+        for (AppEntry a : all.values()) if (pkg.equals(a.pkg)) e = a;
+        if (e != null) return e.label;
+        try {
+            return getPackageManager().getApplicationLabel(getPackageManager().getApplicationInfo(pkg, 0)).toString();
+        } catch (PackageManager.NameNotFoundException ex) {
+            return pkg;
+        }
+    }
+
+    /** Up Next strip: one thumbnail per entry with a progress bar; the current one is lifted. */
+    void buildStrip(List<Suggestions.Item> items) {
+        heroStrip.removeAllViews();
+        if (!continueMode()) return;
+        for (int i = 0; i < items.size() && i < 8; i++) {
+            Suggestions.Item it = items.get(i);
+            FrameLayout th = new FrameLayout(this);
+            GradientDrawable tbg = new GradientDrawable();
+            tbg.setCornerRadius(dp(6));
+            tbg.setColor(0x33FFFFFF);
+            th.setBackground(tbg);
+            th.setOutlineProvider(roundedOutline(new float[]{dp(6)}));
+            th.setClipToOutline(true);
+            ImageView iv = new ImageView(this);
+            iv.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            th.addView(iv, match());
+            if (it.progress >= 0) {
+                View track = new View(this);
+                track.setBackgroundColor(0x4DFFFFFF);
+                FrameLayout.LayoutParams tlp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(3),
+                        Gravity.BOTTOM);
+                tlp.setMargins(dp(6), 0, dp(6), dp(5));
+                th.addView(track, tlp);
+                View bar = new View(this);
+                bar.setBackgroundColor(Color.WHITE);
+                FrameLayout.LayoutParams blp = new FrameLayout.LayoutParams(
+                        Math.max(dp(3), Math.round((dp(100) - dp(12)) * it.progress)), dp(3), Gravity.BOTTOM | Gravity.START);
+                blp.setMargins(dp(6), 0, 0, dp(5));
+                th.addView(bar, blp);
+            }
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(dp(100), dp(56));
+            lp.rightMargin = dp(10);
+            heroStrip.addView(th, lp);
+            io.execute(() -> {
+                Bitmap b = Suggestions.image(this, it.backdrop, "w300", 240);
+                if (b != null) handler.post(() -> iv.setImageBitmap(b));
+            });
+        }
+    }
+
+    void selectStrip(int index) {
+        for (int i = 0; i < heroStrip.getChildCount(); i++) {
+            View v = heroStrip.getChildAt(i);
+            boolean on = i == index;
+            v.animate().scaleX(on ? 1.12f : 1f).scaleY(on ? 1.12f : 1f).alpha(on ? 1f : 0.6f).setDuration(220)
+                    .setInterpolator(LIFT).start();
+        }
     }
 
     /** Banner rendered sharp, minus a hairline border so anti-aliased edges don't get extended. */
@@ -1829,6 +2085,8 @@ public class MainActivity extends Activity {
         animateGridSwap(() -> {
             folderMode = true;
             setHeroShown(false);
+            switcher.setAlpha(0f);
+            shelfEmpty.setAlpha(0f);
             buildGrid();
             shelfEntry = null;
             scroll.scrollTo(0, 0);
@@ -1839,6 +2097,7 @@ public class MainActivity extends Activity {
     void exitFolder() {
         animateGridSwap(() -> {
             folderMode = false;
+            switcher.animate().alpha(1f).setDuration(250).start();
             buildGrid();
             shelfEntry = null;
             int i = indexOfKey(FOLDER_KEY);

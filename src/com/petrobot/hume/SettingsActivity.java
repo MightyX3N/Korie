@@ -108,6 +108,22 @@ public class SettingsActivity extends Activity {
         });
         row("TMDB token", () -> Suggestions.hasToken(this) ? "Connected" : "Not set", this::enterToken);
 
+        section("Continue Watching");
+        row("Access", () -> MediaWatchService.granted(this) ? "On" : "Off", () -> {
+            if (MediaWatchService.granted(this)) return;
+            Intent i = new Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS");
+            if (i.resolveActivity(getPackageManager()) != null && Suggestions.start(this, i)) return;
+            dialog("Turn on Continue Watching")
+                    .setMessage("Hume Launcher learns what you watch from the media info apps share while playing. "
+                            + "This TV has no on-screen switch for it, so enable it once from a computer:\n\n"
+                            + "adb shell cmd notification allow_listener com.petrobot.hume/com.petrobot.hume.MediaWatchService")
+                    .setPositiveButton("OK", null).show();
+        });
+        row("Clear history", () -> "", () -> {
+            MediaWatchService.Store.clear(this);
+            Toast.makeText(this, "Continue Watching cleared", Toast.LENGTH_SHORT).show();
+        });
+
         section("Home");
         row("Background", () -> {
             String k = getSharedPreferences("home", MODE_PRIVATE).getString("wallpaper", "aurora");
