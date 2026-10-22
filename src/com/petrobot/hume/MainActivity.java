@@ -1357,6 +1357,46 @@ public class MainActivity extends Activity {
         return b;
     }
 
+    /**
+     * News layout (editorial, built for reading): a blurred, darkened copy of the photo fills the
+     * screen, the photo itself sits sharp on the right ~60% and fades in from the left, and the left
+     * side is a near-solid dark panel for the headline and summary. Baked once per story.
+     */
+    Bitmap bakeNews(Bitmap src) {
+        if (src == null) return null;
+        int tw = Math.min(1280, screenW), th = tw * screenH / screenW;
+        Bitmap out = Bitmap.createBitmap(tw, th, Bitmap.Config.ARGB_8888);
+        Canvas c = new Canvas(out);
+        Paint p = new Paint(Paint.FILTER_BITMAP_FLAG | Paint.DITHER_FLAG);
+        // Background: the photo shrunk to a few dozen pixels and stretched back (a cheap blur), darkened.
+        Bitmap tiny = Bitmap.createScaledBitmap(src, 32, Math.max(1, 32 * src.getHeight() / src.getWidth()), true);
+        c.drawBitmap(tiny, null, new android.graphics.RectF(0, 0, tw, th), p);
+        tiny.recycle();
+        c.drawColor(0xB30B0B10);
+        // The photo, centre-cropped into the right 60%, with a soft left edge.
+        android.graphics.RectF dst = new android.graphics.RectF(tw * 0.4f, 0, tw, th);
+        float scale = Math.max(dst.width() / src.getWidth(), dst.height() / src.getHeight());
+        float sw = dst.width() / scale, sh = dst.height() / scale;
+        Rect from = new Rect((int) ((src.getWidth() - sw) / 2), (int) ((src.getHeight() - sh) / 2),
+                (int) ((src.getWidth() + sw) / 2), (int) ((src.getHeight() + sh) / 2));
+        int layer = c.saveLayer(dst, null);
+        c.drawBitmap(src, from, dst, p);
+        Paint mask = new Paint();
+        mask.setXfermode(new android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.DST_IN));
+        mask.setShader(new LinearGradient(dst.left, 0, dst.left + dst.width() * 0.35f, 0, 0x00000000, 0xFF000000, Shader.TileMode.CLAMP));
+        c.drawRect(dst, mask);
+        c.restoreToCount(layer);
+        src.recycle();
+        // Reading panel on the left, then the usual bottom shade for the dock.
+        p.setShader(new LinearGradient(0, 0, tw * 0.62f, 0, new int[]{0xF20B0B10, 0xD90B0B10, 0x000B0B10},
+                new float[]{0f, 0.6f, 1f}, Shader.TileMode.CLAMP));
+        c.drawRect(0, 0, tw * 0.62f, th, p);
+        p.setShader(new LinearGradient(0, 0, 0, th, new int[]{0x00000000, 0x26000000, 0xB3000000},
+                null, Shader.TileMode.CLAMP));
+        c.drawRect(0, 0, tw, th, p);
+        return out;
+    }
+
     /** Info block sits just above the dock while a dock app is focused... */
     float heroInfoRestY() {
         return -(screenH - shelfH) + dp(40) - dp(36);
@@ -1557,6 +1597,7 @@ public class MainActivity extends Activity {
         handler.removeCallbacks(heroAdvance);
         if (continueMode()) return;  // Up Next stays put
         int sec = Suggestions.advanceSeconds(this);
+        if (sec > 0 && heroIsNews()) sec = Math.max(sec, 15);  // time to read a story
         if (sec > 0 && heroShown && resumed) handler.postDelayed(heroAdvance, sec * 1000L);
     }
 
@@ -1575,7 +1616,8 @@ public class MainActivity extends Activity {
         }
         int want = index;
         io.execute(() -> {
-            Bitmap bd = bakeScrims(Suggestions.image(this, it.backdrop, "w1280", Math.min(1280, screenW)));
+            Bitmap raw = Suggestions.image(this, it.backdrop, "w1280", Math.min(1280, screenW));
+            Bitmap bd = "news".equals(it.type) ? bakeNews(raw) : bakeScrims(raw);
             Bitmap bdBlur = Ui.glassBackdrop(bd, 160, 90);
             String logoPath = Suggestions.logoFor(this, it);
             Bitmap logo = logoPath.isEmpty() ? null : Suggestions.image(this, logoPath, "w500", 500);
@@ -1601,8 +1643,17 @@ public class MainActivity extends Activity {
             heroButton.setVisibility(news ? View.GONE : View.VISIBLE);
             if (!news) heroButton.setAlpha(1f);
         }
-        Ui.textSize(heroTitle, news ? 26 : 36);  // headlines are long: smaller, up to three lines
-        heroTitle.setMaxLines(news ? 3 : 2);
+        Ui.textSize(heroTitle, news ? 26 : 36);  // headlines are long: smaller, up to four lines
+        heroTitle.setMaxLines(news ? 4 : 2);
+        if (!news) {
+            heroOverview.setMaxLines(2);
+            Ui.textSize(heroOverview, 12.5f);
+            if (!shelfView.isFocused()) {  // titles keep tvOS behaviour: overview only when focused
+                heroOverview.animate().cancel();
+                heroOverview.setAlpha(0f);
+                heroOverview.setVisibility(View.GONE);
+            }
+        }
         heroTitle.setText(it.title);
         heroTitle.setVisibility(View.VISIBLE);
         heroLogo.setImageDrawable(null);
@@ -1636,6 +1687,12 @@ public class MainActivity extends Activity {
             String age = News.age(it.published);
             heroMeta.setText(it.genres + (age.isEmpty() ? "" : "  \u00B7  " + age));
             heroOverview.setText(it.overview);
+            // Stories are for reading: the summary stays visible, up to four lines.
+            heroOverview.setMaxLines(4);
+            Ui.textSize(heroOverview, 13.5f);
+            heroOverview.animate().cancel();
+            heroOverview.setVisibility(it.overview.isEmpty() ? View.GONE : View.VISIBLE);
+            heroOverview.setAlpha(0.85f);
             heroProvider.setVisibility(View.GONE);
             heroBtnIcon.setVisibility(View.GONE);
             if (heroShown && dir != 0) {
@@ -1751,8 +1808,10 @@ public class MainActivity extends Activity {
                     .setUpdateListener(null).withEndAction(this::invalidateGlass).start();
             heroInfo.animate().withLayer().translationY(heroInfoRestY()).setDuration(450).setInterpolator(EASE).start();
             heroDots.animate().withLayer().translationY(heroDotsRestY()).setDuration(450).setInterpolator(EASE).start();
-            heroOverview.animate().alpha(0f).setDuration(160).setStartDelay(0)
-                    .withEndAction(() -> heroOverview.setVisibility(View.GONE)).start();
+            if (!heroIsNews()) {
+                heroOverview.animate().alpha(0f).setDuration(160).setStartDelay(0)
+                        .withEndAction(() -> heroOverview.setVisibility(View.GONE)).start();
+            }
             heroButton.animate().alpha(0f).setDuration(160).setStartDelay(0)
                     .withEndAction(() -> heroButton.setVisibility(View.GONE)).start();
             heroStrip.setVisibility(View.GONE);

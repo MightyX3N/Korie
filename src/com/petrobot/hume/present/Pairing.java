@@ -21,18 +21,37 @@ final class Pairing {
         pin = String.format(Locale.US, "%06d", new SecureRandom().nextInt(1_000_000));
     }
 
-    /** Returns a new token when the PIN matches, else null. */
+    static final int MAX_BROWSERS = 20;
+
+    /**
+     * Returns a new token when the PIN matches, else null. Each paired browser keeps its own token
+     * (phones, laptops...), up to the last 20; pairing one no longer signs out the others.
+     */
     String pair(String candidate) {
         if (candidate == null || !candidate.trim().equals(pin)) return null;
         String token = UUID.randomUUID().toString() + UUID.randomUUID().toString();
-        prefs.edit().putString("admin_token", token).apply();
+        java.util.List<String> list = tokens();
+        list.add(token);
+        while (list.size() > MAX_BROWSERS) list.remove(0);
+        prefs.edit().putString("admin_tokens", String.join(",", list)).remove("admin_token").apply();
         return token;
     }
 
+    /** Paired tokens, oldest first (the single token kept by earlier versions is carried over). */
+    private java.util.List<String> tokens() {
+        java.util.List<String> list = new java.util.ArrayList<>();
+        String saved = prefs.getString("admin_tokens", "");
+        for (String t : saved.split(",")) if (!t.isEmpty()) list.add(t);
+        String legacy = prefs.getString("admin_token", null);
+        if (legacy != null && !list.contains(legacy)) list.add(0, legacy);
+        return list;
+    }
+
     boolean valid(String token) {
-        String expected = prefs.getString("admin_token", null);
-        if (token == null || token.isEmpty() || expected == null) return false;
-        // Constant-time comparison (AuthTokens.kt).
-        return MessageDigest.isEqual(token.getBytes(), expected.getBytes());
+        if (token == null || token.isEmpty()) return false;
+        boolean ok = false;
+        // Constant-time comparison against every paired browser (AuthTokens.kt).
+        for (String expected : tokens()) ok |= MessageDigest.isEqual(token.getBytes(), expected.getBytes());
+        return ok;
     }
 }

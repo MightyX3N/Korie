@@ -166,6 +166,109 @@ final class Glyphs {
                     c.drawRoundRect(r, s * 0.03f, s * 0.03f, p);
                 }
                 break;
+            case "hdmi": {  // HDMI port: wide top, tapered lower corners, contact strip
+                path.moveTo(s * 0.12f, s * 0.34f);
+                path.lineTo(s * 0.88f, s * 0.34f);
+                path.lineTo(s * 0.88f, s * 0.52f);
+                path.lineTo(s * 0.76f, s * 0.66f);
+                path.lineTo(s * 0.24f, s * 0.66f);
+                path.lineTo(s * 0.12f, s * 0.52f);
+                path.close();
+                c.drawPath(path, p);
+                p.setStrokeWidth(s * 0.06f);
+                c.drawLine(s * 0.3f, s * 0.47f, s * 0.7f, s * 0.47f, p);
+                break;
+            }
+            case "av": {  // composite: three RCA jacks
+                for (int i = 0; i < 3; i++) {
+                    float x = s * (0.22f + i * 0.28f);
+                    c.drawCircle(x, m, s * 0.11f, p);
+                    Paint dot = new Paint(p);
+                    dot.setStyle(Paint.Style.FILL);
+                    c.drawCircle(x, m, s * 0.035f, dot);
+                }
+                break;
+            }
+            case "component": {  // component video: three jacks in a triangle
+                float[][] at = {{0.5f, 0.3f}, {0.3f, 0.66f}, {0.7f, 0.66f}};
+                for (float[] q : at) {
+                    c.drawCircle(s * q[0], s * q[1], s * 0.12f, p);
+                    Paint dot = new Paint(p);
+                    dot.setStyle(Paint.Style.FILL);
+                    c.drawCircle(s * q[0], s * q[1], s * 0.035f, dot);
+                }
+                break;
+            }
+            case "svideo": {  // S-Video: round mini-DIN with four pins
+                c.drawCircle(m, m, s * 0.32f, p);
+                Paint dot = new Paint(p);
+                dot.setStyle(Paint.Style.FILL);
+                float[][] pins = {{0.38f, 0.42f}, {0.62f, 0.42f}, {0.36f, 0.6f}, {0.64f, 0.6f}};
+                for (float[] q : pins) c.drawCircle(s * q[0], s * q[1], s * 0.04f, dot);
+                r.set(s * 0.45f, s * 0.68f, s * 0.55f, s * 0.76f);
+                c.drawRect(r, dot);
+                break;
+            }
+            case "vga": {  // VGA / DVI: D-sub with rows of pins
+                path.moveTo(s * 0.1f, s * 0.3f);
+                path.lineTo(s * 0.9f, s * 0.3f);
+                path.lineTo(s * 0.8f, s * 0.7f);
+                path.lineTo(s * 0.2f, s * 0.7f);
+                path.close();
+                c.drawPath(path, p);
+                Paint dot = new Paint(p);
+                dot.setStyle(Paint.Style.FILL);
+                for (int row = 0; row < 2; row++) {
+                    for (int i = 0; i < 5 - row; i++) {
+                        c.drawCircle(s * (0.3f + row * 0.05f + i * 0.1f), s * (0.44f + row * 0.13f), s * 0.025f, dot);
+                    }
+                }
+                break;
+            }
+            case "displayport": {  // DisplayPort: rectangle with one cut corner
+                path.moveTo(s * 0.12f, s * 0.32f);
+                path.lineTo(s * 0.88f, s * 0.32f);
+                path.lineTo(s * 0.88f, s * 0.68f);
+                path.lineTo(s * 0.26f, s * 0.68f);
+                path.lineTo(s * 0.12f, s * 0.54f);
+                path.close();
+                c.drawPath(path, p);
+                p.setStrokeWidth(s * 0.06f);
+                c.drawLine(s * 0.32f, s * 0.5f, s * 0.72f, s * 0.5f, p);
+                break;
+            }
+            case "scart": {  // SCART: wide connector with one slanted corner
+                path.moveTo(s * 0.08f, s * 0.34f);
+                path.lineTo(s * 0.92f, s * 0.34f);
+                path.lineTo(s * 0.92f, s * 0.66f);
+                path.lineTo(s * 0.2f, s * 0.66f);
+                path.lineTo(s * 0.08f, s * 0.5f);
+                path.close();
+                c.drawPath(path, p);
+                Paint dot = new Paint(p);
+                dot.setStyle(Paint.Style.FILL);
+                for (int i = 0; i < 6; i++) c.drawCircle(s * (0.28f + i * 0.11f), m, s * 0.025f, dot);
+                break;
+            }
+            case "usb": {  // USB trident
+                c.drawLine(m, s * 0.86f, m, s * 0.18f, p);
+                Paint fill = new Paint(p);
+                fill.setStyle(Paint.Style.FILL);
+                path.moveTo(m, s * 0.1f);
+                path.lineTo(m - s * 0.08f, s * 0.22f);
+                path.lineTo(m + s * 0.08f, s * 0.22f);
+                path.close();
+                c.drawPath(path, fill);
+                c.drawCircle(m, s * 0.86f, s * 0.07f, fill);
+                c.drawLine(m, s * 0.64f, s * 0.28f, s * 0.48f, p);
+                c.drawLine(s * 0.28f, s * 0.48f, s * 0.28f, s * 0.38f, p);
+                c.drawCircle(s * 0.28f, s * 0.33f, s * 0.055f, fill);
+                c.drawLine(m, s * 0.54f, s * 0.72f, s * 0.4f, p);
+                c.drawLine(s * 0.72f, s * 0.4f, s * 0.72f, s * 0.32f, p);
+                r.set(s * 0.66f, s * 0.22f, s * 0.78f, s * 0.32f);
+                c.drawRect(r, fill);
+                break;
+            }
             case "search":
                 c.drawCircle(s * 0.44f, s * 0.44f, s * 0.24f, p);
                 c.drawLine(s * 0.62f, s * 0.62f, s * 0.82f, s * 0.82f, p);
