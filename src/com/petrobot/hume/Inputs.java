@@ -64,6 +64,9 @@ final class Inputs {
             try {
                 if (info.isHidden(c) || info.getParentId() != null) continue;
                 if (!info.isPassthroughInput() && info.getType() != TvInputInfo.TYPE_TUNER) continue;
+                // Only the TV's own hardware (HDMI, AV, built-in tuner): their ids end in "/HW<n>".
+                // App-provided channel sources (Mi TV+, VLC previews...) are not inputs.
+                if (!info.getId().contains("/HW")) continue;
                 Input in = new Input();
                 in.id = info.getId();
                 in.type = info.getType();

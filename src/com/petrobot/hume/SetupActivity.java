@@ -388,7 +388,7 @@ public class SetupActivity extends Activity {
             focusRow(1);
         });
         boolean cw = Profiles.homePrefs(this).getBoolean("cw_enabled", true);
-        option(l, "Continue Watching", "A tab for picking up what you were watching", cw, () -> {
+        option(l, "Continue Watching", "What you were watching, mixed into the carousel", cw, () -> {
             Profiles.homePrefs(this).edit().putBoolean("cw_enabled", !cw).apply();
             show(index, 0);
             focusRow(2);

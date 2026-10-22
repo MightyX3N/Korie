@@ -245,8 +245,6 @@ public class MainActivity extends Activity {
             }
         };
         registerReceiver(wakeReceiver, new IntentFilter(Intent.ACTION_SCREEN_ON));
-        // First run: the Apple-style setup pages.
-        if (!SetupActivity.done(this)) startActivity(new Intent(this, SetupActivity.class));
     }
 
     @Override
@@ -308,6 +306,11 @@ public class MainActivity extends Activity {
         returningFromSettings = false;
         loadHero();
         if (launchOverlay != null) finishLaunchReturn();
+        // Setup not finished (e.g. Home was pressed during it): pick it up again.
+        if (!SetupActivity.done(this)) {
+            startActivity(new Intent(this, SetupActivity.class));
+            return;
+        }
         updateWeather();
         applyTabs();
         resetIdle();
@@ -1516,16 +1519,13 @@ public class MainActivity extends Activity {
 
     /** The tab bar only appears when there are two things to switch between. */
     boolean tabsShown() {
-        return cwEnabled() && Suggestions.enabled(this);
+        return false;  // one carousel mixes everything; no Suggestions / Continue Watching tabs
     }
 
     /** Applies the profile's choices: hides the tab bar and picks the one remaining mode. */
     void applyTabs() {
         if (switcher == null) return;
-        String want = shelfMode;
-        if (!cwEnabled()) want = "suggest";
-        else if (!Suggestions.enabled(this)) want = "continue";
-        if (!want.equals(shelfMode)) setShelfMode(want);
+        if (!"suggest".equals(shelfMode)) setShelfMode("suggest");
         boolean show = tabsShown();
         if (!show && switcher.isFocused()) ccButton.requestFocus();
         switcher.setVisibility(show ? View.VISIBLE : View.GONE);
@@ -1553,42 +1553,67 @@ public class MainActivity extends Activity {
     }
 
     /** Loads cached suggestions at once and refreshes them in the background when stale or reconfigured. */
+    String lastCwSig = "";
+
+    /**
+     * One carousel: news / recommendations (if this profile shows them) with Continue Watching
+     * titles mixed in (if it's on) — one after every two items; or Continue Watching alone.
+     */
     void loadHero() {
-        if (continueMode()) {
-            io.execute(() -> {
-                List<Suggestions.Item> items = MediaWatchService.Store.list(this);
-                handler.post(() -> {
-                    setHeroItems(items);
-                    updateEmpty();
-                });
-            });
-            return;
-        }
         updateEmpty();
-        if (!Suggestions.enabled(this) || !Suggestions.ready(this)) {
+        boolean shelf = Suggestions.enabled(this) && Suggestions.ready(this);
+        boolean cw = cwEnabled();
+        if (!shelf && !cw) {
             heroItems = new ArrayList<>();
             shelfView.setFocusable(false);
             setHeroShown(false);
             return;
         }
-        int v = Suggestions.version(this);
+        int v = Suggestions.version(this) * 2 + (cw ? 1 : 0);
         boolean reconfigured = v != heroVersion;
         heroVersion = v;
         io.execute(() -> {
-            List<Suggestions.Item> items = Suggestions.cached(this, true);
-            if (items != null && (reconfigured || heroItems.isEmpty())) {
-                List<Suggestions.Item> c0 = items;
-                handler.post(() -> setHeroItems(c0));
+            List<Suggestions.Item> cwItems = cw ? MediaWatchService.Store.list(this) : new ArrayList<>();
+            StringBuilder sig = new StringBuilder();
+            for (Suggestions.Item it : cwItems) sig.append(it.key).append(it.progress).append(';');
+            boolean cwChanged = !sig.toString().equals(lastCwSig);
+            lastCwSig = sig.toString();
+            List<Suggestions.Item> base = shelf ? Suggestions.cached(this, true) : null;
+            List<Suggestions.Item> mixed = mixContinue(base, cwItems);
+            if (!mixed.isEmpty() && (reconfigured || cwChanged || heroItems.isEmpty())) {
+                handler.post(() -> setHeroItems(mixed));
+            } else if (mixed.isEmpty()) {
+                handler.post(() -> {
+                    heroItems = new ArrayList<>();
+                    shelfView.setFocusable(false);
+                    setHeroShown(false);
+                });
             }
-            if (Suggestions.cached(this, false) == null) {
+            if (shelf && Suggestions.cached(this, false) == null) {
                 try {
                     List<Suggestions.Item> fresh = Suggestions.fetch(this);
-                    handler.post(() -> setHeroItems(fresh));
+                    List<Suggestions.Item> m2 = mixContinue(fresh, cwItems);
+                    handler.post(() -> setHeroItems(m2));
                 } catch (Exception e) {
                     android.util.Log.w("TvHome", "suggestions: " + e);
                 }
             }
         });
+    }
+
+    /** Up to four recent Continue Watching titles, one after every two other items. */
+    static List<Suggestions.Item> mixContinue(List<Suggestions.Item> base, List<Suggestions.Item> cw) {
+        List<Suggestions.Item> out = new ArrayList<>();
+        List<Suggestions.Item> resume = cw.subList(0, Math.min(4, cw.size()));
+        int r = 0;
+        if (base != null) {
+            for (int i = 0; i < base.size(); i++) {
+                out.add(base.get(i));
+                if (i % 2 == 1 && r < resume.size()) out.add(resume.get(r++));
+            }
+        }
+        while (r < resume.size()) out.add(resume.get(r++));
+        return out;
     }
 
     void updateEmpty() {
@@ -1913,7 +1938,7 @@ public class MainActivity extends Activity {
                     if (!down && !heroItems.isEmpty()) openHeroItem(heroItems.get(heroIndex));
                     return true;
                 case KeyEvent.KEYCODE_MENU:
-                    if (!down && continueMode() && !heroItems.isEmpty()) {
+                    if (!down && !heroItems.isEmpty() && !heroItems.get(heroIndex).pkg.isEmpty()) {
                         Suggestions.Item it = heroItems.get(heroIndex);
                         List<String> l = new ArrayList<>();
                         List<Runnable> act = new ArrayList<>();

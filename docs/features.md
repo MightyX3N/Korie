@@ -45,10 +45,8 @@ Settings → Home → **Run setup again** repeats it.
 | Any card | OK | Open (zoom animation) |
 | Any card | Hold OK / Menu | Options menu: Open, Move, Hide, App Info, Uninstall, Reset Layout |
 | Move mode | Arrows / OK | Move the wiggling card / finish |
-| Dock | Up | Top shelf (or the tab bar if the shelf is empty) |
-| Tab bar | Left / Right | Suggestions ⇄ Continue Watching |
-| Status row | Left / Right | Tab bar ⇄ Control Center ⇄ profile avatar |
-| Tab bar | Left (on Suggestions) | Weather card |
+| Dock | Up | Top shelf (carousel) |
+| Status row | Left / Right | Weather pill ⇄ Control Center ⇄ profile avatar |
 | Anywhere | Home | Back to the first app in the dock |
 
 ## Status row
@@ -78,8 +76,9 @@ Shown behind the dock while a dock app is focused; below the dock the launcher b
   (no key; unofficial API) or **TMDB** (free key). Full-screen artwork with the service's icon,
   title, year · type · genre · rating; when focused, the description and a **▶ Open** button that
   goes to the title's page in the app (exact title link with JustWatch; search with TMDB).
-- **Continue Watching** (can be switched off per profile in Settings → Continue Watching or during
-  setup; the tab bar only appears when both tabs are available): what you played recently in each app, from the "now playing" information
+- **Continue Watching** titles are mixed into the same carousel — up to four, one after every two
+  news/recommendation items (switch off per profile in Settings → Continue Watching or during setup).
+  A title drops off if it isn't played again for 7 days. What you played recently in each app, from the "now playing" information
   apps publish (title, artwork, position). **▶ Resume** opens the app; an Up Next strip with
   progress bars appears when focused; Menu → *Remove from Continue Watching*.
 - Left / Right browse with a slide animation; the carousel keeps its place when you come back.

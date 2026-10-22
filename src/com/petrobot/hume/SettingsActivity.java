@@ -447,7 +447,7 @@ public class SettingsActivity extends Activity {
         row("Show Continue Watching", () -> Profiles.homePrefs(this).getBoolean("cw_enabled", true) ? "On" : "Off", () -> {
             boolean on = !Profiles.homePrefs(this).getBoolean("cw_enabled", true);
             Profiles.homePrefs(this).edit().putBoolean("cw_enabled", on).apply();
-            if (!on) Toast.makeText(this, "Continue Watching is hidden from the top of Home", Toast.LENGTH_SHORT).show();
+            if (!on) Toast.makeText(this, "Continue Watching titles won\u2019t appear in the carousel", Toast.LENGTH_SHORT).show();
         });
         row("Access", () -> MediaWatchService.granted(this) ? "Allowed"
                 : Perms.listenerSupported(this) ? "Allow\u2026" : "Not on this TV", () -> Perms.requestListener(this));
