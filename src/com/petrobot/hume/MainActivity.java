@@ -256,6 +256,19 @@ public class MainActivity extends Activity {
             showProfilePicker(true);
             return;
         }
+        // adb perf probe: --es perf weather|status|hero|dockglass|shadows hides one layer to measure its GPU cost.
+        String perf = intent.getStringExtra("perf");
+        if (perf != null) {
+            switch (perf) {
+                case "weather": weatherCard.setVisibility(View.GONE); break;
+                case "status": clockBox.setVisibility(View.GONE); break;
+                case "hero": heroFront.setVisibility(View.GONE); heroBack.setVisibility(View.GONE); break;
+                case "dockglass": if (dockRow != null) dockRow.setBackground(null); break;
+                case "shadows": for (View t : tiles) t.setElevation(0); break;
+                default: recreate(); break;
+            }
+            return;
+        }
         // adb hook for screenshots: am start -n com.petrobot.hume/.MainActivity --es panel cc|inputs|weather
         String panel = intent.getStringExtra("panel");
         if (panel != null) {
@@ -268,6 +281,17 @@ public class MainActivity extends Activity {
         }
         if (idle) exitIdle();
         resetIdle();
+        // Home always lands on the first app in the dock: close any overlay first
+        // (Control Center, profiles, Inputs, weather forecast, menus, move mode, folder).
+        if (pickerLayer != null) {
+            popoverReturn = null;
+            FrameLayout l = pickerLayer;
+            pickerLayer = null;
+            weatherOpen = false;
+            root.removeView(l);
+            weatherCard.setAlpha(weatherAlpha());
+        }
+        closeMenu();
         // Home pressed while already on the home screen: jump back to the top of the home grid.
         if (moveIndex >= 0) endMove();
         if (folderMode) {
@@ -961,6 +985,7 @@ public class MainActivity extends Activity {
         // Apple's dock corner is ~2x the card corner (36 px vs ~18 px at 1080p).
         LiquidGlass g = new LiquidGlass(radius * 2f, 0x0FFFFFFF, glassSource, screenW, screenH, unit);
         g.lens = dp(12);
+        g.rimStrength = 0.25f;  // a faint edge, not a bright outline
         return g;
     }
 
@@ -1028,7 +1053,15 @@ public class MainActivity extends Activity {
         }
 
         boolean lit, adaptive;
-        int adaptiveTint;
+        int adaptiveTint, minBlack;
+        Bitmap lumFor;
+        int lumX = Integer.MIN_VALUE, lumY;
+
+        /** Never lighter than this much black: for text-heavy tiles (Control Center). */
+        LiquidGlass darker(int alpha) {
+            minBlack = alpha;
+            return this;
+        }
         final int[] sample = new int[64];
 
         /**
@@ -1121,8 +1154,16 @@ public class MainActivity extends Activity {
                     lens2.setShader(shader3);
                     shaderFor = b;
                 }
-                if (adaptive) {
+                if (adaptive && (b != lumFor || loc[0] != lumX || loc[1] != lumY)) {
+                    // Only when the backdrop or this surface's position changes, not every frame.
+                    lumFor = b;
+                    lumX = loc[0];
+                    lumY = loc[1];
                     int t = tintFor(luminanceBehind(b));
+                    if (minBlack > 0) {
+                        boolean black = (t & 0xFFFFFF) == 0;
+                        t = (black ? Math.max(t >>> 24, minBlack) : minBlack) << 24;
+                    }
                     if (t != adaptiveTint) {
                         adaptiveTint = t;
                         if (!lit) fill.setColor(t);
@@ -1632,7 +1673,7 @@ public class MainActivity extends Activity {
         // Keep the carousel where it was when the list is refreshed (same title -> same position).
         String curTitle = heroItems.isEmpty() ? null : heroItems.get(Math.min(heroIndex, heroItems.size() - 1)).title;
         boolean same = curTitle != null && heroFront.getDrawable() != null;
-        if (items.size() > 10) items = new ArrayList<>(items.subList(0, 10));
+        if (items.size() > 24) items = new ArrayList<>(items.subList(0, 24));
         heroItems = items;
         int keep = 0;
         for (int i = 0; curTitle != null && i < items.size(); i++) if (items.get(i).title.equals(curTitle)) keep = i;
@@ -2155,6 +2196,7 @@ public class MainActivity extends Activity {
                 Bundle opts = ActivityOptions.makeCustomAnimation(
                         this, R.anim.app_enter, R.anim.home_hold).toBundle();
                 startActivity(a.launch, opts);
+                noteLaunched(a.pkg);
             } catch (ActivityNotFoundException | SecurityException e) {
                 toast("Can't open " + a.label);
                 finishLaunchReturn();
@@ -2912,10 +2954,7 @@ public class MainActivity extends Activity {
         FrameLayout layer = new FrameLayout(this);
         layer.setClickable(true);
         layer.setClipChildren(false);
-        View shade = new View(this);
-        shade.setBackground(new GradientDrawable(GradientDrawable.Orientation.RIGHT_LEFT,
-                new int[]{0x99000000, 0x40000000, 0x00000000}));
-        layer.addView(shade, new FrameLayout.LayoutParams(screenW * 3 / 5, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.END));
+        addBlurredBackdrop(layer, 0x8C000000);
 
         int col = dp(141), gap = dp(13), cap = (col - gap) / 2, small = (2 * col + gap - 3 * gap) / 4;
         int w = 2 * col + gap;
@@ -2923,11 +2962,14 @@ public class MainActivity extends Activity {
         panel.setClipChildren(false);
         List<View> cells = new ArrayList<>();
 
-        // Row 1-2: Power (square) | Wi-Fi / Do Not Disturb (capsules)
-        cells.add(ccTile(panel, 0, 0, col, col, "power", "Power Off", null, true, v -> {
+        // Row 1: Power | Memory (used bar; OK cleans). Row 2: Wi-Fi | Do Not Disturb.
+        cells.add(ccTile(panel, 0, 0, col, cap, "power", "Power Off", null, false, v -> {
             if (!SleepReceiver.sleepNow(this)) Perms.requestAdmin(this);
         }));
-        cells.add(ccTile(panel, col + gap, 0, col, cap, "wifi", "Wi-Fi", this::wifiName, false,
+        View mem = ccTile(panel, col + gap, 0, col, cap, "memory", "Memory", this::memoryState, false, v -> cleanMemory());
+        addMemoryBar(mem);
+        cells.add(mem);
+        cells.add(ccTile(panel, 0, cap + gap, col, cap, "wifi", "Wi-Fi", this::wifiName, false,
                 v -> {
                     // The network name needs location access on Android 9+: ask on screen the first time.
                     if (!Perms.hasLocation(this)) Perms.requestLocation(this);
@@ -2936,7 +2978,7 @@ public class MainActivity extends Activity {
         cells.add(ccTile(panel, col + gap, cap + gap, col, cap, "moon", "Do Not Disturb", this::dndState, false,
                 v -> toggleDnd()));
         // Row 3: Audio | Sleep Timer
-        int y3 = col + gap;
+        int y3 = 2 * (cap + gap);
         cells.add(ccTile(panel, 0, y3, col, cap, "audio", "Audio", this::audioOutput, false,
                 v -> Suggestions.start(this, new Intent("android.settings.SOUND_SETTINGS"))));
         cells.add(ccTile(panel, col + gap, y3, col, cap, "timer", "Sleep Timer", this::timerState, false,
@@ -2995,7 +3037,7 @@ public class MainActivity extends Activity {
                 boolean square, View.OnClickListener click) {
         boolean circle = title == null;
         float radius = circle ? h / 2f : square ? dp(26) : h / 2f;
-        LiquidGlass glass = new LiquidGlass(radius, 0x24FFFFFF, glassSource, screenW, screenH, unit).adaptive();
+        LiquidGlass glass = new LiquidGlass(radius, 0x24FFFFFF, glassSource, screenW, screenH, unit).adaptive().darker(0x59);
         glass.lens = dp(7);
         LinearLayout t = new LinearLayout(this);
         t.setOrientation(square ? LinearLayout.VERTICAL : LinearLayout.HORIZONTAL);
@@ -3009,18 +3051,20 @@ public class MainActivity extends Activity {
         gi.setImageBitmap(Glyphs.get(glyph, gs, glyph.equals("wifi") ? 0xFF0A84FF : Color.WHITE));
         t.addView(gi, new LinearLayout.LayoutParams(gs, gs));
         TextView sub = null;
+        TextView[] titleRef = {null};
         if (!circle) {
             LinearLayout texts = new LinearLayout(this);
             texts.setOrientation(LinearLayout.VERTICAL);
             texts.setGravity(square ? Gravity.CENTER_HORIZONTAL : Gravity.START);
             TextView tt = text(square ? 13.5f : 13f, Ui.font(this, "medium"), 1f);
+            titleRef[0] = tt;
             tt.setText(title);
-            tt.setShadowLayer(0, 0, 0, 0);
+            tt.setShadowLayer(dp(4), 0, dp(1), 0x99000000);
             tt.setMaxLines(2);
             texts.addView(tt);
             if (status != null) {
-                sub = text(11.5f, Ui.font(this, "regular"), 0.7f);
-                sub.setShadowLayer(0, 0, 0, 0);
+                sub = text(11.5f, Ui.font(this, "regular"), 0.85f);
+                sub.setShadowLayer(dp(4), 0, dp(1), 0x99000000);
                 sub.setText(status.get());
                 sub.setSingleLine(true);
                 sub.setEllipsize(TextUtils.TruncateAt.END);
@@ -3033,8 +3077,27 @@ public class MainActivity extends Activity {
             t.addView(texts, tlp);
         }
         TextView subRef = sub;
+        // Focused (tvOS): the tile turns solid white with a dark glyph and text.
+        GradientDrawable white = new GradientDrawable();
+        white.setCornerRadius(radius);
+        white.setColor(0xF7FFFFFF);
+        int glyphColor = glyph.equals("wifi") ? 0xFF0A84FF : Color.WHITE;
         t.setOnFocusChangeListener((v, has) -> {
-            glass.setLit(has);
+            t.setBackground(has ? white : glass);
+            gi.setImageBitmap(Glyphs.get(glyph, gs, has ? (glyph.equals("wifi") ? 0xFF0A84FF : 0xFF111114) : glyphColor));
+            TextView tt = titleRef[0];
+            if (tt != null) {
+                tt.setTextColor(has ? 0xFF111114 : Color.WHITE);
+                tt.setShadowLayer(has ? 0 : dp(4), 0, has ? 0 : dp(1), 0x99000000);
+            }
+            if (subRef != null) {
+                subRef.setTextColor(has ? 0xB3111114 : Color.WHITE);
+                subRef.setShadowLayer(has ? 0 : dp(4), 0, has ? 0 : dp(1), 0x99000000);
+            }
+            if (memBarFill != null && memBarFill.getParent() != null && v == ((View) memBarFill.getParent()).getParent().getParent()) {
+                ((GradientDrawable) ((View) memBarFill.getParent()).getBackground()).setColor(has ? 0x33111114 : 0x40FFFFFF);
+                ((GradientDrawable) memBarFill.getBackground()).setColor(has ? 0xFF111114 : (memoryUsed() > 0.85f ? 0xFFFF9F0A : Color.WHITE));
+            }
             v.animate().scaleX(has ? 1.06f : 1f).scaleY(has ? 1.06f : 1f).translationZ(has ? dp(10) : 0)
                     .setDuration(200).setInterpolator(LIFT).start();
         });
@@ -3047,6 +3110,112 @@ public class MainActivity extends Activity {
         lp.topMargin = y;
         panel.addView(t, lp);
         return t;
+    }
+
+    // ---------------------------------------------------------------- memory
+
+    float memoryUsed() {
+        android.app.ActivityManager am = getSystemService(android.app.ActivityManager.class);
+        android.app.ActivityManager.MemoryInfo mi = new android.app.ActivityManager.MemoryInfo();
+        am.getMemoryInfo(mi);
+        return mi.totalMem > 0 ? 1f - mi.availMem / (float) mi.totalMem : 0f;
+    }
+
+    String memoryState() {
+        return Math.round(memoryUsed() * 100) + "% used  \u00b7  Clean";
+    }
+
+    View memBarFill;
+
+    /** A thin usage bar under the Memory tile's text. */
+    void addMemoryBar(View tile) {
+        if (!(tile instanceof LinearLayout) || ((LinearLayout) tile).getChildCount() < 2) return;
+        View texts = ((LinearLayout) tile).getChildAt(1);
+        if (!(texts instanceof LinearLayout)) return;
+        FrameLayout track = new FrameLayout(this);
+        GradientDrawable tb = new GradientDrawable();
+        tb.setCornerRadius(dp(2));
+        tb.setColor(0x40FFFFFF);
+        track.setBackground(tb);
+        memBarFill = new View(this);
+        GradientDrawable fb = new GradientDrawable();
+        fb.setCornerRadius(dp(2));
+        fb.setColor(Color.WHITE);
+        memBarFill.setBackground(fb);
+        track.addView(memBarFill, new FrameLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(dp(78), dp(4));
+        lp.topMargin = dp(4);
+        ((LinearLayout) texts).addView(track, lp);
+        track.post(this::updateMemoryBar);
+    }
+
+    void updateMemoryBar() {
+        if (memBarFill == null || memBarFill.getParent() == null) return;
+        View track = (View) memBarFill.getParent();
+        float used = memoryUsed();
+        ViewGroup.LayoutParams lp = memBarFill.getLayoutParams();
+        lp.width = Math.round(track.getWidth() * used);
+        memBarFill.setLayoutParams(lp);
+        ((GradientDrawable) memBarFill.getBackground()).setColor(used > 0.85f ? 0xFFFF9F0A : Color.WHITE);
+    }
+
+    /** Apps opened from Home recently, newest first (Android hides other apps' processes). */
+    void noteLaunched(String pkg) {
+        if (pkg == null || pkg.equals(getPackageName())) return;
+        List<String> l = new ArrayList<>(Arrays.asList(getSharedPreferences("clean", MODE_PRIVATE).getString("recent", "").split(",")));
+        l.remove(pkg);
+        l.remove("");
+        l.add(0, pkg);
+        while (l.size() > 12) l.remove(l.size() - 1);
+        getSharedPreferences("clean", MODE_PRIVATE).edit().putString("recent", String.join(",", l)).apply();
+    }
+
+    List<String> recentApps() {
+        List<String> l = new ArrayList<>();
+        for (String p : getSharedPreferences("clean", MODE_PRIVATE).getString("recent", "").split(",")) {
+            if (!p.isEmpty() && Suggestions.installed(this, p)) l.add(p);
+        }
+        return l;
+    }
+
+    /**
+     * Clean: close the apps you've opened since the last clean. With Hume's accessibility switch on,
+     * it presses Force stop on each app's info page (what you'd do by hand); otherwise Android is
+     * asked to drop their background processes. The memory freed is measured.
+     */
+    void cleanMemory() {
+        android.app.ActivityManager am = getSystemService(android.app.ActivityManager.class);
+        List<String> apps = recentApps();
+        if (apps.isEmpty()) {
+            toast("No apps to close");
+            return;
+        }
+        long before = availMem(am);
+        for (String pkg : apps) {
+            try {
+                am.killBackgroundProcesses(pkg);
+            } catch (Exception ignored) {
+                // not allowed for this one
+            }
+        }
+        Runnable done = () -> {
+            getSharedPreferences("clean", MODE_PRIVATE).edit().remove("recent").apply();
+            long freed = Math.max(0, availMem(am) - before) / (1024 * 1024);
+            updateMemoryBar();
+            toast("Closed " + apps.size() + (apps.size() == 1 ? " app" : " apps") + (freed > 0 ? " \u00b7 freed " + freed + " MB" : ""));
+        };
+        if (PowerService.instance != null) {
+            closeProfilePicker();
+            PowerService.forceStop(this, apps, () -> handler.postDelayed(done, 600));
+        } else {
+            handler.postDelayed(done, 800);
+        }
+    }
+
+    long availMem(android.app.ActivityManager am) {
+        android.app.ActivityManager.MemoryInfo mi = new android.app.ActivityManager.MemoryInfo();
+        am.getMemoryInfo(mi);
+        return mi.availMem;
     }
 
     String wifiName() {
@@ -3411,10 +3580,13 @@ public class MainActivity extends Activity {
      * Once a minute: fetch when the forecast is due (every 15 minutes by default), move "Now" on,
      * and pick up Wi-Fi signal changes.
      */
+    int tickCount;
     final Runnable weatherTick = new Runnable() {
         @Override public void run() {
             Weather.refresh(MainActivity.this, false, MainActivity.this::updateWeather);
             updateWeather();
+            // Carousel content rotates even if Home stays open for hours (fetches only when stale).
+            if (++tickCount % 5 == 0 && !shelfView.hasFocus()) loadHero();
             updateNet();
             handler.postDelayed(this, 60 * 1000L);
         }
@@ -3495,34 +3667,81 @@ public class MainActivity extends Activity {
      * two-column grid of round avatars, names in soft grey, a green check on the current profile,
      * and a glass "+" Add User. Content stays visible behind it.
      */
+    int profileAvatarSize;
+
+    /**
+     * The whole Home Screen (artwork, dock, cards, status row) blurred and dimmed behind an overlay:
+     * a quarter-size snapshot taken once when the overlay opens, then blurred off the GPU path.
+     */
+    void addBlurredBackdrop(FrameLayout layer, int dim) {
+        ImageView iv = new ImageView(this);
+        iv.setScaleType(ImageView.ScaleType.FIT_XY);
+        try {
+            int w = Math.max(1, screenW / 4), h = Math.max(1, screenH / 4);
+            Bitmap snap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+            Canvas c = new Canvas(snap);
+            c.scale(w / (float) screenW, h / (float) screenH);
+            root.draw(c);
+            Bitmap blurred = Ui.blur(snap, w / 2, h / 2, 4, 3);
+            snap.recycle();
+            if (blurred != null) iv.setImageBitmap(blurred);
+        } catch (Throwable e) {
+            Bitmap bg = glassSource.get();
+            if (bg != null) iv.setImageBitmap(bg);
+        }
+        layer.addView(iv, match());
+        View v = new View(this);
+        v.setBackgroundColor(dim);
+        layer.addView(v, match());
+    }
+
+    /**
+     * Full-screen profile switcher (Apple TV "Who's Watching?"): the Home Screen blurred and dimmed
+     * behind, a centred title and a centred row of large avatars with a green check on the current
+     * one, plus Add User.
+     */
     void showProfilePicker(boolean onWake) {
         if (pickerLayer != null) root.removeView(pickerLayer);
         popoverReturn = onWake ? null : avatarView;
         stopSway(null);
         FrameLayout layer = new FrameLayout(this);
         layer.setClickable(true);
-        layer.setClipChildren(false);  // the focused avatar grows past the grid's edge
-        // Soft darkening on the right only, so names stay legible over bright artwork.
-        View shade = new View(this);
-        shade.setBackground(new GradientDrawable(GradientDrawable.Orientation.RIGHT_LEFT,
-                new int[]{0x8C000000, 0x33000000, 0x00000000}));
-        layer.addView(shade, new FrameLayout.LayoutParams(screenW / 2, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.END));
+        layer.setClipChildren(false);
+        addBlurredBackdrop(layer, 0xB3000000);
 
-        LinearLayout grid = new LinearLayout(this);
-        grid.setOrientation(LinearLayout.VERTICAL);
-        grid.setClipChildren(false);
-        grid.setClipToPadding(false);
-        pickerCells = new ArrayList<>();
+        LinearLayout col = new LinearLayout(this);
+        col.setOrientation(LinearLayout.VERTICAL);
+        col.setGravity(Gravity.CENTER_HORIZONTAL);
+        col.setClipChildren(false);
+        col.setClipToPadding(false);
+        TextView title = text(30, Ui.font(this, "display"), 1f);
+        title.setText(onWake ? "Who\u2019s Watching?" : "Switch Profile");
+        title.setLetterSpacing(-0.02f);
+        LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        tlp.bottomMargin = dp(34);
+        col.addView(title, tlp);
+
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER);
+        row.setClipChildren(false);
+        row.setClipToPadding(false);
+        profileAvatarSize = dp(120);
         List<Profiles.Profile> ps = Profiles.list(this);
         String cur = Profiles.current(this).id;
         List<View> cells = new ArrayList<>();
         for (Profiles.Profile p : ps) {
-            View cell = profileCell(Profiles.avatar(this, p, dp(80)), p.name, false, p.id.equals(cur));
+            View cell = profileCell(Profiles.avatar(this, p, profileAvatarSize), p.name, false, p.id.equals(cur));
             cell.setTag(p.id);
             cell.setOnClickListener(v -> {
                 switchProfile(p.id);
                 popoverReturn = null;
                 closeProfilePicker();
+            });
+            // Long-press OK (like the Menu key): Change Emoji, Rename, Change Colour, Delete.
+            cell.setOnLongClickListener(v -> {
+                profileMenu(v);
+                return true;
             });
             cells.add(cell);
         }
@@ -3533,36 +3752,35 @@ public class MainActivity extends Activity {
             }));
             cells.add(add);
         }
-        LinearLayout row = null;
-        for (int i = 0; i < cells.size(); i++) {
-            if (i % 2 == 0) {
-                row = new LinearLayout(this);
-                row.setOrientation(LinearLayout.HORIZONTAL);
-                row.setClipChildren(false);
-                row.setClipToPadding(false);
-                LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-                rlp.bottomMargin = dp(10);
-                grid.addView(row, rlp);
-            }
-            row.addView(cells.get(i));
+        // Each cell is as wide as its circle grown on focus plus room for the name, so they never overlap.
+        for (View c : cells) {
+            LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(profileAvatarSize + dp(44), ViewGroup.LayoutParams.WRAP_CONTENT);
+            clp.leftMargin = clp.rightMargin = dp(10);
+            row.addView(c, clp);
         }
+        profileAvatarSize = 0;
+        col.addView(row);
         pickerCells = cells;
-        FrameLayout.LayoutParams glp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP | Gravity.END);
-        glp.topMargin = dp(64);
-        glp.rightMargin = dockOuter - dp(6);
-        layer.addView(grid, glp);
+        layer.addView(col, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER));
 
         root.addView(layer, match());
         pickerLayer = layer;
         layer.setAlpha(0f);
-        grid.setPivotX(grid.getWidth());
-        grid.setTranslationY(-dp(10));
-        layer.animate().alpha(1f).setDuration(onWake ? 380 : 220).start();
-        grid.animate().translationY(0).setDuration(onWake ? 380 : 260).setInterpolator(EASE).start();
+        col.setScaleX(0.96f);
+        col.setScaleY(0.96f);
+        layer.animate().alpha(1f).setDuration(onWake ? 380 : 260).start();
+        col.animate().scaleX(1f).scaleY(1f).setDuration(onWake ? 420 : 300).setInterpolator(EASE).start();
         View focus = cells.isEmpty() ? null : cells.get(0);
         for (View c : cells) if (cur.equals(c.getTag())) focus = c;
-        if (focus != null) focus.requestFocus();
+        if (focus != null) {
+            focus.requestFocus();
+            // Rebuilt from a dialog (Add User / Rename): take focus once the dialog has gone.
+            View f = focus;
+            handler.postDelayed(() -> {
+                if (pickerLayer == layer && !pickerCells.contains(getCurrentFocus())) f.requestFocus();
+            }, 350);
+        }
     }
 
     boolean statusFocused() {
@@ -3607,13 +3825,14 @@ public class MainActivity extends Activity {
 
     /** Avatar (or glass +) with the name below; the current profile gets a green check. */
     View profileCell(Bitmap avatar, String name, boolean isAdd, boolean current) {
+        int big = profileAvatarSize;
         LinearLayout cell = new LinearLayout(this);
         cell.setOrientation(LinearLayout.VERTICAL);
         cell.setGravity(Gravity.CENTER_HORIZONTAL);
         cell.setFocusable(true);
         cell.setClickable(true);
         cell.setClipChildren(false);
-        int size = dp(80);
+        int size = big > 0 ? big : dp(80);
         FrameLayout picBox = new FrameLayout(this);
         picBox.setClipChildren(false);
         View pic;
@@ -3649,7 +3868,7 @@ public class MainActivity extends Activity {
             picBox.addView(check, clp);
         }
         cell.addView(picBox, new LinearLayout.LayoutParams(size, size));
-        TextView label = text(12.5f, Ui.font(this, "regular"), 0.7f);
+        TextView label = text(big > 0 ? 15 : 12.5f, Ui.font(this, big > 0 ? "medium" : "regular"), 0.7f);
         label.setText(name);
         label.setGravity(Gravity.CENTER);
         label.setSingleLine(true);

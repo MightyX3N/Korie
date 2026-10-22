@@ -269,6 +269,20 @@ final class Glyphs {
                 c.drawRect(r, fill);
                 break;
             }
+            case "memory": {  // a memory chip with pins
+                r.set(s * 0.22f, s * 0.28f, s * 0.78f, s * 0.72f);
+                c.drawRoundRect(r, s * 0.06f, s * 0.06f, p);
+                for (int i = 0; i < 4; i++) {
+                    float x = s * (0.3f + i * 0.13f);
+                    c.drawLine(x, s * 0.16f, x, s * 0.28f, p);
+                    c.drawLine(x, s * 0.72f, x, s * 0.84f, p);
+                }
+                Paint dot = new Paint(p);
+                dot.setStyle(Paint.Style.FILL);
+                r.set(s * 0.36f, s * 0.42f, s * 0.5f, s * 0.58f);
+                c.drawRect(r, dot);
+                break;
+            }
             case "search":
                 c.drawCircle(s * 0.44f, s * 0.44f, s * 0.24f, p);
                 c.drawLine(s * 0.62f, s * 0.62f, s * 0.82f, s * 0.82f, p);

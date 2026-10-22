@@ -45,8 +45,9 @@ final class Suggestions {
     static final String SHELF_RECS = "recs", SHELF_NEWS = "news", SHELF_BOTH = "both", SHELF_NONE = "none";
     /** Recommendation sources: JustWatch needs no key (unofficial API); TMDB needs a token. */
     static final String SRC_JUSTWATCH = "justwatch", SRC_TMDB = "tmdb";
-    static final long MAX_AGE_MS = 6L * 60 * 60 * 1000;
-    static final int PER_SOURCE = 3, MAX_ITEMS = 10;
+    static final long MAX_AGE_MS = 2L * 60 * 60 * 1000;  // recommendations rotate every 2 hours
+    /** POOL titles are fetched per service; PER_SOURCE of them are picked at random each refresh. */
+    static final int PER_SOURCE = 3, POOL = 20, MAX_ITEMS = 10;
 
     /** A streaming service available in India: TMDB provider id, display name, Android TV package. */
     static final class Provider {
@@ -211,7 +212,7 @@ final class Suggestions {
     static List<Item> cached(Context c, boolean allowStale) {
         File f = cacheFile(c);
         if (!f.exists()) return null;
-        long maxAge = showNews(c) ? News.refreshMinutes(c) * 60000L : MAX_AGE_MS;  // news goes stale quickly
+        long maxAge = showNews(c) ? Math.min(News.refreshMinutes(c) * 60000L, MAX_AGE_MS) : MAX_AGE_MS;
         if (!allowStale && System.currentTimeMillis() - f.lastModified() > maxAge) return null;
         try {
             JSONArray a = new JSONArray(new String(readAll(new FileInputStream(f)), StandardCharsets.UTF_8));
@@ -254,6 +255,10 @@ final class Suggestions {
     /** Recommendations from the chosen source, interleaved across services. */
     static List<Item> fetchRecs(Context c) throws Exception {
         List<List<Item>> sources = source(c).equals(SRC_TMDB) ? fetchTmdb(c) : fetchJustWatch(c);
+        // Rotate: a random pick from each service's popular pool, so the carousel changes through the day.
+        java.util.Random rnd = new java.util.Random();
+        for (List<Item> src : sources) java.util.Collections.shuffle(src, rnd);
+        java.util.Collections.shuffle(sources, rnd);
         List<Item> out = new ArrayList<>();
         Set<String> seen = new HashSet<>();
         for (int round = 0; round < PER_SOURCE && out.size() < MAX_ITEMS; round++) {
@@ -287,12 +292,12 @@ final class Suggestions {
                         .put("objectTypes", new JSONArray().put(kind.equals("tv") ? "SHOW" : "MOVIE"))
                         .put("monetizationTypes", new JSONArray().put("FLATRATE").put("FREE").put("ADS"));
                 JSONObject vars = new JSONObject().put("country", "IN").put("language", "en")
-                        .put("first", PER_SOURCE + 3).put("filter", filter);
+                        .put("first", POOL).put("filter", filter);
                 JSONObject body = new JSONObject().put("query", JW_QUERY).put("variables", vars);
                 JSONObject res = post("https://apis.justwatch.com/graphql", body.toString());
                 JSONArray edges = res.getJSONObject("data").getJSONObject("popularTitles").getJSONArray("edges");
                 List<Item> list = new ArrayList<>();
-                for (int i = 0; i < edges.length() && list.size() < PER_SOURCE; i++) {
+                for (int i = 0; i < edges.length() && list.size() < POOL; i++) {
                     JSONObject n = edges.getJSONObject(i).getJSONObject("node");
                     JSONObject ct = n.getJSONObject("content");
                     JSONArray bds = ct.optJSONArray("backdrops");
@@ -379,7 +384,7 @@ final class Suggestions {
                 if (!langs.isEmpty()) q.append("&with_original_language=").append(URLEncoder.encode(String.join("|", langs), "UTF-8"));
                 JSONArray results = get(c, q.toString()).optJSONArray("results");
                 List<Item> list = new ArrayList<>();
-                for (int i = 0; results != null && i < results.length() && list.size() < PER_SOURCE; i++) {
+                for (int i = 0; results != null && i < results.length() && list.size() < POOL; i++) {
                     JSONObject r = results.getJSONObject(i);
                     String backdrop = r.optString("backdrop_path", "");
                     if (backdrop.isEmpty() || backdrop.equals("null")) continue;

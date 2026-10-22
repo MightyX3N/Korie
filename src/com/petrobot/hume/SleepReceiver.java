@@ -25,13 +25,17 @@ public class SleepReceiver extends BroadcastReceiver {
 
     static boolean canSleep(Context c) {
         DevicePolicyManager dpm = c.getSystemService(DevicePolicyManager.class);
-        return dpm != null && dpm.isAdminActive(admin(c));
+        return (dpm != null && dpm.isAdminActive(admin(c))) || PowerService.instance != null;
     }
 
+    /** Device admin where available; otherwise Hume's accessibility service (screen off / sleep). */
     static boolean sleepNow(Context c) {
-        if (!canSleep(c)) return false;
-        c.getSystemService(DevicePolicyManager.class).lockNow();
-        return true;
+        DevicePolicyManager dpm = c.getSystemService(DevicePolicyManager.class);
+        if (dpm != null && dpm.isAdminActive(admin(c))) {
+            dpm.lockNow();
+            return true;
+        }
+        return PowerService.sleep();
     }
 
     static PendingIntent pending(Context c) {

@@ -39,12 +39,24 @@ final class Perms {
     }
 
     /** Some TVs (e.g. this office TV's Android 9 build) lack device admin entirely; nothing can enable it. */
+    /** Power Off is possible via device admin, or via Hume's accessibility service (any TV with that screen). */
     static boolean adminSupported(Activity a) {
-        return a.getPackageManager().hasSystemFeature(PackageManager.FEATURE_DEVICE_ADMIN);
+        return adminWorks(a) || accessibilityScreen(a) != null;
+    }
+
+    static Intent accessibilityScreen(Activity a) {
+        Intent i = new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS);
+        ComponentName cn = i.resolveActivity(a.getPackageManager());
+        return cn == null || cn.getClassName().contains("Stub") ? null : i;
     }
 
     static boolean hasAdmin(Activity a) {
-        return a.getSystemService(DevicePolicyManager.class).isAdminActive(admin(a));
+        return a.getSystemService(DevicePolicyManager.class).isAdminActive(admin(a)) || PowerService.instance != null;
+    }
+
+    /** Device admin actually works only when Android's device-policy service is on. */
+    static boolean adminWorks(Activity a) {
+        return a.getPackageManager().hasSystemFeature(PackageManager.FEATURE_DEVICE_ADMIN);
     }
 
     /** Android turns notification listeners off for other apps on low-RAM (1 GB) TVs. */
@@ -68,6 +80,17 @@ final class Perms {
                     .setMessage("This TV doesn't let apps turn the screen off, so Power Off and the Sleep Timer can't work "
                             + "here. Use the power button on the remote.")
                     .setPositiveButton("OK", null).show();
+            return;
+        }
+        if (!adminWorks(a)) {
+            // Device admin is switched off on this TV: use Hume's accessibility switch instead.
+            Intent acc = accessibilityScreen(a);
+            new AlertDialog.Builder(a, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                    .setTitle("Turn on Power Off")
+                    .setMessage("In the next screen, choose \u201cHume Launcher \u2013 Power Off\u201d and turn it on. "
+                            + "It only lets Hume put the TV to sleep.")
+                    .setPositiveButton("Open Accessibility", (d, w) -> tryStart(a, acc))
+                    .setNegativeButton("Cancel", null).show();
             return;
         }
         Intent i = new Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN)

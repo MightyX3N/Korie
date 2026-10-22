@@ -47,7 +47,7 @@ Settings → Home → **Run setup again** repeats it.
 | Move mode | Arrows / OK | Move the wiggling card / finish |
 | Dock | Up | Top shelf (carousel) |
 | Status row | Left / Right | Weather pill ⇄ Control Center ⇄ profile avatar |
-| Anywhere | Home | Back to the first app in the dock |
+| Anywhere | Home | Closes any overlay and goes back to the first app in the dock |
 
 ## Status row
 
@@ -127,6 +127,8 @@ key brings the Home Screen back (that press only wakes it; focus doesn't move).
 ## Profiles
 
 - Up to **3 profiles**, each with a **unique emoji** on a pastel circle.
+- The switcher is full screen ("Who's Watching?") with large centred avatars over a blurred Home
+  Screen. Long-press OK (or Menu) on a profile: Rename, Change Emoji, Change Colour, Delete.
 - Each profile keeps its own **app layout and hidden apps, background, top-shelf tab and
   Continue Watching**.
 - The avatar (top right) opens the switcher: a two-column popover with a green check on the
@@ -137,7 +139,8 @@ key brings the Home Screen back (that press only wakes it; focus doesn't move).
 
 ## Control Center
 
-Opened from the button next to the time. Tiles: **Power Off** (sleep), **Wi-Fi**, **Do Not
+Opened from the button next to the time; the Home Screen is blurred behind it. Tiles: **Power Off**
+(sleep), **Memory** (a usage bar; OK closes the apps you've opened since the last clean), **Wi-Fi**, **Do Not
 Disturb**, **Audio**, **Sleep Timer** (Off → 15 → 30 → 60 → 90 min), and round shortcuts for
 **Inputs** (TVs with inputs; Accessibility otherwise), **Bluetooth/controllers**, **Settings** and
 **Search**.
@@ -161,7 +164,7 @@ Hume asks on screen wherever the TV allows it; adb is only a last resort:
 | Feature | How it is granted |
 |---|---|
 | Wi-Fi name (location) | Android's normal permission prompt |
-| Power Off & Sleep Timer (device admin) | Android's "Activate device admin app?" screen; on TVs without device-admin support it says so |
+| Power Off & Sleep Timer | Android's "Activate device admin app?" screen; where device admin is switched off (e.g. Mi Box), Hume's accessibility switch "Hume Launcher – Power Off" in the TV's Accessibility settings (opened for you). The same switch lets Clean close apps |
 | Continue Watching & Do Not Disturb (notification access) | The system notification-access screen; not available on low-RAM (1 GB) TVs, where Android disables it |
 | Home screen | Android 10+ "default home app" prompt, the TV's Home-app settings, or Android's chooser; Hume offers this once when opened while another launcher is home |
 
