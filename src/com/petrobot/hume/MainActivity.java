@@ -504,10 +504,15 @@ public class MainActivity extends Activity {
                         .setDuration(200).setInterpolator(LIFT).start());
         avatar.setOnClickListener(v -> showProfilePicker(false));
 
+        // Room around the buttons for their focus growth (1.12x / 1.18x) so nothing is clipped;
+        // the margins shrink by the same amount, so the row sits exactly where it did.
+        int grow = dp(6);
+        clockBox.setPadding(grow, grow, grow, grow);
+        clockBox.setClipToPadding(false);
         FrameLayout.LayoutParams clp = new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, btn, Gravity.TOP | Gravity.END);
-        clp.topMargin = dp(24);
-        clp.rightMargin = dockOuter;
+                ViewGroup.LayoutParams.WRAP_CONTENT, btn + 2 * grow, Gravity.TOP | Gravity.END);
+        clp.topMargin = dp(24) - grow;
+        clp.rightMargin = dockOuter - grow;
         root.addView(clockBox, clp);
         watchNetwork();
 
@@ -1361,7 +1366,15 @@ public class MainActivity extends Activity {
         p.setShader(new LinearGradient(0, 0, 0, h, new int[]{0x14000000, 0x40000000, 0xB3000000},
                 null, Shader.TileMode.CLAMP));
         c.drawRect(0, 0, w, h, p);
+        topShade(c, w, h);
         return b;
+    }
+
+    /** A soft shade along the top so the time and status icons stay legible over bright artwork. */
+    static void topShade(Canvas c, int w, int h) {
+        Paint p = new Paint(Paint.DITHER_FLAG);
+        p.setShader(new LinearGradient(0, 0, 0, h * 0.2f, 0x66000000, 0x00000000, Shader.TileMode.CLAMP));
+        c.drawRect(0, 0, w, h * 0.2f, p);
     }
 
     /**
@@ -1401,6 +1414,7 @@ public class MainActivity extends Activity {
         p.setShader(new LinearGradient(0, 0, 0, th, new int[]{0x00000000, 0x26000000, 0xB3000000},
                 null, Shader.TileMode.CLAMP));
         c.drawRect(0, 0, tw, th, p);
+        topShade(c, tw, th);
         return out;
     }
 
