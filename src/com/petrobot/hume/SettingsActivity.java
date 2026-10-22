@@ -84,6 +84,30 @@ public class SettingsActivity extends Activity {
         row("Show profiles on wake", () -> Profiles.askOnWake(this) ? "On" : "Off",
                 () -> Profiles.setAskOnWake(this, !Profiles.askOnWake(this)));
 
+        section("Presentation");
+        row("Presentation mode", () -> com.petrobot.hume.present.Presenter.enabled(this) ? "On" : "Off", () -> {
+            boolean on = !com.petrobot.hume.present.Presenter.enabled(this);
+            com.petrobot.hume.present.Presenter.set(this, com.petrobot.hume.present.Presenter.KEY_ENABLED, on);
+            if (on) Toast.makeText(this, "Presentation is on. Send content from a browser.", Toast.LENGTH_LONG).show();
+        });
+        row("Start on boot", () -> com.petrobot.hume.present.Presenter.startOnBoot(this) ? "On" : "Off", () ->
+                com.petrobot.hume.present.Presenter.set(this, com.petrobot.hume.present.Presenter.KEY_BOOT,
+                        !com.petrobot.hume.present.Presenter.startOnBoot(this)));
+        row("Keep screen awake", () -> com.petrobot.hume.present.Presenter.keepAwake(this) ? "On" : "Off", () ->
+                com.petrobot.hume.present.Presenter.set(this, com.petrobot.hume.present.Presenter.KEY_AWAKE,
+                        !com.petrobot.hume.present.Presenter.keepAwake(this)));
+        row("Show code when starting", () -> com.petrobot.hume.present.Presenter.showInfoOnStart(this) ? "On" : "Off", () ->
+                com.petrobot.hume.present.Presenter.set(this, com.petrobot.hume.present.Presenter.KEY_INFO,
+                        !com.petrobot.hume.present.Presenter.showInfoOnStart(this)));
+        row("Address & pairing code", () -> com.petrobot.hume.present.Presenter.enabled(this)
+                ? com.petrobot.hume.present.Presenter.address().replace("http://", "") : "Turn on first", this::showPresentInfo);
+        row("Start presentation now", () -> "", () -> {
+            if (!com.petrobot.hume.present.Presenter.enabled(this)) {
+                com.petrobot.hume.present.Presenter.set(this, com.petrobot.hume.present.Presenter.KEY_ENABLED, true);
+            }
+            com.petrobot.hume.present.Presenter.open(this);
+        });
+
         section("Suggestions");
         row("Show suggestions", () -> Suggestions.enabled(this) ? "On" : "Off", () -> {
             Suggestions.prefs(this).edit().putBoolean(Suggestions.K_ENABLED, !Suggestions.enabled(this)).apply();
@@ -268,6 +292,36 @@ public class SettingsActivity extends Activity {
                 .setNegativeButton("Cancel", null)
                 .show();
         in.requestFocus();
+    }
+
+    /** Address, QR and pairing code for sending content from a phone or computer. */
+    void showPresentInfo() {
+        if (!com.petrobot.hume.present.Presenter.enabled(this)) {
+            Toast.makeText(this, "Turn on Presentation mode first", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        com.petrobot.hume.present.Presenter.ensureRunning(this);
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.HORIZONTAL);
+        box.setGravity(Gravity.CENTER_VERTICAL);
+        int pad = Ui.px(this, 16);
+        box.setPadding(pad, pad, pad, pad / 2);
+        android.widget.ImageView qr = new android.widget.ImageView(this);
+        qr.setImageBitmap(com.petrobot.hume.present.Presenter.qr(Ui.px(this, 110)));
+        qr.setBackgroundColor(Color.WHITE);
+        qr.setPadding(Ui.px(this, 6), Ui.px(this, 6), Ui.px(this, 6), Ui.px(this, 6));
+        box.addView(qr, new LinearLayout.LayoutParams(Ui.px(this, 122), Ui.px(this, 122)));
+        TextView info = new TextView(this);
+        String pin = com.petrobot.hume.present.Presenter.pin(this);
+        info.setText("Open on a phone or computer on the same Wi-Fi:\n\n"
+                + com.petrobot.hume.present.Presenter.address() + "\n\nPairing code\n"
+                + pin.substring(0, 3) + " " + pin.substring(3));
+        info.setTextColor(Color.WHITE);
+        info.setTypeface(Ui.font(this, "medium"));
+        Ui.textSize(info, 14);
+        info.setPadding(Ui.px(this, 18), 0, 0, 0);
+        box.addView(info);
+        dialog("Send to this TV").setView(box).setPositiveButton("Done", null).show();
     }
 
     void chooseTypes() {

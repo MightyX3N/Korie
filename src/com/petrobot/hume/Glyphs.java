@@ -100,6 +100,17 @@ final class Glyphs {
                 c.drawCircle(s * 0.44f, s * 0.44f, s * 0.24f, p);
                 c.drawLine(s * 0.62f, s * 0.62f, s * 0.82f, s * 0.82f, p);
                 break;
+            case "present":  // Presentation: screen with a play triangle
+                r.set(s * 0.1f, s * 0.2f, s * 0.9f, s * 0.74f);
+                c.drawRoundRect(r, s * 0.08f, s * 0.08f, p);
+                c.drawLine(s * 0.36f, s * 0.86f, s * 0.64f, s * 0.86f, p);
+                p.setStyle(Paint.Style.FILL);
+                path.moveTo(s * 0.43f, s * 0.35f);
+                path.lineTo(s * 0.62f, s * 0.47f);
+                path.lineTo(s * 0.43f, s * 0.59f);
+                path.close();
+                c.drawPath(path, p);
+                break;
             case "controls":  // Control Center glyph: two toggles
                 p.setStrokeWidth(s * 0.07f);
                 r.set(s * 0.14f, s * 0.2f, s * 0.86f, s * 0.44f);

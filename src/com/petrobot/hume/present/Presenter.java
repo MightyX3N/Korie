@@ -115,12 +115,36 @@ public final class Presenter {
         return pairing.pin;
     }
 
+    /** QR code for the admin address (Settings shows it with the pairing code). */
+    public static android.graphics.Bitmap qr(int size) {
+        return Qr.bitmap(address(), size);
+    }
+
+    public static final String KEY_ENABLED = K_ENABLED, KEY_BOOT = K_BOOT, KEY_AWAKE = K_AWAKE, KEY_INFO = K_INFO;
+
     static void attach(AdminServer.Gateway g) {
         player = g;
     }
 
     static void detach(AdminServer.Gateway g) {
         if (player == g) player = null;
+    }
+
+    private static boolean bootHandled;
+
+    /**
+     * "Start on boot": opens the presentation once per boot (whichever comes first — the boot
+     * broadcast or the Home screen starting up shortly after boot).
+     */
+    public static synchronized void openOnBootOnce(Context c) {
+        if (bootHandled) return;
+        bootHandled = true;
+        if (enabled(c) && startOnBoot(c)) open(c);
+    }
+
+    /** True for the first few minutes after the TV booted. */
+    public static boolean justBooted() {
+        return android.os.SystemClock.elapsedRealtime() < 5 * 60_000L;
     }
 
     /** Opens the full-screen presentation. */

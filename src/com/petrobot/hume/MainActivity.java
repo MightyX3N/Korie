@@ -76,6 +76,7 @@ public class MainActivity extends Activity {
 
     static final int COLS = 6;
     static final String SETTINGS_KEY = "special:settings";
+    static final String PRESENT_KEY = "special:present";
     static final String FOLDER_KEY = "special:folder";
     static final String PREF_ORDER = "order";
     static final String PREF_HIDDEN = "hidden";
@@ -209,6 +210,11 @@ public class MainActivity extends Activity {
         buildGrid();
         focusIndex(0);
         registerPackageReceiver();
+        // Presentation mode: run the admin server if enabled, and honour "Start on boot".
+        com.petrobot.hume.present.Presenter.ensureRunning(this);
+        if (com.petrobot.hume.present.Presenter.justBooted()) {
+            handler.postDelayed(() -> com.petrobot.hume.present.Presenter.openOnBootOnce(this), 1500);
+        }
         wakeReceiver = new BroadcastReceiver() {
             @Override public void onReceive(Context c, Intent i) {
                 if (!Profiles.askOnWake(c) || Profiles.list(c).size() < 2) return;
@@ -2248,6 +2254,7 @@ public class MainActivity extends Activity {
         addResolved(pm, Intent.CATEGORY_LEANBACK_LAUNCHER, pkgs, true);
         addResolved(pm, Intent.CATEGORY_LAUNCHER, pkgs, false);
         if (!pkgs.contains(TV_SETTINGS)) addSettingsEntry(pm);
+        if (com.petrobot.hume.present.Presenter.enabled(this)) addPresentEntry();
         for (AppEntry e : all.values()) {
             if (e.banner == null || TVOS_CARD_PKGS.contains(e.pkg)) {
                 e.banner = new BitmapDrawable(getResources(), tvosCard(e));
@@ -2294,12 +2301,36 @@ public class MainActivity extends Activity {
 
     int priority(AppEntry e) {
         if (isSettings(e)) return 2000;
+        if (PRESENT_KEY.equals(e.key)) return 1999;
         int i = DEFAULT_ORDER.indexOf(e.pkg);
         return i >= 0 ? i : 1000;
     }
 
     boolean isSettings(AppEntry e) {
-        return SETTINGS_KEY.equals(e.key) || TV_SETTINGS.equals(e.pkg);
+        return SETTINGS_KEY.equals(e.key) || TV_SETTINGS.equals(e.pkg) || PRESENT_KEY.equals(e.key);
+    }
+
+    /** Presentation tile (shown while Presentation mode is on): tvOS-style card. */
+    void addPresentEntry() {
+        AppEntry e = new AppEntry();
+        e.key = PRESENT_KEY;
+        e.pkg = getPackageName();
+        e.label = "Presentation";
+        e.system = true;
+        e.color = 0xFF1E7BF2;
+        e.launch = new Intent(this, com.petrobot.hume.present.PresentationActivity.class)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        int w = 640, h = 360;
+        Bitmap b = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+        Canvas c = new Canvas(b);
+        Paint p = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.DITHER_FLAG);
+        p.setShader(new LinearGradient(0, 0, 0, h, 0xFF4FC3FF, 0xFF1A5FE0, Shader.TileMode.CLAMP));
+        c.drawRect(0, 0, w, h, p);
+        Bitmap g = Glyphs.get("present", (int) (h * 0.5f), Color.WHITE);
+        c.drawBitmap(g, (w - g.getWidth()) / 2f, (h - g.getHeight()) / 2f, null);
+        e.banner = new BitmapDrawable(getResources(), b);
+        e.icon = e.banner;
+        all.put(e.key, e);
     }
 
     void addResolved(PackageManager pm, String category, Set<String> pkgs, boolean leanback) {
