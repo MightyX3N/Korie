@@ -1,8 +1,0 @@
-Navigation sounds — all Creative Commons Zero (CC0, public domain), from Freesound.org.
-Trimmed (leading silence removed, short fade-out) and level-matched for Hume Launcher.
-
-nav_move.wav   = "UI_Hover" by MATUSTRM             https://freesound.org/people/MATUSTRM/sounds/836201/
-nav_select.wav = "Phone Bump 5.wav" by KorgMS2000B  https://freesound.org/people/KorgMS2000B/sounds/54414/
-nav_back.wav   = "Pop Free" by AardsReal            https://freesound.org/people/AardsReal/sounds/842184/
-
-License: http://creativecommons.org/publicdomain/zero/1.0/

@@ -1,18 +1,17 @@
 package com.petrobot.hume;
 
 import android.content.Context;
-import android.media.AudioAttributes;
-import android.media.SoundPool;
+import android.media.AudioManager;
+import android.view.KeyEvent;
 
 /**
- * Apple TV-style navigation sounds: a soft click when focus moves, a fuller click on select and a
- * low one on Back. The sounds are CC0 clips from Freesound (assets/sounds/LICENSE.txt), trimmed and levelled,
- * played through a SoundPool so playback is instant. Settings -> Home -> Navigation sounds.
+ * Navigation sounds using Android TV's own system sounds (the same clicks Google's launcher and
+ * Settings use): a per-direction focus sound when moving and the key click on select and Back,
+ * played at 60% of the normal sound-effect level. Settings -> Home -> Navigation sounds.
  */
 final class Clicks {
-    private static SoundPool pool;
-    private static int move, select, back;
-    private static int ready;
+    static final float VOLUME = 0.6f;
+    private static AudioManager audio;
 
     private Clicks() {
     }
@@ -25,40 +24,34 @@ final class Clicks {
         c.getSharedPreferences("sounds", Context.MODE_PRIVATE).edit().putBoolean("nav_sounds", on).apply();
     }
 
-    static synchronized void init(Context ctx) {
-        if (pool != null) return;
-        Context c = ctx.getApplicationContext();
-        pool = new SoundPool.Builder().setMaxStreams(3).setAudioAttributes(new AudioAttributes.Builder()
-                .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
-                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build()).build();
-        pool.setOnLoadCompleteListener((p, id, status) -> {
-            if (status == 0) ready++;
-        });
-        try {
-            move = pool.load(c.getAssets().openFd("sounds/nav_move.wav"), 1);
-            select = pool.load(c.getAssets().openFd("sounds/nav_select.wav"), 1);
-            back = pool.load(c.getAssets().openFd("sounds/nav_back.wav"), 1);
-        } catch (Exception ignored) {
-            // no sounds
+    static void init(Context c) {
+        if (audio == null) audio = c.getApplicationContext().getSystemService(AudioManager.class);
+    }
+
+    private static void play(Context c, int effect) {
+        init(c);
+        if (audio != null && enabled(c)) audio.playSoundEffect(effect, VOLUME);
+    }
+
+    /** Focus moved: Android's focus sound for that direction. */
+    static void move(Context c, int keyCode) {
+        int fx;
+        switch (keyCode) {
+            case KeyEvent.KEYCODE_DPAD_UP: fx = AudioManager.FX_FOCUS_NAVIGATION_UP; break;
+            case KeyEvent.KEYCODE_DPAD_DOWN: fx = AudioManager.FX_FOCUS_NAVIGATION_DOWN; break;
+            case KeyEvent.KEYCODE_DPAD_LEFT: fx = AudioManager.FX_FOCUS_NAVIGATION_LEFT; break;
+            default: fx = AudioManager.FX_FOCUS_NAVIGATION_RIGHT; break;
         }
-    }
-
-    private static void play(Context c, int id, float vol) {
-        if (pool != null && ready >= 3 && enabled(c)) pool.play(id, vol, vol, 0, 0, 1f);
-    }
-
-    /** Focus moved. */
-    static void move(Context c) {
-        play(c, move, 0.35f);
+        play(c, fx);
     }
 
     /** Something was chosen. */
     static void select(Context c) {
-        play(c, select, 0.45f);
+        play(c, AudioManager.FX_KEY_CLICK);
     }
 
     /** Back. */
     static void back(Context c) {
-        play(c, back, 0.4f);
+        play(c, AudioManager.FX_KEY_CLICK);
     }
 }

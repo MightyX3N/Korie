@@ -23,5 +23,3 @@ Documentation: **[docs/](docs/README.md)** — [install](docs/install.md) ·
 ./build.sh                                   # → build/tvos-home.apk
 adb install -r build/tvos-home.apk
 ```
-
-Navigation sounds: CC0 clips from Freesound.org (credits in assets/sounds/LICENSE.txt).

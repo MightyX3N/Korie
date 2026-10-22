@@ -112,9 +112,9 @@ which also turns the button on or off. Boxes without inputs (such as a Mi Box) s
 
 ## Navigation sounds
 
-A soft click on each D-pad move, a fuller click on select and a low one on Back, like Apple TV.
-The sounds are CC0 (public domain) clips from Freesound, trimmed and level-matched; credits in
-`assets/sounds/LICENSE.txt`. Settings → Home → Navigation sounds.
+Android TV's own system sounds (the clicks Google's launcher uses): a focus sound for each D-pad
+direction and the key click on select and Back, at 60% of the normal level. Settings → Home →
+Navigation sounds.
 
 ## Idle full-screen carousel
 

@@ -1531,6 +1531,18 @@ public class MainActivity extends Activity {
         switcher.setVisibility(show ? View.VISIBLE : View.GONE);
     }
 
+    /** Down from the status row: the tab bar, or (when it's hidden) the carousel or the dock. */
+    void focusBelowStatus() {
+        if (switcher != null && switcher.getVisibility() == View.VISIBLE) {
+            switcher.requestFocus();
+        } else if (shelfView.isFocusable() && !folderMode) {
+            heroRequested = true;
+            shelfView.requestFocus();
+        } else {
+            focusIndex(Math.min(focusedIndex, COLS - 1));
+        }
+    }
+
     /** Up from the shelf/dock: the tab bar, or the status row when the tab bar is hidden. */
     void focusTop() {
         (switcher != null && switcher.getVisibility() == View.VISIBLE ? switcher : ccButton).requestFocus();
@@ -1973,7 +1985,7 @@ public class MainActivity extends Activity {
                 return true;
             }
             if (k == KeyEvent.KEYCODE_DPAD_DOWN || k == KeyEvent.KEYCODE_BACK) {
-                if (down) focusTop();
+                if (down) focusBelowStatus();
                 return true;
             }
             return k == KeyEvent.KEYCODE_DPAD_UP;
@@ -3276,7 +3288,7 @@ public class MainActivity extends Activity {
         c.drawRoundRect(r, s * 0.06f, s * 0.06f, p);
     }
 
-    /** Apple TV-style click on D-pad moves, select and Back (Settings -> Home -> Navigation sounds). */
+    /** Android TV's system click on D-pad moves, select and Back (Settings -> Home -> Navigation sounds). */
     static void navSound(Context c, KeyEvent ev) {
         if (ev.getAction() != KeyEvent.ACTION_DOWN) return;
         switch (ev.getKeyCode()) {
@@ -3284,7 +3296,7 @@ public class MainActivity extends Activity {
             case KeyEvent.KEYCODE_DPAD_DOWN:
             case KeyEvent.KEYCODE_DPAD_LEFT:
             case KeyEvent.KEYCODE_DPAD_RIGHT:
-                Clicks.move(c);
+                Clicks.move(c, ev.getKeyCode());
                 break;
             case KeyEvent.KEYCODE_DPAD_CENTER:
             case KeyEvent.KEYCODE_ENTER:
