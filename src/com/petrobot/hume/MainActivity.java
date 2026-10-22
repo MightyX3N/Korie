@@ -206,6 +206,7 @@ public class MainActivity extends Activity {
         shelfH = (int) (screenH * 0.73f);    // dock top sits ~73% down the screen
         dockPadV = dp(20);
 
+        Clicks.init(this);
         // Startup: the app list (package manager, banners, icon colours) and the wallpaper are
         // prepared in the background while the window's views are built (~250 ms saved on 1 GHz TVs).
         java.util.concurrent.Future<?> appsTask = io.submit(this::loadApps);
@@ -308,6 +309,7 @@ public class MainActivity extends Activity {
         loadHero();
         if (launchOverlay != null) finishLaunchReturn();
         updateWeather();
+        applyTabs();
         resetIdle();
         // Opened from the app list while another launcher is the home screen: offer once to take over.
         if (SetupActivity.done(this) && !Perms.isDefaultHome(this) && !prefs.getBoolean("asked_default_home", false)) {
@@ -457,9 +459,20 @@ public class MainActivity extends Activity {
         // Internet status, left of the time: white when online, orange when there is no internet.
         netIcon = new ImageView(this);
         LinearLayout.LayoutParams nlp = new LinearLayout.LayoutParams(dp(24), dp(20));
-        nlp.rightMargin = dp(10);
-        clockBox.addView(netIcon, nlp);
-        clockBox.addView(time);
+        nlp.rightMargin = dp(8);
+        // A faint dark chip behind the network icon and time, for contrast over bright artwork.
+        LinearLayout timeChip = new LinearLayout(this);
+        timeChip.setOrientation(LinearLayout.HORIZONTAL);
+        timeChip.setGravity(Gravity.CENTER_VERTICAL);
+        timeChip.setPadding(dp(12), 0, dp(14), 0);
+        GradientDrawable chipBg = new GradientDrawable();
+        chipBg.setCornerRadius(btn / 2f);
+        chipBg.setColor(0x47000000);
+        timeChip.setBackground(chipBg);
+        time.setShadowLayer(dp(8), 0, dp(1), 0x99000000);
+        timeChip.addView(netIcon, nlp);
+        timeChip.addView(time);
+        clockBox.addView(timeChip, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, btn));
 
         ccButton = new ImageView(this);
         ccButton.setScaleType(ImageView.ScaleType.CENTER);
@@ -1496,6 +1509,33 @@ public class MainActivity extends Activity {
         loadHero();
     }
 
+    /** Continue Watching can be switched off per profile (Settings -> Continue Watching). */
+    boolean cwEnabled() {
+        return Profiles.homePrefs(this).getBoolean("cw_enabled", true);
+    }
+
+    /** The tab bar only appears when there are two things to switch between. */
+    boolean tabsShown() {
+        return cwEnabled() && Suggestions.enabled(this);
+    }
+
+    /** Applies the profile's choices: hides the tab bar and picks the one remaining mode. */
+    void applyTabs() {
+        if (switcher == null) return;
+        String want = shelfMode;
+        if (!cwEnabled()) want = "suggest";
+        else if (!Suggestions.enabled(this)) want = "continue";
+        if (!want.equals(shelfMode)) setShelfMode(want);
+        boolean show = tabsShown();
+        if (!show && switcher.isFocused()) ccButton.requestFocus();
+        switcher.setVisibility(show ? View.VISIBLE : View.GONE);
+    }
+
+    /** Up from the shelf/dock: the tab bar, or the status row when the tab bar is hidden. */
+    void focusTop() {
+        (switcher != null && switcher.getVisibility() == View.VISIBLE ? switcher : ccButton).requestFocus();
+    }
+
     boolean continueMode() {
         return "continue".equals(shelfMode);
     }
@@ -1876,7 +1916,7 @@ public class MainActivity extends Activity {
                         showMenu(heroButton, it.title, l, act, 1);
                     }
                     return true;
-                case KeyEvent.KEYCODE_DPAD_UP: if (down) switcher.requestFocus(); return true;
+                case KeyEvent.KEYCODE_DPAD_UP: if (down) focusTop(); return true;
                 case KeyEvent.KEYCODE_DPAD_DOWN:
                 case KeyEvent.KEYCODE_BACK:
                     if (down) focusIndex(Math.min(focusedIndex, COLS - 1));
@@ -1921,7 +1961,11 @@ public class MainActivity extends Activity {
         if (f == ccButton || f == avatarView) {
             if (k == KeyEvent.KEYCODE_DPAD_LEFT) {
                 // Left of Control Center is the tab bar.
-                if (down) (f == avatarView ? ccButton : switcher).requestFocus();
+                if (down) {
+                    if (f == avatarView) ccButton.requestFocus();
+                    else if (switcher.getVisibility() == View.VISIBLE) switcher.requestFocus();
+                    else if (weatherShown()) weatherCard.requestFocus();
+                }
                 return true;
             }
             if (k == KeyEvent.KEYCODE_DPAD_RIGHT) {
@@ -1929,14 +1973,14 @@ public class MainActivity extends Activity {
                 return true;
             }
             if (k == KeyEvent.KEYCODE_DPAD_DOWN || k == KeyEvent.KEYCODE_BACK) {
-                if (down) switcher.requestFocus();
+                if (down) focusTop();
                 return true;
             }
             return k == KeyEvent.KEYCODE_DPAD_UP;
         }
         if (f == weatherCard) {
             switch (k) {
-                case KeyEvent.KEYCODE_DPAD_RIGHT: if (down) switcher.requestFocus(); return true;
+                case KeyEvent.KEYCODE_DPAD_RIGHT: if (down) focusTop(); return true;
                 case KeyEvent.KEYCODE_DPAD_DOWN:
                 case KeyEvent.KEYCODE_BACK:
                     if (down) {
@@ -1965,7 +2009,7 @@ public class MainActivity extends Activity {
                     heroRequested = true;
                     shelfView.requestFocus();
                 } else {
-                    switcher.requestFocus();
+                    focusTop();
                 }
             }
             return true;
@@ -2498,6 +2542,7 @@ public class MainActivity extends Activity {
             return true;
         }
         resetIdle();
+        navSound(this, ev);
         if (pickerLayer != null && menuLayer == null) {
             int pk = ev.getKeyCode();
             boolean pd = ev.getAction() == KeyEvent.ACTION_DOWN;
@@ -3231,6 +3276,25 @@ public class MainActivity extends Activity {
         c.drawRoundRect(r, s * 0.06f, s * 0.06f, p);
     }
 
+    /** Apple TV-style tick on D-pad moves and tock on select (Settings -> Home -> Navigation sounds). */
+    static void navSound(Context c, KeyEvent ev) {
+        if (ev.getAction() != KeyEvent.ACTION_DOWN) return;
+        switch (ev.getKeyCode()) {
+            case KeyEvent.KEYCODE_DPAD_UP:
+            case KeyEvent.KEYCODE_DPAD_DOWN:
+            case KeyEvent.KEYCODE_DPAD_LEFT:
+            case KeyEvent.KEYCODE_DPAD_RIGHT:
+                Clicks.move(c);
+                break;
+            case KeyEvent.KEYCODE_DPAD_CENTER:
+            case KeyEvent.KEYCODE_ENTER:
+                if (ev.getRepeatCount() == 0) Clicks.select(c);
+                break;
+            default:
+                break;
+        }
+    }
+
     // ---------------------------------------------------------------- idle full-screen carousel
 
     boolean idle, swallowUp;
@@ -3331,7 +3395,7 @@ public class MainActivity extends Activity {
         if (weatherCard == null) return;
         Weather.Data d = Weather.enabled(this) ? Weather.cached(this) : null;
         boolean show = d != null;
-        if (!show && weatherCard.isFocused()) switcher.requestFocus();
+        if (!show && weatherCard.isFocused()) focusTop();
         weatherCard.setVisibility(show ? View.VISIBLE : View.GONE);
         weatherCard.setData(d);
         if (show && !weatherCard.isFocused() && launchOverlay == null) weatherCard.setAlpha(weatherAlpha());
@@ -3397,6 +3461,7 @@ public class MainActivity extends Activity {
         stopSway(null);
         FrameLayout layer = new FrameLayout(this);
         layer.setClickable(true);
+        layer.setClipChildren(false);  // the focused avatar grows past the grid's edge
         // Soft darkening on the right only, so names stay legible over bright artwork.
         View shade = new View(this);
         shade.setBackground(new GradientDrawable(GradientDrawable.Orientation.RIGHT_LEFT,

@@ -35,6 +35,7 @@ public class SettingsActivity extends Activity {
     @Override
     protected void onCreate(Bundle b) {
         super.onCreate(b);
+        Clicks.init(this);
         String token = getIntent().getStringExtra("tmdb_token");
         if (token != null && !token.trim().isEmpty()) {
             Suggestions.prefs(this).edit().putString(Suggestions.K_TOKEN, token.trim()).apply();
@@ -236,7 +237,7 @@ public class SettingsActivity extends Activity {
         nav(PRESENT, () -> com.petrobot.hume.present.Presenter.enabled(this) ? "On" : "Off");
         if (!Inputs.list(this).isEmpty()) nav(INPUTS, () -> Inputs.showCard(this) ? "On" : "Off");
         nav(WEATHER, () -> !Weather.enabled(this) ? "Off" : Weather.place(this).isEmpty() ? "On" : Weather.place(this));
-        nav(WATCHING, () -> MediaWatchService.granted(this) ? "On"
+        nav(WATCHING, () -> !Profiles.homePrefs(this).getBoolean("cw_enabled", true) ? "Off" : MediaWatchService.granted(this) ? "On"
                 : Perms.listenerSupported(this) ? "Needs permission" : "Not on this TV");
         nav(HOME, () -> {
             String k = Profiles.homePrefs(this).getString("wallpaper", "aurora");
@@ -443,6 +444,11 @@ public class SettingsActivity extends Activity {
     }
 
     void pageWatching() {
+        row("Show Continue Watching", () -> Profiles.homePrefs(this).getBoolean("cw_enabled", true) ? "On" : "Off", () -> {
+            boolean on = !Profiles.homePrefs(this).getBoolean("cw_enabled", true);
+            Profiles.homePrefs(this).edit().putBoolean("cw_enabled", on).apply();
+            if (!on) Toast.makeText(this, "Continue Watching is hidden from the top of Home", Toast.LENGTH_SHORT).show();
+        });
         row("Access", () -> MediaWatchService.granted(this) ? "Allowed"
                 : Perms.listenerSupported(this) ? "Allow\u2026" : "Not on this TV", () -> Perms.requestListener(this));
         row("Clear history", () -> "", () -> {
@@ -467,6 +473,8 @@ public class SettingsActivity extends Activity {
                 d.dismiss();
             }).show();
         });
+        row("Navigation sounds", () -> Clicks.enabled(this) ? "On" : "Off",
+                () -> Clicks.setEnabled(this, !Clicks.enabled(this)));
         row("Full-screen carousel when idle", () -> {
             int sec = Profiles.homePrefs(this).getInt("idle_sec", 20);
             return sec == 0 ? "Off" : "After " + sec + " s";
@@ -581,6 +589,12 @@ public class SettingsActivity extends Activity {
         lp.bottomMargin = Ui.px(this, 6);
         list.addView(r, lp);
         return r;
+    }
+
+    @Override
+    public boolean dispatchKeyEvent(android.view.KeyEvent ev) {
+        MainActivity.navSound(this, ev);
+        return super.dispatchKeyEvent(ev);
     }
 
     AlertDialog.Builder dialog(String title) {

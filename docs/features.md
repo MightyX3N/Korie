@@ -53,8 +53,8 @@ Settings → Home → **Run setup again** repeats it.
 
 ## Status row
 
-Top right, as on tvOS: an **internet indicator**, the time, the glass **Control Center** button
-and the profile avatar. Glass controls adapt to what is behind them: the backdrop is desaturated and
+Top right, as on tvOS: the **internet indicator** and time on a faint dark chip (for contrast over
+bright artwork), the glass **Control Center** button and the profile avatar. Glass controls adapt to what is behind them: the backdrop is desaturated and
 the tint darkens over bright artwork and lightens over dark artwork, so white text stays legible. The indicator is drawn like Apple's symbols, in white
 only: Wi-Fi bars lit by signal strength (unlit bars at 30%) or an Ethernet symbol when the internet
 works; dimmed bars with "!" when the TV is on a network that can't reach the internet; dimmed bars
@@ -78,7 +78,8 @@ Shown behind the dock while a dock app is focused; below the dock the launcher b
   (no key; unofficial API) or **TMDB** (free key). Full-screen artwork with the service's icon,
   title, year · type · genre · rating; when focused, the description and a **▶ Open** button that
   goes to the title's page in the app (exact title link with JustWatch; search with TMDB).
-- **Continue Watching**: what you played recently in each app, from the "now playing" information
+- **Continue Watching** (can be switched off per profile in Settings → Continue Watching or during
+  setup; the tab bar only appears when both tabs are available): what you played recently in each app, from the "now playing" information
   apps publish (title, artwork, position). **▶ Resume** opens the app; an Up Next strip with
   progress bars appears when focused; Menu → *Remove from Continue Watching*.
 - Left / Right browse with a slide animation; the carousel keeps its place when you come back.
@@ -108,6 +109,11 @@ which also turns the button on or off. Boxes without inputs (such as a Mi Box) s
   internet comes back. The last forecast is cached, so it shows instantly and while offline.
 - Location comes from the internet address (ipapi.co, ipwho.is or geojs.io) unless you choose a
   city in Settings.
+
+## Navigation sounds
+
+A soft tick on each D-pad move and a deeper tock on select, like Apple TV (synthesised on the TV, no
+audio files). Settings → Home → Navigation sounds.
 
 ## Idle full-screen carousel
 

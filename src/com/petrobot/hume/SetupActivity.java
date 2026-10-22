@@ -50,6 +50,7 @@ public class SetupActivity extends Activity {
     @Override
     protected void onCreate(Bundle b) {
         super.onCreate(b);
+        Clicks.init(this);
         root = new FrameLayout(this);
         root.setBackgroundColor(0xFF000000);
         backdrop = new ImageView(this);
@@ -373,7 +374,7 @@ public class SetupActivity extends Activity {
     void homeContent() {
         backdrop.animate().alpha(0.5f).setDuration(300).start();
         title("Your Home Screen");
-        subtitle("What appears in the full-screen area behind your apps. Choose either, both or none.");
+        subtitle("What appears at the top of Home, behind your apps. Choose any, all or none.");
         boolean recs = Suggestions.showRecs(this), news = Suggestions.showNews(this);
         LinearLayout l = list();
         option(l, "Recommendations", "Popular movies and series on your streaming services", recs, () -> {
@@ -386,7 +387,13 @@ public class SetupActivity extends Activity {
             show(index, 0);
             focusRow(1);
         });
-        option(l, "Continue", recs || news ? null : "Just your background for now", false, this::next);
+        boolean cw = Profiles.homePrefs(this).getBoolean("cw_enabled", true);
+        option(l, "Continue Watching", "A tab for picking up what you were watching", cw, () -> {
+            Profiles.homePrefs(this).edit().putBoolean("cw_enabled", !cw).apply();
+            show(index, 0);
+            focusRow(2);
+        });
+        option(l, "Continue", recs || news || cw ? null : "Just your background for now", false, this::next);
         dots();
     }
 
@@ -525,6 +532,12 @@ public class SetupActivity extends Activity {
         });
         View bottom = new View(this);
         page.addView(bottom, new LinearLayout.LayoutParams(1, 0, 1.4f));
+    }
+
+    @Override
+    public boolean dispatchKeyEvent(android.view.KeyEvent ev) {
+        MainActivity.navSound(this, ev);
+        return super.dispatchKeyEvent(ev);
     }
 
     @Override
