@@ -2891,6 +2891,25 @@ public class MainActivity extends Activity {
             refreshAvatar();
             showProfilePicker(false);
         }));
+        l.add("Change Emoji");
+        act.add(() -> {
+            List<String> free = Profiles.freeEmojis(this, prof.id);
+            String[] items = new String[free.size()];
+            int cur = -1;
+            for (int i = 0; i < free.size(); i++) {
+                items[i] = free.get(i) + "   " + Profiles.emojiName(free.get(i));
+                if (free.get(i).equals(prof.emoji)) cur = i;
+            }
+            new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                    .setTitle("Emoji")
+                    .setSingleChoiceItems(items, cur, (d, w) -> {
+                        prof.emoji = free.get(w);
+                        Profiles.update(this, prof);
+                        refreshAvatar();
+                        d.dismiss();
+                        showProfilePicker(false);
+                    }).show();
+        });
         l.add("Change Colour");
         act.add(() -> new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
                 .setTitle("Colour")

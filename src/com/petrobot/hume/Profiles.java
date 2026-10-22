@@ -31,8 +31,30 @@ final class Profiles {
     }
 
     static final class Profile {
-        String id, name;
+        String id, name, emoji = "";
         int color;
+    }
+
+    /** Avatar emoji; each profile's must be unique. */
+    static final String[] EMOJIS = {"\uD83D\uDE00", "\uD83D\uDE0E", "\uD83E\uDD20", "\uD83E\uDD73", "\uD83E\uDD8A",
+            "\uD83D\uDC3C", "\uD83D\uDC2F", "\uD83E\uDD81", "\uD83D\uDC38", "\uD83D\uDC35",
+            "\uD83D\uDC28", "\uD83E\uDD84", "\uD83D\uDC36", "\uD83D\uDC31", "\uD83D\uDC3B",
+            "\uD83D\uDC30", "\uD83D\uDC7B", "\uD83E\uDD16", "\uD83D\uDC7D", "\uD83C\uDF83"};
+    static final String[] EMOJI_NAMES = {"Grin", "Cool", "Cowboy", "Party", "Fox", "Panda", "Tiger", "Lion", "Frog",
+            "Monkey", "Koala", "Unicorn", "Dog", "Cat", "Bear", "Bunny", "Ghost", "Robot", "Alien", "Pumpkin"};
+
+    /** Emoji not used by any profile other than `exceptId`. */
+    static List<String> freeEmojis(Context c, String exceptId) {
+        java.util.Set<String> used = new java.util.HashSet<>();
+        for (Profile p : list(c)) if (!p.id.equals(exceptId)) used.add(p.emoji);
+        List<String> out = new ArrayList<>();
+        for (String e : EMOJIS) if (!used.contains(e)) out.add(e);
+        return out;
+    }
+
+    static String emojiName(String e) {
+        for (int i = 0; i < EMOJIS.length; i++) if (EMOJIS[i].equals(e)) return EMOJI_NAMES[i];
+        return "";
     }
 
     /** Monogram gradients (top, bottom), Apple-style. */
@@ -61,6 +83,7 @@ final class Profiles {
                 p.id = o.getString("id");
                 p.name = o.getString("name");
                 p.color = o.optInt("color", 0);
+                p.emoji = o.optString("emoji", "");
                 out.add(p);
             }
         } catch (Exception ignored) {
@@ -71,15 +94,43 @@ final class Profiles {
             p.name = "Me";
             p.color = 0;
             out.add(p);
-            save(c, out);
         }
+        boolean fixed = false;
+        java.util.Set<String> used = new java.util.HashSet<>();
+        for (Profile p : out) {
+            if (p.emoji.isEmpty() || used.contains(p.emoji)) {
+                for (String e : EMOJIS) {
+                    if (!used.contains(e) && !emojiTakenLater(out, p, e)) {
+                        p.emoji = e;
+                        fixed = true;
+                        break;
+                    }
+                }
+            }
+            used.add(p.emoji);
+        }
+        if (fixed || store(c).getString("list", "").isEmpty()) save(c, out);
         return out;
+    }
+
+    private static boolean emojiTakenLater(List<Profile> ps, Profile self, String e) {
+        boolean after = false;
+        for (Profile p : ps) {
+            if (p == self) {
+                after = true;
+                continue;
+            }
+            if (after && e.equals(p.emoji)) return true;
+        }
+        return false;
     }
 
     static void save(Context c, List<Profile> ps) {
         JSONArray a = new JSONArray();
         try {
-            for (Profile p : ps) a.put(new JSONObject().put("id", p.id).put("name", p.name).put("color", p.color));
+            for (Profile p : ps) {
+                a.put(new JSONObject().put("id", p.id).put("name", p.name).put("color", p.color).put("emoji", p.emoji));
+            }
         } catch (Exception ignored) {
         }
         store(c).edit().putString("list", a.toString()).apply();
@@ -110,6 +161,14 @@ final class Profiles {
         p.id = "p" + n;
         p.name = name;
         p.color = ps.size() % COLORS.length;
+        java.util.Set<String> used = new java.util.HashSet<>();
+        for (Profile x : ps) used.add(x.emoji);
+        for (String e : EMOJIS) {
+            if (!used.contains(e)) {
+                p.emoji = e;
+                break;
+            }
+        }
         ps.add(p);
         save(c, ps);
         return p;
@@ -121,6 +180,7 @@ final class Profiles {
             if (p.id.equals(changed.id)) {
                 p.name = changed.name;
                 p.color = changed.color;
+                p.emoji = changed.emoji;
             }
         }
         save(c, ps);
@@ -168,7 +228,7 @@ final class Profiles {
         return sb.length() == 0 ? "?" : sb.toString().toUpperCase();
     }
 
-    /** Apple-style profile bubble: pastel disc with darker initials. */
+    /** Profile bubble: pastel disc with the profile's emoji (initials as a fallback). */
     static Bitmap avatar(Context c, Profile p, int size) {
         Bitmap b = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
         Canvas cv = new Canvas(b);
@@ -178,10 +238,17 @@ final class Profiles {
         float r = size / 2f;
         cv.drawCircle(r, r, r, paint);
         paint.setColor(g[1]);
-        paint.setTypeface(Ui.font(c, "semibold"));
         paint.setTextAlign(Paint.Align.CENTER);
-        String t = initials(p.name);
-        paint.setTextSize(size * (t.length() > 1 ? 0.38f : 0.46f));
+        String t;
+        if (!p.emoji.isEmpty()) {
+            t = p.emoji;
+            paint.setTypeface(android.graphics.Typeface.DEFAULT);
+            paint.setTextSize(size * 0.56f);
+        } else {
+            t = initials(p.name);
+            paint.setTypeface(Ui.font(c, "semibold"));
+            paint.setTextSize(size * (t.length() > 1 ? 0.38f : 0.46f));
+        }
         Paint.FontMetrics fm = paint.getFontMetrics();
         cv.drawText(t, r, r - (fm.ascent + fm.descent) / 2f, paint);
         return b;
