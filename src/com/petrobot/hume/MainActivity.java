@@ -77,6 +77,7 @@ public class MainActivity extends Activity {
     static final int COLS = 6;
     static final String SETTINGS_KEY = "special:settings";
     static final String PRESENT_KEY = "special:present";
+    static final String INPUTS_KEY = "special:inputs";
     static final String FOLDER_KEY = "special:folder";
     static final String PREF_ORDER = "order";
     static final String PREF_HIDDEN = "hidden";
@@ -277,6 +278,7 @@ public class MainActivity extends Activity {
         loadHero();
         if (launchOverlay != null) finishLaunchReturn();
         updateWeather();
+        updateInputsButton();
         handler.removeCallbacks(weatherTick);
         handler.post(weatherTick);
     }
@@ -439,30 +441,13 @@ public class MainActivity extends Activity {
         });
         ccButton.setOnClickListener(v -> showControlCenter());
 
-        // Settings: the same glass circle, with a gear.
-        settingsButton = new ImageView(this);
-        settingsButton.setScaleType(ImageView.ScaleType.CENTER);
-        settingsButton.setImageBitmap(Glyphs.get("gear", dp(20), Color.WHITE));
-        LiquidGlass setGlass = new LiquidGlass(btn / 2f, 0x1F000000, glassSource, screenW, screenH, unit);
-        setGlass.lens = dp(4);
-        settingsButton.setBackground(setGlass);
-        settingsButton.setFocusable(true);
-        settingsButton.setClickable(true);
-        LinearLayout.LayoutParams sblp = new LinearLayout.LayoutParams(btn, btn);
-        sblp.leftMargin = dp(12);
-        clockBox.addView(settingsButton, sblp);
-        GradientDrawable setLit = new GradientDrawable();
-        setLit.setShape(GradientDrawable.OVAL);
-        setLit.setColor(Color.WHITE);
-        settingsButton.setOnFocusChangeListener((v, has) -> {
-            settingsButton.setBackground(has ? setLit : setGlass);
-            settingsButton.setImageBitmap(Glyphs.get("gear", dp(20), has ? 0xFF111114 : Color.WHITE));
-            v.animate().scaleX(has ? 1.12f : 1f).scaleY(has ? 1.12f : 1f).setDuration(200).setInterpolator(LIFT).start();
-        });
-        settingsButton.setOnClickListener(v -> {
+        // Inputs and Settings: the same glass circle as Control Center.
+        inputsButton = statusButton("input", btn, v -> showInputs(inputsButton));
+        settingsButton = statusButton("gear", btn, v -> {
             returningFromSettings = true;
             startActivity(new Intent(this, SettingsActivity.class));
         });
+        updateInputsButton();
 
         int av = btn;
         ImageView avatar = new ImageView(this);
@@ -1597,7 +1582,7 @@ public class MainActivity extends Activity {
     /** Carousel focused: the dock slides away and the artwork takes the whole screen (tvOS Top Shelf). */
     boolean heroRequested;
 
-    ImageView avatarView, ccButton, settingsButton, netIcon;
+    ImageView avatarView, ccButton, settingsButton, inputsButton, netIcon;
     android.net.ConnectivityManager.NetworkCallback netCallback;
     WeatherView weatherCard;
     LiquidGlass weatherGlass;
@@ -1717,16 +1702,19 @@ public class MainActivity extends Activity {
                 default: return false;
             }
         }
-        if (f == ccButton || f == settingsButton || f == avatarView) {
-            // Status row, left to right: Control Center, Settings, profile.
-            View[] row = {ccButton, settingsButton, avatarView};
-            int at = f == ccButton ? 0 : f == settingsButton ? 1 : 2;
+        if (f == ccButton || f == inputsButton || f == settingsButton || f == avatarView) {
+            // Status row, left to right: Control Center, Inputs (when shown), Settings, profile.
+            List<View> row = new ArrayList<>();
+            for (View x : new View[]{ccButton, inputsButton, settingsButton, avatarView}) {
+                if (x.getVisibility() == View.VISIBLE) row.add(x);
+            }
+            int at = row.indexOf(f);
             if (k == KeyEvent.KEYCODE_DPAD_LEFT) {
-                if (down && at > 0) row[at - 1].requestFocus();
+                if (down && at > 0) row.get(at - 1).requestFocus();
                 return true;
             }
             if (k == KeyEvent.KEYCODE_DPAD_RIGHT) {
-                if (down && at < 2) row[at + 1].requestFocus();
+                if (down && at < row.size() - 1) row.get(at + 1).requestFocus();
                 return true;
             }
             if (k == KeyEvent.KEYCODE_DPAD_DOWN) {
@@ -1823,6 +1811,10 @@ public class MainActivity extends Activity {
      */
     void launchAnimated(View tile, AppEntry a) {
         if (launchOverlay != null) return;
+        if (INPUTS_KEY.equals(a.key)) {
+            showInputs(tile);
+            return;
+        }
 
         int[] loc = new int[2];
         tile.getLocationInWindow(loc);
@@ -2350,6 +2342,8 @@ public class MainActivity extends Activity {
         addResolved(pm, Intent.CATEGORY_LAUNCHER, pkgs, false);
         if (!pkgs.contains(TV_SETTINGS)) addSettingsEntry(pm);
         if (com.petrobot.hume.present.Presenter.enabled(this)) addPresentEntry();
+        inputs = Inputs.list(this);
+        if (Inputs.showCard(this) && !inputs.isEmpty()) addInputsEntry();
         for (AppEntry e : all.values()) {
             if (e.banner == null || TVOS_CARD_PKGS.contains(e.pkg)) {
                 e.banner = new BitmapDrawable(getResources(), tvosCard(e));
@@ -2374,6 +2368,15 @@ public class MainActivity extends Activity {
             return px != py ? Integer.compare(px, py) : x.label.compareToIgnoreCase(y.label);
         });
         apps.addAll(rest);
+        // Inputs starts as the first card in the dock until it is moved.
+        if (!Arrays.asList(prefs.getString(PREF_ORDER, "").split(",")).contains(INPUTS_KEY)) {
+            for (int i = 0; i < apps.size(); i++) {
+                if (INPUTS_KEY.equals(apps.get(i).key)) {
+                    apps.add(0, apps.remove(i));
+                    break;
+                }
+            }
+        }
     }
 
     /** Fallback Settings tile for TVs whose settings app has no launcher entry. */
@@ -2395,6 +2398,7 @@ public class MainActivity extends Activity {
     }
 
     int priority(AppEntry e) {
+        if (INPUTS_KEY.equals(e.key)) return -1;
         if (isSettings(e)) return 2000;
         if (PRESENT_KEY.equals(e.key)) return 1999;
         int i = DEFAULT_ORDER.indexOf(e.pkg);
@@ -2403,6 +2407,29 @@ public class MainActivity extends Activity {
 
     boolean isSettings(AppEntry e) {
         return SETTINGS_KEY.equals(e.key) || TV_SETTINGS.equals(e.pkg) || PRESENT_KEY.equals(e.key);
+    }
+
+    List<Inputs.Input> inputs = new ArrayList<>();
+
+    /** Inputs card: a graphite tvOS-style card with the input glyph; OK opens the input picker. */
+    void addInputsEntry() {
+        AppEntry e = new AppEntry();
+        e.key = INPUTS_KEY;
+        e.pkg = getPackageName();
+        e.label = "Inputs";
+        e.system = true;
+        e.color = 0xFF48484A;
+        int w = 640, h = 384;
+        Bitmap b = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+        Canvas c = new Canvas(b);
+        Paint p = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.DITHER_FLAG);
+        p.setShader(new LinearGradient(0, 0, 0, h, 0xFF6E6E73, 0xFF2C2C2E, Shader.TileMode.CLAMP));
+        c.drawRect(0, 0, w, h, p);
+        Bitmap g = Glyphs.get("input", (int) (h * 0.5f), Color.WHITE);
+        c.drawBitmap(g, (w - g.getWidth()) / 2f, (h - g.getHeight()) / 2f, null);
+        e.banner = new BitmapDrawable(getResources(), b);
+        e.icon = e.banner;
+        all.put(e.key, e);
     }
 
     /** Presentation tile (shown while Presentation mode is on): tvOS-style card. */
@@ -2542,7 +2569,7 @@ public class MainActivity extends Activity {
                 actions.add(() -> setHidden(a, true));
             }
         }
-        if (!isSettings(a)) {
+        if (!isSettings(a) && !INPUTS_KEY.equals(a.key)) {
             labels.add("App Info");
             actions.add(() -> startSafe(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
                     Uri.parse("package:" + a.pkg))));
@@ -2778,6 +2805,93 @@ public class MainActivity extends Activity {
                 .setMessage("This needs a one-time permission that the TV has no on-screen switch for. "
                         + "Grant it from a computer:\n\n" + cmd)
                 .setPositiveButton("OK", null).show();
+    }
+
+    // ---------------------------------------------------------------- status buttons & inputs
+
+    /** A glass circle in the status row with a glyph; white with a dark glyph when focused. */
+    ImageView statusButton(String glyph, int size, View.OnClickListener click) {
+        ImageView b = new ImageView(this);
+        b.setScaleType(ImageView.ScaleType.CENTER);
+        b.setImageBitmap(Glyphs.get(glyph, dp(20), Color.WHITE));
+        LiquidGlass glass = new LiquidGlass(size / 2f, 0x1F000000, glassSource, screenW, screenH, unit);
+        glass.lens = dp(4);
+        b.setBackground(glass);
+        b.setFocusable(true);
+        b.setClickable(true);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(size, size);
+        lp.leftMargin = dp(12);
+        clockBox.addView(b, lp);
+        GradientDrawable lit = new GradientDrawable();
+        lit.setShape(GradientDrawable.OVAL);
+        lit.setColor(Color.WHITE);
+        b.setOnFocusChangeListener((v, has) -> {
+            b.setBackground(has ? lit : glass);
+            b.setImageBitmap(Glyphs.get(glyph, dp(20), has ? 0xFF111114 : Color.WHITE));
+            v.animate().scaleX(has ? 1.12f : 1f).scaleY(has ? 1.12f : 1f).setDuration(200).setInterpolator(LIFT).start();
+        });
+        b.setOnClickListener(click);
+        return b;
+    }
+
+    /** The Inputs button shows when the TV has inputs and it is switched on in Settings. */
+    void updateInputsButton() {
+        if (inputsButton == null) return;
+        boolean show = Inputs.showButton(this) && !Inputs.list(this).isEmpty();
+        if (!show && inputsButton.isFocused()) ccButton.requestFocus();
+        inputsButton.setVisibility(show ? View.VISIBLE : View.GONE);
+    }
+
+    /** Input picker under the status row: Control Center capsules, two columns. */
+    void showInputs(View from) {
+        List<Inputs.Input> list = Inputs.list(this);
+        if (list.isEmpty()) {
+            toast("This TV has no inputs");
+            return;
+        }
+        if (pickerLayer != null) root.removeView(pickerLayer);
+        weatherCard.animate().alpha(0f).setDuration(150).start();
+        stopSway(null);
+        popoverReturn = from;
+        FrameLayout layer = new FrameLayout(this);
+        layer.setClickable(true);
+        View shade = new View(this);
+        shade.setBackground(new GradientDrawable(GradientDrawable.Orientation.RIGHT_LEFT,
+                new int[]{0x99000000, 0x40000000, 0x00000000}));
+        layer.addView(shade, new FrameLayout.LayoutParams(screenW * 3 / 5, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.END));
+
+        int col = dp(141), gap = dp(13), cap = (col - gap) / 2;
+        FrameLayout panel = new FrameLayout(this);
+        panel.setClipChildren(false);
+        List<View> cells = new ArrayList<>();
+        TextView title = text(13, Ui.font(this, "semibold"), 0.75f);
+        title.setText("Inputs");
+        panel.addView(title, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(20)));
+        int top = dp(26);
+        for (int i = 0; i < list.size(); i++) {
+            Inputs.Input in = list.get(i);
+            int x = (i % 2) * (col + gap), y = top + (i / 2) * (cap + gap);
+            cells.add(ccTile(panel, x, y, col, cap, Inputs.glyph(in), in.label,
+                    in.disconnected ? () -> "Not connected" : null, false, v -> {
+                        closeProfilePicker();
+                        if (!Inputs.open(this, in)) toast("Can't switch to " + in.label);
+                    }));
+        }
+        int rows = (list.size() + 1) / 2;
+        FrameLayout.LayoutParams plp = new FrameLayout.LayoutParams(2 * col + gap, top + rows * cap + (rows - 1) * gap,
+                Gravity.TOP | Gravity.END);
+        plp.topMargin = dp(72);
+        plp.rightMargin = dockOuter;
+        layer.addView(panel, plp);
+
+        root.addView(layer, match());
+        pickerLayer = layer;
+        pickerCells = cells;
+        layer.setAlpha(0f);
+        panel.setTranslationY(-dp(10));
+        layer.animate().alpha(1f).setDuration(200).start();
+        panel.animate().translationY(0).setDuration(260).setInterpolator(EASE).start();
+        cells.get(0).requestFocus();
     }
 
     // ---------------------------------------------------------------- internet status
@@ -3081,7 +3195,7 @@ public class MainActivity extends Activity {
 
     boolean statusFocused() {
         View f = getCurrentFocus();
-        return f != null && (f == ccButton || f == settingsButton || f == avatarView || f == weatherCard);
+        return f != null && (f == ccButton || f == inputsButton || f == settingsButton || f == avatarView || f == weatherCard);
     }
 
     /** Directional focus inside a popover: nearest cell whose centre lies in that direction. */

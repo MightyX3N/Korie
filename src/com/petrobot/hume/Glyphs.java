@@ -110,6 +110,34 @@ final class Glyphs {
                 hole.setXfermode(new android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.CLEAR));
                 c.drawCircle(m, m, s * 0.13f, hole);
                 break;
+            case "input":  // a screen with an arrow coming in from the left (Inputs)
+                r.set(s * 0.3f, s * 0.2f, s * 0.88f, s * 0.8f);
+                path.moveTo(s * 0.3f, s * 0.36f);
+                path.lineTo(s * 0.3f, s * 0.28f);
+                path.quadTo(s * 0.3f, s * 0.2f, s * 0.38f, s * 0.2f);
+                path.lineTo(s * 0.8f, s * 0.2f);
+                path.quadTo(s * 0.88f, s * 0.2f, s * 0.88f, s * 0.28f);
+                path.lineTo(s * 0.88f, s * 0.72f);
+                path.quadTo(s * 0.88f, s * 0.8f, s * 0.8f, s * 0.8f);
+                path.lineTo(s * 0.38f, s * 0.8f);
+                path.quadTo(s * 0.3f, s * 0.8f, s * 0.3f, s * 0.72f);
+                path.lineTo(s * 0.3f, s * 0.64f);
+                c.drawPath(path, p);
+                c.drawLine(s * 0.1f, m, s * 0.6f, m, p);
+                c.drawLine(s * 0.47f, s * 0.37f, s * 0.6f, m, p);
+                c.drawLine(s * 0.47f, s * 0.63f, s * 0.6f, m, p);
+                break;
+            case "antenna":  // tuner: a mast with signal arcs
+                c.drawLine(m, s * 0.42f, m, s * 0.86f, p);
+                c.drawLine(s * 0.36f, s * 0.86f, s * 0.64f, s * 0.86f, p);
+                for (int i = 0; i < 2; i++) {
+                    float rad = s * (0.14f + 0.14f * i);
+                    r.set(m - rad, s * 0.36f - rad, m + rad, s * 0.36f + rad);
+                    c.drawArc(r, -150, 120, false, p);
+                }
+                p.setStyle(Paint.Style.FILL);
+                c.drawCircle(m, s * 0.36f, s * 0.06f, p);
+                break;
             case "search":
                 c.drawCircle(s * 0.44f, s * 0.44f, s * 0.24f, p);
                 c.drawLine(s * 0.62f, s * 0.62f, s * 0.82f, s * 0.82f, p);

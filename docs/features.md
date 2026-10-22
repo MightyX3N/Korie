@@ -22,13 +22,13 @@
 | Move mode | Arrows / OK | Move the wiggling card / finish |
 | Dock | Up | Top shelf (or the tab bar if the shelf is empty) |
 | Tab bar | Left / Right | Suggestions ⇄ Continue Watching |
-| Status row | Left / Right | Control Center ⇄ Settings ⇄ profile avatar |
+| Status row | Left / Right | Control Center ⇄ Inputs ⇄ Settings ⇄ profile avatar |
 | Anywhere | Home | Back to the first app in the dock |
 
 ## Status row
 
-Top right, as on tvOS: an **internet indicator**, the time, then glass **Control Center** and
-**Settings** buttons and the profile avatar. The indicator is drawn like Apple's symbols, in white
+Top right, as on tvOS: an **internet indicator**, the time, then glass **Control Center**,
+**Inputs** and **Settings** buttons and the profile avatar. The indicator is drawn like Apple's symbols, in white
 only: Wi-Fi bars lit by signal strength (unlit bars at 30%) or an Ethernet symbol when the internet
 works; dimmed bars with "!" when the TV is on a network that can't reach the internet; dimmed bars
 with a slash when there is no network. When the internet comes back, weather and suggestions
@@ -46,6 +46,16 @@ Shown behind the dock while a dock app is focused; below the dock the launcher b
   apps publish (title, artwork, position). **▶ Resume** opens the app; an Up Next strip with
   progress bars appears when focused; Menu → *Remove from Continue Watching*.
 - Left / Right browse with a slide animation; the carousel keeps its place when you come back.
+
+## Inputs
+
+On TVs with inputs (HDMI, AV, tuner), an **Inputs** card starts as the first card in the dock and an
+**Inputs** button sits in the status row. Either opens the input picker: Control Center-style capsules
+for each input the TV reports (for example HDMI 1–3, AV 1–2, TV); OK switches to it through the TV
+app. The card can be moved, hidden to More Apps like any app, or switched off in Settings → Inputs,
+which also turns the button on or off. Boxes without inputs (such as a Mi Box) show neither.
+
+![Input picker](images/inputs-picker.jpg)
 
 ## Weather
 
@@ -86,6 +96,7 @@ Opened from the gear in Control Center. Sections:
 
 - **Profiles** — current profile, show profiles on wake.
 - **Presentation** — see [presentation.md](presentation.md).
+- **Inputs** — Inputs card on Home, Inputs button in the status row.
 - **Weather** — on/off, location (Automatic or Choose City… by name), source (Open-Meteo / MET
   Norway / wttr.in), update interval (10 / 15 / 30 / 60 minutes), temperature (Automatic / °C / °F).
 - **Suggestions** — on/off, source, content (movies/series), services, languages (TMDB),

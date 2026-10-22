@@ -135,6 +135,12 @@ public class SettingsActivity extends Activity {
             com.petrobot.hume.present.Presenter.open(this);
         });
 
+        section("Inputs");
+        row("Inputs card on Home", () -> Inputs.showCard(this) ? "On" : "Off", () ->
+                Inputs.prefs(this).edit().putBoolean(Inputs.K_CARD, !Inputs.showCard(this)).apply());
+        row("Inputs button (top right)", () -> Inputs.showButton(this) ? "On" : "Off", () ->
+                Inputs.prefs(this).edit().putBoolean(Inputs.K_BUTTON, !Inputs.showButton(this)).apply());
+
         section("Weather");
         row("Show weather", () -> Weather.enabled(this) ? "On" : "Off", () -> {
             Weather.prefs(this).edit().putBoolean(Weather.K_ENABLED, !Weather.enabled(this)).apply();
