@@ -275,8 +275,7 @@ public class SettingsActivity extends Activity {
             String[] names = {"Recommendations & News", "Recommendations", "News", "Nothing"};
             int sel = Math.max(0, java.util.Arrays.asList(keys).indexOf(Suggestions.shelf(this)));
             dialog("Show in carousel").setSingleChoiceItems(names, sel, (d, w) -> {
-                Suggestions.prefs(this).edit().putString(Suggestions.K_SHELF, keys[w]).apply();
-                Suggestions.changed(this);
+                Suggestions.setShelf(this, keys[w]);
                 d.dismiss();
                 show(SHELF);
             }).show();

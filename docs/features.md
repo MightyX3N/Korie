@@ -6,13 +6,17 @@ The first time Hume opens, it walks through Apple-style setup pages, one questio
 Back goes back):
 
 1. **Welcome**, fading through Indian and world languages, then Get Started.
-2. **Who's watching?** Name and avatar for the profile.
-3. **Choose a look**: the background previews live behind the page as you move through the list.
-4. **Top of the Home Screen**: Recommendations & News, Recommendations, News or Nothing.
+2. **Create your profile**: name and emoji avatar for the first profile.
+3. **Choose a look**: this profile's background, previewed live behind the page.
+4. **Your Home Screen** (per profile): Recommendations on/off and News on/off.
 5. **Weather**: use my location (shows the detected city), choose a city, or don't show weather.
-6. **Presentation**: turn on, turn on and start with the TV (signage), or not now.
-7. **Finish setting up**: make Hume the home screen and allow what the TV supports (each ticks when done).
+6. **Presentation** (whole TV): use Presentation, and if on: start with the TV, keep screen awake,
+   show code when starting — all on one page, so nothing needs configuring in Settings afterwards.
+7. **Finish setting up**: Android's location prompt appears right away; make Hume the home screen
+   and allow whatever else the TV supports (each ticks when done; unsupported ones are left out).
 8. **You're all set** → Home.
+
+The top-shelf choice (recommendations / news) belongs to each profile; each mix has its own cache.
 
 Settings → Home → **Run setup again** repeats it.
 

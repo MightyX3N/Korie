@@ -124,10 +124,23 @@ final class Suggestions {
         return c.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
     }
 
+    /** What this profile's top shelf shows (each profile chooses; older global setting as fallback). */
     static String shelf(Context c) {
+        String own = Profiles.homePrefs(c).getString(K_SHELF, null);
+        if (own != null) return own;
         SharedPreferences p = prefs(c);
         if (!p.contains(K_SHELF) && !p.getBoolean(K_ENABLED, true)) return SHELF_NONE;  // older setting
         return p.getString(K_SHELF, SHELF_BOTH);
+    }
+
+    static void setShelf(Context c, String value) {
+        Profiles.homePrefs(c).edit().putString(K_SHELF, value).apply();
+        changed(c);
+    }
+
+    /** Recommendations and/or news for this profile, as two switches. */
+    static void setShelf(Context c, boolean recs, boolean news) {
+        setShelf(c, recs && news ? SHELF_BOTH : recs ? SHELF_RECS : news ? SHELF_NEWS : SHELF_NONE);
     }
 
     static boolean showRecs(Context c) {
@@ -189,8 +202,9 @@ final class Suggestions {
 
     // ------------------------------------------------------------------ data
 
+    /** One cache per content mix, so profiles with different choices don't overwrite each other. */
     static File cacheFile(Context c) {
-        return new File(c.getFilesDir(), "suggestions.json");
+        return new File(c.getFilesDir(), "suggestions_" + shelf(c) + ".json");
     }
 
     /** Cached list, or null when missing/stale. */

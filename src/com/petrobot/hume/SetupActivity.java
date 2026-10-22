@@ -72,7 +72,7 @@ public class SetupActivity extends Activity {
         steps.add(this::hello);
         steps.add(this::profile);
         steps.add(this::look);
-        steps.add(this::shelf);
+        steps.add(this::homeContent);
         steps.add(this::weather);
         steps.add(this::presentation);
         steps.add(this::homeAndPermissions);
@@ -92,9 +92,10 @@ public class SetupActivity extends Activity {
         page.animate().cancel();
         page.removeAllViews();
         steps.get(index).build();
-        page.setAlpha(0f);
+        // New page: slide and fade. Same page re-drawn after a switch: a quick fade only.
+        page.setAlpha(dir == 0 ? 0.6f : 0f);
         page.setTranslationX(u(30) * dir);
-        page.animate().alpha(1f).translationX(0).setDuration(320).start();
+        page.animate().alpha(1f).translationX(0).setDuration(dir == 0 ? 120 : 320).start();
     }
 
     void next() {
@@ -152,6 +153,7 @@ public class SetupActivity extends Activity {
         l.setOrientation(LinearLayout.VERTICAL);
         l.setClipChildren(false);
         l.setClipToPadding(false);
+        if (page.findViewWithTag("list") == null) l.setTag("list");
         page.addView(l, new LinearLayout.LayoutParams(u(440), ViewGroup.LayoutParams.WRAP_CONTENT));
         return l;
     }
@@ -275,8 +277,8 @@ public class SetupActivity extends Activity {
     }
 
     void profile() {
-        title("Who's watching?");
-        subtitle("Choose a name and an avatar. You can add up to three people later from the avatar on Home.");
+        title("Create Your Profile");
+        subtitle("Your name and an avatar. Each profile keeps its own apps, background and Home Screen. Up to three people can have one.");
         Profiles.Profile p = Profiles.current(this);
         LinearLayout l = list();
         option(l, "Name", p.name, false, () -> {
@@ -361,26 +363,31 @@ public class SetupActivity extends Activity {
         dots();
     }
 
-    void shelf() {
+    /** This profile's Home Screen: recommendations and/or news on the top shelf, as two switches. */
+    void homeContent() {
         backdrop.animate().alpha(0.5f).setDuration(300).start();
-        title("Top of the Home Screen");
-        subtitle("Full-screen artwork behind your apps. Choose what it shows.");
-        String cur = Suggestions.shelf(this);
+        title("Your Home Screen");
+        subtitle("What " + Profiles.current(this).name + " sees in the full-screen area behind the apps. Turn on either, both or none.");
+        boolean recs = Suggestions.showRecs(this), news = Suggestions.showNews(this);
         LinearLayout l = list();
-        String[][] opts = {
-                {Suggestions.SHELF_BOTH, "Recommendations & News", "Popular titles on your services, mixed with the news"},
-                {Suggestions.SHELF_RECS, "Recommendations", "Popular movies and series on your streaming services"},
-                {Suggestions.SHELF_NEWS, "News", "India, your city and the world, from Indian newsrooms"},
-                {Suggestions.SHELF_NONE, "Nothing", "Just your background"}};
-        for (String[] o : opts) {
-            View r = option(l, o[1], o[2], o[0].equals(cur), () -> {
-                Suggestions.prefs(this).edit().putString(Suggestions.K_SHELF, o[0]).apply();
-                Suggestions.changed(this);
-                next();
-            });
-            if (o[0].equals(cur)) r.requestFocus();
-        }
+        option(l, "Recommendations", "Popular movies and series on your streaming services", recs, () -> {
+            Suggestions.setShelf(this, !recs, news);
+            show(index, 0);
+            focusRow(0);
+        });
+        option(l, "News", "India, your city and the world, from Indian newsrooms", news, () -> {
+            Suggestions.setShelf(this, recs, !news);
+            show(index, 0);
+            focusRow(1);
+        });
+        option(l, "Continue", recs || news ? null : "Just your background for now", false, this::next);
         dots();
+    }
+
+    /** After re-building a page, put focus back on the row that was pressed. */
+    void focusRow(int i) {
+        View v = page.findViewWithTag("list");
+        if (v instanceof LinearLayout && i < ((LinearLayout) v).getChildCount()) ((LinearLayout) v).getChildAt(i).requestFocus();
     }
 
     void weather() {
@@ -410,39 +417,58 @@ public class SetupActivity extends Activity {
         dots();
     }
 
+    /** Presentation is for the whole TV: switch it on and choose its options here, once. */
     void presentation() {
         ImageView icon = new ImageView(this);
-        icon.setImageBitmap(com.petrobot.hume.present.PresentIcon.banner(u(130) * 2, u(78) * 2));
+        icon.setImageBitmap(com.petrobot.hume.present.PresentIcon.banner(u(110) * 2, u(66) * 2));
         icon.setClipToOutline(true);
         GradientDrawable shape = new GradientDrawable();
-        shape.setCornerRadius(u(10));
+        shape.setCornerRadius(u(9));
         icon.setBackground(shape);
-        LinearLayout.LayoutParams ilp = new LinearLayout.LayoutParams(u(130), u(78));
-        ilp.bottomMargin = u(14);
+        LinearLayout.LayoutParams ilp = new LinearLayout.LayoutParams(u(110), u(66));
+        ilp.bottomMargin = u(12);
         page.addView(icon, ilp);
         title("Presentation");
-        subtitle("Show images, videos and webpages on this TV, sent from any phone or computer on the same Wi-Fi.");
-        boolean on = com.petrobot.hume.present.Presenter.enabled(this),
-                boot = com.petrobot.hume.present.Presenter.startOnBoot(this);
+        subtitle("Show images, videos and webpages on this TV, sent from any phone or computer on the same Wi-Fi. These settings are for everyone on this TV.");
+        boolean on = com.petrobot.hume.present.Presenter.enabled(this);
         LinearLayout l = list();
-        option(l, "Turn On", "Add a Presentation card to Home", on && !boot, () -> {
-            com.petrobot.hume.present.Presenter.set(this, com.petrobot.hume.present.Presenter.KEY_ENABLED, true);
-            com.petrobot.hume.present.Presenter.set(this, com.petrobot.hume.present.Presenter.KEY_BOOT, false);
-            next();
+        option(l, "Use Presentation", on ? "Adds a Presentation card to Home" : "Off", on, () -> {
+            com.petrobot.hume.present.Presenter.set(this, com.petrobot.hume.present.Presenter.KEY_ENABLED, !on);
+            show(index, 0);
+            focusRow(0);
         });
-        option(l, "Turn On and Start with the TV", "For screens used as signage", on && boot, () -> {
-            com.petrobot.hume.present.Presenter.set(this, com.petrobot.hume.present.Presenter.KEY_ENABLED, true);
-            com.petrobot.hume.present.Presenter.set(this, com.petrobot.hume.present.Presenter.KEY_BOOT, true);
-            next();
-        });
-        option(l, "Not Now", "You can turn it on in Settings", !on, () -> {
-            com.petrobot.hume.present.Presenter.set(this, com.petrobot.hume.present.Presenter.KEY_ENABLED, false);
-            next();
-        });
+        if (on) {
+            boolean boot = com.petrobot.hume.present.Presenter.startOnBoot(this),
+                    awake = com.petrobot.hume.present.Presenter.keepAwake(this),
+                    code = com.petrobot.hume.present.Presenter.showInfoOnStart(this);
+            option(l, "Start with the TV", "Play as soon as the TV turns on (signage)", boot, () -> {
+                com.petrobot.hume.present.Presenter.set(this, com.petrobot.hume.present.Presenter.KEY_BOOT, !boot);
+                show(index, 0);
+                focusRow(1);
+            });
+            option(l, "Keep Screen Awake", "No screensaver or sleep while presenting", awake, () -> {
+                com.petrobot.hume.present.Presenter.set(this, com.petrobot.hume.present.Presenter.KEY_AWAKE, !awake);
+                show(index, 0);
+                focusRow(2);
+            });
+            option(l, "Show Code When Starting", "The address and pairing code, for a few seconds", code, () -> {
+                com.petrobot.hume.present.Presenter.set(this, com.petrobot.hume.present.Presenter.KEY_INFO, !code);
+                show(index, 0);
+                focusRow(3);
+            });
+        }
+        option(l, "Continue", null, false, this::next);
         dots();
     }
 
+    boolean askedLocation;
+
     void homeAndPermissions() {
+        // Ask right away: Android's own prompt for location (the Wi-Fi name in Control Center).
+        if (!Perms.hasLocation(this) && !askedLocation) {
+            askedLocation = true;
+            handler.postDelayed(() -> Perms.requestLocation(this), 600);
+        }
         title("Finish Setting Up");
         subtitle("Hume works best as the home screen. Allow these once; anything this TV doesn't support is skipped.");
         LinearLayout l = list();
