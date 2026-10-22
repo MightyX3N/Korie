@@ -12,6 +12,7 @@ source (Nayuki, MIT) under `src/io/nayuki/qrcodegen`.
 | Path | Responsibility |
 |---|---|
 | `MainActivity.java` | Home screen: grid/dock, focus & move, launch zoom, top shelf (suggestions / Continue Watching), Liquid Glass, Control Center, profile switcher, menus |
+| `SetupActivity.java` | First-time setup pages (Apple-style, one question per page) |
 | `SettingsActivity.java` | All settings, tvOS list layout |
 | `Suggestions.java` | JustWatch / TMDB fetch, cache, artwork, deep links |
 | `MediaWatchService.java` | Notification listener → media sessions → Continue Watching store; DND access |

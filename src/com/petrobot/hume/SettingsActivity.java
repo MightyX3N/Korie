@@ -471,6 +471,7 @@ public class SettingsActivity extends Activity {
                 d.dismiss();
             }).show();
         });
+        row("Run setup again", () -> "", () -> startActivity(new Intent(this, SetupActivity.class)));
         row("Reset app layout", () -> "", () -> {
             Profiles.homePrefs(this).edit().remove("order").apply();
             Toast.makeText(this, "Layout reset", Toast.LENGTH_SHORT).show();

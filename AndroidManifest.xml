@@ -94,6 +94,12 @@
         </receiver>
 
         <activity
+            android:name=".SetupActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:screenOrientation="landscape"
+            android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenSize|smallestScreenSize|screenLayout|uiMode|density" />
+        <activity
             android:name=".SettingsActivity"
             android:exported="true"
             android:excludeFromRecents="true"

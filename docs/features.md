@@ -1,5 +1,21 @@
 # Features
 
+## First-time setup
+
+The first time Hume opens, it walks through Apple-style setup pages, one question each (OK moves on,
+Back goes back):
+
+1. **Welcome**, fading through Indian and world languages, then Get Started.
+2. **Who's watching?** Name and avatar for the profile.
+3. **Choose a look**: the background previews live behind the page as you move through the list.
+4. **Top of the Home Screen**: Recommendations & News, Recommendations, News or Nothing.
+5. **Weather**: use my location (shows the detected city), choose a city, or don't show weather.
+6. **Presentation**: turn on, turn on and start with the TV (signage), or not now.
+7. **Finish setting up**: make Hume the home screen and allow what the TV supports (each ticks when done).
+8. **You're all set** → Home.
+
+Settings → Home → **Run setup again** repeats it.
+
 ## Home screen
 
 - **Dock**: the first row of apps sits on a frosted Liquid Glass panel that shows a blurred,

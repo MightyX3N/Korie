@@ -244,6 +244,8 @@ public class MainActivity extends Activity {
             }
         };
         registerReceiver(wakeReceiver, new IntentFilter(Intent.ACTION_SCREEN_ON));
+        // First run: the Apple-style setup pages.
+        if (!SetupActivity.done(this)) startActivity(new Intent(this, SetupActivity.class));
     }
 
     @Override
@@ -305,7 +307,7 @@ public class MainActivity extends Activity {
         if (launchOverlay != null) finishLaunchReturn();
         updateWeather();
         // Opened from the app list while another launcher is the home screen: offer once to take over.
-        if (!Perms.isDefaultHome(this) && !prefs.getBoolean("asked_default_home", false)) {
+        if (SetupActivity.done(this) && !Perms.isDefaultHome(this) && !prefs.getBoolean("asked_default_home", false)) {
             prefs.edit().putBoolean("asked_default_home", true).apply();
             new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
                     .setTitle("Make Hume your home screen?")
@@ -731,7 +733,7 @@ public class MainActivity extends Activity {
         return b;
     }
 
-    Bitmap makeWallpaperBase(String style) {
+    static Bitmap makeWallpaperBase(String style) {
         int w = 192, h = 108;
         Bitmap b = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
         Canvas c = new Canvas(b);
