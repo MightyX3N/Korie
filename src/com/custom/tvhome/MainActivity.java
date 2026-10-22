@@ -247,7 +247,8 @@ public class MainActivity extends Activity {
             shelfEntry = null;
             scroll.scrollTo(0, 0);
             focusIndex(0);
-        } else if (resumed && launchOverlay == null) {
+        } else if (launchOverlay == null) {
+            closeMenu();
             goTop();
         }
     }
@@ -1629,31 +1630,23 @@ public class MainActivity extends Activity {
         int w = 640, h = 360;
         Bitmap b = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
         Canvas c = new Canvas(b);
-        Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
-        p.setShader(new LinearGradient(0, 0, w, h, 0xFF4A4A50, 0xFF1C1C1E, Shader.TileMode.CLAMP));
+        Paint p = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.DITHER_FLAG);
+        // tvOS system-icon style: a vivid vertical gradient, white glyph, no words.
+        p.setShader(new LinearGradient(0, 0, 0, h, 0xFF6E7BF2, 0xFF3A3FC8, Shader.TileMode.CLAMP));
         c.drawRect(0, 0, w, h, p);
-        p.setShader(new LinearGradient(0, 0, 0, h * 0.5f, 0x26FFFFFF, 0x00FFFFFF, Shader.TileMode.CLAMP));
-        c.drawRect(0, 0, w, h * 0.5f, p);
         p.setShader(null);
 
-        int cell = 30, gapPx = 12, grid = cell * 3 + gapPx * 2;
-        float gx = (w - grid) / 2f, gy = 62;
+        int cell = 46, gapPx = 18, grid = cell * 3 + gapPx * 2;
+        float gx = (w - grid) / 2f, gy = (h - grid) / 2f;
+        Paint sh = new Paint(Paint.ANTI_ALIAS_FLAG);
+        sh.setColor(0x33000000);
+        sh.setMaskFilter(new android.graphics.BlurMaskFilter(10, android.graphics.BlurMaskFilter.Blur.NORMAL));
+        p.setColor(Color.WHITE);
         for (int i = 0; i < 9; i++) {
             float x = gx + (i % 3) * (cell + gapPx), y = gy + (i / 3) * (cell + gapPx);
-            p.setColor(i == 4 ? 0xFFFFFFFF : 0xD9FFFFFF);
-            c.drawRoundRect(x, y, x + cell, y + cell, 9, 9, p);
+            c.drawRoundRect(x, y + 5, x + cell, y + cell + 5, 13, 13, sh);
+            c.drawRoundRect(x, y, x + cell, y + cell, 13, 13, p);
         }
-
-        p.setColor(Color.WHITE);
-        p.setTextAlign(Paint.Align.CENTER);
-        p.setTypeface(Ui.font(this, "display"));
-        p.setTextSize(46);
-        c.drawText("More Apps", w / 2f, gy + grid + 70, p);
-        p.setTypeface(Ui.font(this, "regular"));
-        p.setTextSize(28);
-        p.setColor(0x99FFFFFF);
-        int n = hiddenApps.size();
-        c.drawText(n + (n == 1 ? " app" : " apps"), w / 2f, gy + grid + 112, p);
         return b;
     }
 
@@ -1715,6 +1708,14 @@ public class MainActivity extends Activity {
     @Override
     public boolean dispatchKeyEvent(KeyEvent ev) {
         if (launchOverlay != null) return true;
+        if (menuLayer != null) {
+            int mk = ev.getKeyCode();
+            if (mk == KeyEvent.KEYCODE_BACK || mk == KeyEvent.KEYCODE_MENU || mk == KeyEvent.KEYCODE_ESCAPE) {
+                if (ev.getAction() == KeyEvent.ACTION_UP) closeMenu();
+                return true;
+            }
+            return super.dispatchKeyEvent(ev);
+        }
         if (heroKeys(ev)) return true;
         int k = ev.getKeyCode();
         boolean down = ev.getAction() == KeyEvent.ACTION_DOWN;
@@ -1951,10 +1952,123 @@ public class MainActivity extends Activity {
                 reload(a.key);
             });
         }
-        new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
-                .setTitle(a.label)
-                .setItems(labels.toArray(new String[0]), (d, w) -> actions.get(w).run())
-                .show();
+        showMenu(tile, a.label, labels, actions, labels.indexOf("Uninstall"));
+    }
+
+    // ---------------------------------------------------------------- tvOS context menu
+
+    FrameLayout menuLayer;
+    View menuReturnFocus;
+
+    /**
+     * tvOS-style context menu: a dark Liquid Glass panel beside the focused card, title on top,
+     * rows below; the focused row becomes a white pill with dark text. Back closes it.
+     */
+    void showMenu(View anchor, String title, List<String> labels, List<Runnable> actions, int destructive) {
+        closeMenu();
+        menuReturnFocus = anchor;
+        stopSway(null);
+        menuLayer = new FrameLayout(this);
+        menuLayer.setBackgroundColor(0x00000000);
+        menuLayer.setClickable(true);
+
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setPadding(dp(8), dp(12), dp(8), dp(8));
+        FrostedGlass glass = new FrostedGlass(dp(20), 0xB81C1C22, grain(), unit);
+        glass.rimStrength = 0.6f;
+        panel.setBackground(glass);
+        panel.setElevation(dp(30));
+        panel.setClipChildren(false);
+        panel.setClipToPadding(false);
+
+        TextView head = text(11, Ui.font(this, "semibold"), 0.55f);
+        head.setText(title);
+        head.setShadowLayer(0, 0, 0, 0);
+        head.setPadding(dp(12), 0, dp(12), dp(8));
+        head.setSingleLine(true);
+        head.setEllipsize(TextUtils.TruncateAt.END);
+        panel.addView(head);
+
+        List<View> rows = new ArrayList<>();
+        for (int i = 0; i < labels.size(); i++) {
+            int idx = i;
+            TextView row = text(14, Ui.font(this, "medium"), 1f);
+            row.setText(labels.get(i));
+            row.setShadowLayer(0, 0, 0, 0);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            row.setPadding(dp(12), 0, dp(12), 0);
+            row.setFocusable(true);
+            row.setClickable(true);
+            int base = i == destructive ? 0xFFFF6B5E : Color.WHITE;
+            row.setTextColor(base);
+            GradientDrawable pill = new GradientDrawable();
+            pill.setCornerRadius(dp(12));
+            pill.setColor(Color.TRANSPARENT);
+            row.setBackground(pill);
+            row.setOnFocusChangeListener((v, has) -> {
+                pill.setColor(has ? 0xFFFFFFFF : Color.TRANSPARENT);
+                row.setTextColor(has ? (idx == destructive ? 0xFFD7372A : 0xFF111114) : base);
+                v.animate().scaleX(has ? 1.04f : 1f).scaleY(has ? 1.04f : 1f).setDuration(160).setInterpolator(LIFT).start();
+            });
+            row.setOnClickListener(v -> {
+                closeMenu();
+                actions.get(idx).run();
+            });
+            LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(34));
+            rlp.topMargin = dp(2);
+            panel.addView(row, rlp);
+            rows.add(row);
+        }
+        // Wrap focus top <-> bottom and keep it inside the menu.
+        for (int i = 0; i < rows.size(); i++) {
+            View r = rows.get(i);
+            r.setId(View.generateViewId());
+        }
+        for (int i = 0; i < rows.size(); i++) {
+            View r = rows.get(i);
+            r.setNextFocusUpId(rows.get((i - 1 + rows.size()) % rows.size()).getId());
+            r.setNextFocusDownId(rows.get((i + 1) % rows.size()).getId());
+            r.setNextFocusLeftId(r.getId());
+            r.setNextFocusRightId(r.getId());
+        }
+
+        int w = dp(220);
+        int[] loc = new int[2];
+        anchor.getLocationInWindow(loc);
+        float aw = anchor.getWidth() * anchor.getScaleX(), ah = anchor.getHeight() * anchor.getScaleY();
+        int x = (int) (loc[0] + aw + dp(18));
+        if (x + w > screenW - dp(24)) x = (int) (loc[0] - w - dp(18));
+        x = Math.max(dp(24), x);
+        panel.measure(View.MeasureSpec.makeMeasureSpec(w, View.MeasureSpec.EXACTLY), View.MeasureSpec.UNSPECIFIED);
+        int h = panel.getMeasuredHeight();
+        int y = (int) (loc[1] + ah / 2 - h / 2f);
+        y = Math.max(dp(24), Math.min(y, screenH - h - dp(24)));
+        FrameLayout.LayoutParams plp = new FrameLayout.LayoutParams(w, ViewGroup.LayoutParams.WRAP_CONTENT);
+        plp.leftMargin = x;
+        plp.topMargin = y;
+        menuLayer.addView(panel, plp);
+        root.addView(menuLayer, match());
+
+        // Pop in from the card's side.
+        panel.setPivotX(x > loc[0] ? 0 : w);
+        panel.setPivotY(h / 2f);
+        panel.setAlpha(0f);
+        panel.setScaleX(0.9f);
+        panel.setScaleY(0.9f);
+        panel.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(220).setInterpolator(LIFT).start();
+        menuLayer.animate().setDuration(220).start();
+        menuLayer.setBackgroundColor(0x59000000);
+        if (!rows.isEmpty()) rows.get(0).requestFocus();
+    }
+
+    void closeMenu() {
+        if (menuLayer == null) return;
+        FrameLayout m = menuLayer;
+        menuLayer = null;
+        m.animate().alpha(0f).setDuration(150).withEndAction(() -> root.removeView(m)).start();
+        if (menuReturnFocus != null && menuReturnFocus.isAttachedToWindow()) menuReturnFocus.requestFocus();
+        menuReturnFocus = null;
     }
 
     void startSafe(Intent i) {
