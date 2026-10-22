@@ -19,6 +19,12 @@ The top-shelf choice (recommendations / news) belongs to each profile; each mix 
 
 Settings → Home → **Run setup again** repeats it.
 
+| | | |
+|---|---|---|
+| ![Welcome](images/setup-0.jpg) | ![Profile](images/setup-1.jpg) | ![Look](images/setup-2.jpg) |
+| ![Home Screen](images/setup-3.jpg) | ![Weather](images/setup-4.jpg) | ![Presentation](images/setup-5.jpg) |
+| ![Finish](images/setup-6.jpg) | ![Done](images/setup-7.jpg) | |
+
 ## Home screen
 
 - **Dock**: the first row of apps sits on a frosted Liquid Glass panel that shows a blurred,

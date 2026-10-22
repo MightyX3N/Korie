@@ -65,7 +65,7 @@ public class SetupActivity extends Activity {
         page.setClipChildren(false);
         page.setClipToPadding(false);
         FrameLayout.LayoutParams plp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
-        page.setPadding(0, u(70), 0, u(40));
+        page.setPadding(0, u(54), 0, u(28));
         root.addView(page, plp);
         setContentView(root);
 
@@ -273,7 +273,8 @@ public class SetupActivity extends Activity {
         by.setTextColor(0x80FFFFFF);
         by.setTypeface(Ui.font(this, "regular"));
         Ui.textSize(by, 13);
-        page.addView(by);
+        by.setGravity(Gravity.CENTER);
+        page.addView(by, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
     }
 
     void profile() {
@@ -367,7 +368,7 @@ public class SetupActivity extends Activity {
     void homeContent() {
         backdrop.animate().alpha(0.5f).setDuration(300).start();
         title("Your Home Screen");
-        subtitle("What " + Profiles.current(this).name + " sees in the full-screen area behind the apps. Turn on either, both or none.");
+        subtitle("What appears in the full-screen area behind your apps. Choose either, both or none.");
         boolean recs = Suggestions.showRecs(this), news = Suggestions.showNews(this);
         LinearLayout l = list();
         option(l, "Recommendations", "Popular movies and series on your streaming services", recs, () -> {
@@ -420,16 +421,16 @@ public class SetupActivity extends Activity {
     /** Presentation is for the whole TV: switch it on and choose its options here, once. */
     void presentation() {
         ImageView icon = new ImageView(this);
-        icon.setImageBitmap(com.petrobot.hume.present.PresentIcon.banner(u(110) * 2, u(66) * 2));
+        icon.setImageBitmap(com.petrobot.hume.present.PresentIcon.banner(u(90) * 2, u(54) * 2));
         icon.setClipToOutline(true);
         GradientDrawable shape = new GradientDrawable();
         shape.setCornerRadius(u(9));
         icon.setBackground(shape);
-        LinearLayout.LayoutParams ilp = new LinearLayout.LayoutParams(u(110), u(66));
-        ilp.bottomMargin = u(12);
+        LinearLayout.LayoutParams ilp = new LinearLayout.LayoutParams(u(90), u(54));
+        ilp.bottomMargin = u(10);
         page.addView(icon, ilp);
         title("Presentation");
-        subtitle("Show images, videos and webpages on this TV, sent from any phone or computer on the same Wi-Fi. These settings are for everyone on this TV.");
+        subtitle("Images, videos and webpages sent from any phone or computer on the same Wi-Fi. For everyone on this TV.");
         boolean on = com.petrobot.hume.present.Presenter.enabled(this);
         LinearLayout l = list();
         option(l, "Use Presentation", on ? "Adds a Presentation card to Home" : "Off", on, () -> {
@@ -487,15 +488,24 @@ public class SetupActivity extends Activity {
         backdrop.animate().alpha(0f).setDuration(300).start();
         View top = new View(this);
         page.addView(top, new LinearLayout.LayoutParams(1, 0, 1f));
-        TextView check = new TextView(this);
-        check.setText("\u2713");
-        check.setTextColor(Color.WHITE);
-        check.setGravity(Gravity.CENTER);
-        Ui.textSize(check, 30);
-        GradientDrawable g = new GradientDrawable();
-        g.setShape(GradientDrawable.OVAL);
-        g.setColor(0xFF30D158);
-        check.setBackground(g);
+        int cs = u(64);
+        Bitmap cb = Bitmap.createBitmap(cs, cs, Bitmap.Config.ARGB_8888);
+        android.graphics.Canvas cc = new android.graphics.Canvas(cb);
+        android.graphics.Paint cp = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+        cp.setColor(0xFF30D158);
+        cc.drawCircle(cs / 2f, cs / 2f, cs / 2f, cp);
+        cp.setColor(Color.WHITE);
+        cp.setStyle(android.graphics.Paint.Style.STROKE);
+        cp.setStrokeWidth(cs * 0.09f);
+        cp.setStrokeCap(android.graphics.Paint.Cap.ROUND);
+        cp.setStrokeJoin(android.graphics.Paint.Join.ROUND);
+        android.graphics.Path tick = new android.graphics.Path();
+        tick.moveTo(cs * 0.29f, cs * 0.52f);
+        tick.lineTo(cs * 0.44f, cs * 0.67f);
+        tick.lineTo(cs * 0.72f, cs * 0.37f);
+        cc.drawPath(tick, cp);
+        ImageView check = new ImageView(this);
+        check.setImageBitmap(cb);
         LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(u(64), u(64));
         clp.bottomMargin = u(18);
         page.addView(check, clp);
