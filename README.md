@@ -24,4 +24,4 @@ Documentation: **[docs/](docs/README.md)** — [install](docs/install.md) ·
 adb install -r build/tvos-home.apk
 ```
 
-Navigation sounds: "Interface Sounds" by Kenney (www.kenney.nl), CC0.
+Navigation sounds: CC0 clips from Freesound.org (credits in assets/sounds/LICENSE.txt).

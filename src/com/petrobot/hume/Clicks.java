@@ -6,7 +6,7 @@ import android.media.SoundPool;
 
 /**
  * Apple TV-style navigation sounds: a soft click when focus moves, a fuller click on select and a
- * low one on Back. The sounds are Kenney's "Interface Sounds" (CC0, assets/sounds/LICENSE.txt),
+ * low one on Back. The sounds are CC0 clips from Freesound (assets/sounds/LICENSE.txt), trimmed and levelled,
  * played through a SoundPool so playback is instant. Settings -> Home -> Navigation sounds.
  */
 final class Clicks {
@@ -35,9 +35,9 @@ final class Clicks {
             if (status == 0) ready++;
         });
         try {
-            move = pool.load(c.getAssets().openFd("sounds/nav_move.ogg"), 1);
-            select = pool.load(c.getAssets().openFd("sounds/nav_select.ogg"), 1);
-            back = pool.load(c.getAssets().openFd("sounds/nav_back.ogg"), 1);
+            move = pool.load(c.getAssets().openFd("sounds/nav_move.wav"), 1);
+            select = pool.load(c.getAssets().openFd("sounds/nav_select.wav"), 1);
+            back = pool.load(c.getAssets().openFd("sounds/nav_back.wav"), 1);
         } catch (Exception ignored) {
             // no sounds
         }

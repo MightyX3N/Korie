@@ -113,7 +113,7 @@ which also turns the button on or off. Boxes without inputs (such as a Mi Box) s
 ## Navigation sounds
 
 A soft click on each D-pad move, a fuller click on select and a low one on Back, like Apple TV.
-The sounds are from Kenney's "Interface Sounds" pack, released as CC0 (public domain); see
+The sounds are CC0 (public domain) clips from Freesound, trimmed and level-matched; credits in
 `assets/sounds/LICENSE.txt`. Settings → Home → Navigation sounds.
 
 ## Idle full-screen carousel
