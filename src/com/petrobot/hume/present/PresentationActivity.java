@@ -50,7 +50,7 @@ import java.util.Map;
 /**
  * Full-screen presentation player (port of PlaybackEngine.kt + MainActivity.kt from pb-marketer-tv).
  * Plays the Default playlist in a loop: images for their duration, videos to the end, webpages with
- * the original auto-scroll behaviour. Remote: ◀ ▶ previous/next, OK pause/play, ▲ ▼ Info connection
+ * the original auto-scroll behaviour. Remote: \u25c0 \u25b6 previous/next, OK pause/play, \u25b2 \u25bc Info connection
  * card, Back twice to exit.
  */
 public class PresentationActivity extends Activity implements AdminServer.Gateway {
@@ -71,6 +71,7 @@ public class PresentationActivity extends Activity implements AdminServer.Gatewa
     ImageView imageView;
     WebView webView;
     LinearLayout messageCard;
+    View emptyView;
     TextView messageTitle, messageBody;
     View connectionCard;
     TextView stateBadge;
@@ -220,6 +221,10 @@ public class PresentationActivity extends Activity implements AdminServer.Gatewa
         cp.bottomMargin = u(32);
         root.addView(connectionCard, cp);
 
+        emptyView = buildEmptyView();
+        emptyView.setVisibility(View.GONE);
+        root.addView(emptyView, match());
+
         stateBadge = label(14, "semibold", 1f);
         stateBadge.setPadding(u(18), u(9), u(18), u(9));
         stateBadge.setBackground(glass(u(20), 0xB31C1C22));
@@ -229,6 +234,46 @@ public class PresentationActivity extends Activity implements AdminServer.Gatewa
         sp.topMargin = u(28);
         sp.rightMargin = u(32);
         root.addView(stateBadge, sp);
+    }
+
+    /**
+     * Empty playlist: one centred screen instead of two overlapping cards \u2014 the Presentation
+     * icon, a title and a line of help, then the QR / address / pairing code card.
+     */
+    View buildEmptyView() {
+        FrameLayout v = new FrameLayout(this);
+        GradientDrawable bg = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+                new int[]{0xFF1A1A2E, 0xFF0B0B12, 0xFF000000});
+        v.setBackground(bg);
+        LinearLayout col = new LinearLayout(this);
+        col.setOrientation(LinearLayout.VERTICAL);
+        col.setGravity(Gravity.CENTER_HORIZONTAL);
+        ImageView icon = new ImageView(this);
+        icon.setImageBitmap(PresentIcon.banner(u(150) * 2, u(90) * 2));
+        icon.setScaleType(ImageView.ScaleType.FIT_XY);
+        icon.setClipToOutline(true);
+        GradientDrawable shape = new GradientDrawable();
+        shape.setCornerRadius(u(12));
+        icon.setBackground(shape);
+        col.addView(icon, new LinearLayout.LayoutParams(u(150), u(90)));
+        TextView t = label(26, "semibold", 1f);
+        t.setText("Nothing to present yet");
+        t.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams tl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        tl.topMargin = u(20);
+        col.addView(t, tl);
+        TextView b = label(14, "regular", 0.7f);
+        b.setText("Add images, videos or webpages from a phone or computer on the same Wi-Fi.");
+        b.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams bl = new LinearLayout.LayoutParams(u(460), ViewGroup.LayoutParams.WRAP_CONTENT);
+        bl.topMargin = u(6);
+        col.addView(b, bl);
+        LinearLayout.LayoutParams cl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        cl.topMargin = u(26);
+        col.addView(buildConnectionCard(), cl);
+        v.addView(col, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER));
+        return v;
     }
 
     /** tvOS-style card: QR, "Send to this TV", address and PIN. */
@@ -320,7 +365,7 @@ public class PresentationActivity extends Activity implements AdminServer.Gatewa
         }
     }
 
-    // ------------------------------------------------------------------ Gateway (web → TV)
+    // ------------------------------------------------------------------ Gateway (web \u2192 TV)
 
     @Override public void reload() {
         handler.post(this::loadPlaylist);
@@ -365,7 +410,7 @@ public class PresentationActivity extends Activity implements AdminServer.Gatewa
                     if (isAutoScrollSlide()) startAutoScroll(false);
                     else if (current() != null && !Model.VIDEO.equals(current().type)) schedule();
                     setState("playing");
-                    badge("▶  Playing");
+                    badge("\u25b6  Playing");
                 }
                 break;
             case "pause":
@@ -375,7 +420,7 @@ public class PresentationActivity extends Activity implements AdminServer.Gatewa
                 handler.removeCallbacks(scrollStep);
                 if (mediaPlayer != null && mediaPlayer.isPlaying()) mediaPlayer.pause();
                 setState("paused");
-                badge("❚❚  Paused");
+                badge("\u275a\u275a  Paused");
                 break;
             case "next":
                 next();
@@ -409,6 +454,7 @@ public class PresentationActivity extends Activity implements AdminServer.Gatewa
         stopAutoScroll();
         hideSurfaces();
         messageCard.setVisibility(View.GONE);
+        emptyView.setVisibility(View.GONE);
         switch (s.type) {
             case Model.IMAGE: showImage(s); break;
             case Model.VIDEO: showVideo(s); break;
@@ -552,13 +598,10 @@ public class PresentationActivity extends Activity implements AdminServer.Gatewa
 
     void showNoSlides() {
         hideSurfaces();
-        connectionCard.setVisibility(View.VISIBLE);
-        connectionCard.setAlpha(1f);
         handler.removeCallbacks(hidePanel);
-        messageTitle.setText("Nothing to present yet");
-        messageBody.setText("Open " + Presenter.address().replace("http://", "")
-                + " on a phone or computer, enter the pairing code, and add images, videos or webpages.");
-        messageCard.setVisibility(View.VISIBLE);
+        connectionCard.setVisibility(View.GONE);
+        messageCard.setVisibility(View.GONE);
+        emptyView.setVisibility(View.VISIBLE);
         synchronized (statusLock) {
             status = new Model.Status();
             status.state = "empty";
@@ -820,6 +863,7 @@ public class PresentationActivity extends Activity implements AdminServer.Gatewa
     // ------------------------------------------------------------------ overlays & helpers
 
     void showConnection(long ms) {
+        if (emptyView.getVisibility() == View.VISIBLE) return;  // the empty screen already shows it
         handler.removeCallbacks(hidePanel);
         fade(connectionCard, true);
         if (!slides.isEmpty()) handler.postDelayed(hidePanel, ms);

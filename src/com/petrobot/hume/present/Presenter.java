@@ -8,7 +8,7 @@ import android.util.Log;
 /**
  * Presentation feature entry point (replaces AppGraph.kt). Owns the repository, pairing and the
  * admin server, and forwards web commands to the on-screen player when it is open.
- * All user-facing options live in the launcher's Settings → Presentation.
+ * All user-facing options live in the launcher's Settings \u2192 Presentation.
  */
 public final class Presenter {
     private Presenter() { }
@@ -40,7 +40,7 @@ public final class Presenter {
     }
 
     public static boolean showInfoOnStart(Context c) {
-        return prefs(c).getBoolean(K_INFO, true);
+        return true;  // the address and pairing code always show when a presentation starts
     }
 
     public static void set(Context c, String key, boolean on) {
@@ -85,7 +85,7 @@ public final class Presenter {
                     Model.Status s = new Model.Status();
                     s.available = false;
                     s.state = "not_on_screen";
-                    s.error = "Presentation isn’t on screen";
+                    s.error = "Presentation isn\u2019t on screen";
                     return s;
                 }
             });
@@ -133,7 +133,7 @@ public final class Presenter {
     private static boolean bootHandled;
 
     /**
-     * "Start on boot": opens the presentation once per boot (whichever comes first — the boot
+     * "Start on boot": opens the presentation once per boot (whichever comes first \u2014 the boot
      * broadcast or the Home screen starting up shortly after boot).
      */
     public static synchronized void openOnBootOnce(Context c) {

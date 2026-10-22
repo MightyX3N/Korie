@@ -242,6 +242,7 @@ function renderMedia() {
 async function uploadFiles(files) {
   const list = files.filter((f) => /^(image|video)\//.test(mimeFor(f)));
   if (list.length < files.length) toast("Only images and videos can be uploaded", "error");
+  let ok = 0;
   for (const file of list) {
     const row = document.createElement("div");
     row.className = "upload";
@@ -252,6 +253,7 @@ async function uploadFiles(files) {
       row.classList.add("done");
       row.querySelector("i").style.width = "100%";
       row.querySelector("[data-s]").textContent = "Uploaded";
+      ok++;
       await refreshMedia();
       setTimeout(() => row.remove(), 2500);
     } catch (err) {
@@ -259,7 +261,11 @@ async function uploadFiles(files) {
       row.querySelector("[data-s]").textContent = err.message || "Upload failed";
     }
   }
-  if (list.length) toast(list.length === 1 ? `${list[0].name} uploaded` : `${list.length} files uploaded`);
+  // Report what actually happened, not how many files were picked.
+  const failed = list.length - ok;
+  if (ok && !failed) toast(ok === 1 ? `${list[0].name} uploaded` : `${ok} files uploaded`);
+  else if (ok && failed) toast(`${ok} uploaded, ${failed} failed`, "error");
+  else if (failed) toast(failed === 1 ? "Upload failed" : `${failed} uploads failed`, "error");
 }
 
 function uploadOne(file, onProgress) {
@@ -399,7 +405,7 @@ function renderInspector() {
   const g = [];
   if (s.type === "webpage") {
     g.push(`<div class="group-label">Webpage</div><div class="group">
-      <div class="cell stack"><input data-f="url" type="url" value="${esc(s.url || "")}" placeholder="https://example.com" aria-label="Webpage address"></div>
+      <div class="cell stack"><input data-f="url" type="text" inputmode="url" autocapitalize="off" spellcheck="false" value="${esc(s.url || "")}" placeholder="https://example.com" aria-label="Webpage address"></div>
       <div class="cell"><span>Auto-scroll</span><label class="switch"><input type="checkbox" data-f="webpageAutoScroll" ${s.webpageAutoScroll !== false ? "checked" : ""} aria-label="Auto-scroll"><span></span></label></div>
       ${s.webpageAutoScroll !== false ? `
       <div class="cell stack"><span>Scroll speed</span><div class="row"><input data-f="webpageScrollSpeedPxPerSec" type="range" min="5" max="400" value="${Math.min(400, s.webpageScrollSpeedPxPerSec || 40)}" aria-label="Scroll speed"><span class="val" data-v="speed">${s.webpageScrollSpeedPxPerSec || 40} px/s</span></div></div>
@@ -430,7 +436,7 @@ function renderInspector() {
   box.innerHTML = g.join("");
 
   box.querySelectorAll("[data-f]").forEach((input) => {
-    const live = input.type === "range" || input.type === "number" || input.type === "url";
+    const live = input.type === "range" || input.type === "number" || input.dataset.f === "url";
     input.addEventListener(live ? "input" : "change", () => updateField(i, input));
   });
   box.querySelectorAll("[data-fit]").forEach((b) => b.addEventListener("click", () => {
@@ -537,7 +543,7 @@ function toggleMenu(open) {
 function openWebpageSheet() {
   $("sheetTitle").textContent = "Add Webpage";
   $("sheetBody").innerHTML = `<form id="webForm" class="web-form">
-    <div class="group"><div class="cell stack"><input id="webUrl" type="url" placeholder="https://example.com/dashboard" aria-label="Webpage address" required></div></div>
+    <div class="group"><div class="cell stack"><input id="webUrl" type="text" inputmode="url" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="example.com/dashboard" aria-label="Webpage address" required></div></div>
     <p class="secondary small">The page opens full screen on the TV and scrolls down slowly. You can change scrolling in the slide’s settings.</p>
     <button class="btn primary wide" type="submit">Add Slide</button></form>`;
   $("sheet").classList.remove("hidden");
@@ -574,6 +580,8 @@ async function savePlaylist() {
   if (!state.dirty) return;
   ensureDraft();
   normalizeOrders();
+  // Addresses typed without a scheme ("example.com") get https:// added.
+  state.draft.slides.forEach((s) => { if (s.type === "webpage" && s.url && !/^[a-z]+:\/\//i.test(s.url.trim())) s.url = "https://" + s.url.trim(); });
   const errors = validateDraft();
   if (errors.length) { $("saveError").textContent = errors.join(" "); return; }
   $("saveBtn").disabled = true;

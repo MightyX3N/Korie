@@ -40,11 +40,14 @@ final class Suggestions {
     static final String PREFS = "suggestions";
     static final String K_ENABLED = "enabled", K_TOKEN = "tmdb_token", K_TYPES = "types",
             K_PROVIDERS = "providers", K_LANGS = "languages", K_ADVANCE = "advance_sec", K_VERSION = "version",
-            K_SOURCE = "source";
+            K_SOURCE = "source", K_SHELF = "shelf";
+    /** What the top shelf shows: recommendations, news, both (alternating) or nothing. */
+    static final String SHELF_RECS = "recs", SHELF_NEWS = "news", SHELF_BOTH = "both", SHELF_NONE = "none";
     /** Recommendation sources: JustWatch needs no key (unofficial API); TMDB needs a token. */
     static final String SRC_JUSTWATCH = "justwatch", SRC_TMDB = "tmdb";
-    static final long MAX_AGE_MS = 6L * 60 * 60 * 1000;
-    static final int PER_SOURCE = 3, MAX_ITEMS = 10;
+    static final long MAX_AGE_MS = 2L * 60 * 60 * 1000;  // recommendations rotate every 2 hours
+    /** POOL titles are fetched per service; PER_SOURCE of them are picked at random each refresh. */
+    static final int PER_SOURCE = 3, POOL = 20, MAX_ITEMS = 10;
 
     /** A streaming service available in India: TMDB provider id, display name, Android TV package. */
     static final class Provider {
@@ -82,12 +85,14 @@ final class Suggestions {
         float progress = -1f;
         int remainingMin = -1;
         double rating;
+        /** News: when the story was published (ms), for "2 h ago". */
+        long published;
 
         JSONObject toJson() throws Exception {
             return new JSONObject().put("id", id).put("providerId", providerId).put("type", type)
                     .put("title", title).put("overview", overview).put("backdrop", backdrop)
                     .put("logo", logo == null ? "" : logo).put("year", year).put("genres", genres).put("rating", rating)
-                    .put("link", link);
+                    .put("link", link).put("pub", published);
         }
 
         static Item fromJson(JSONObject o) {
@@ -104,6 +109,7 @@ final class Suggestions {
             i.genres = o.optString("genres");
             i.rating = o.optDouble("rating", 0);
             i.link = o.optString("link");
+            i.published = o.optLong("pub");
             return i;
         }
 
@@ -119,8 +125,37 @@ final class Suggestions {
         return c.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
     }
 
+    /** What this profile's top shelf shows (each profile chooses; older global setting as fallback). */
+    static String shelf(Context c) {
+        String own = Profiles.homePrefs(c).getString(K_SHELF, null);
+        if (own != null) return own;
+        SharedPreferences p = prefs(c);
+        if (!p.contains(K_SHELF) && !p.getBoolean(K_ENABLED, true)) return SHELF_NONE;  // older setting
+        return p.getString(K_SHELF, SHELF_BOTH);
+    }
+
+    static void setShelf(Context c, String value) {
+        Profiles.homePrefs(c).edit().putString(K_SHELF, value).apply();
+        changed(c);
+    }
+
+    /** Recommendations and/or news for this profile, as two switches. */
+    static void setShelf(Context c, boolean recs, boolean news) {
+        setShelf(c, recs && news ? SHELF_BOTH : recs ? SHELF_RECS : news ? SHELF_NEWS : SHELF_NONE);
+    }
+
+    static boolean showRecs(Context c) {
+        String s = shelf(c);
+        return s.equals(SHELF_RECS) || s.equals(SHELF_BOTH);
+    }
+
+    static boolean showNews(Context c) {
+        String s = shelf(c);
+        return s.equals(SHELF_NEWS) || s.equals(SHELF_BOTH);
+    }
+
     static boolean enabled(Context c) {
-        return prefs(c).getBoolean(K_ENABLED, true);
+        return !shelf(c).equals(SHELF_NONE);
     }
 
     static String source(Context c) {
@@ -129,7 +164,7 @@ final class Suggestions {
 
     /** Whether the chosen source is usable right now (JustWatch always; TMDB once a token is set). */
     static boolean ready(Context c) {
-        return !source(c).equals(SRC_TMDB) || hasToken(c);
+        return showNews(c) || !source(c).equals(SRC_TMDB) || hasToken(c);
     }
 
     static boolean hasToken(Context c) {
@@ -168,15 +203,17 @@ final class Suggestions {
 
     // ------------------------------------------------------------------ data
 
+    /** One cache per content mix, so profiles with different choices don't overwrite each other. */
     static File cacheFile(Context c) {
-        return new File(c.getFilesDir(), "suggestions.json");
+        return new File(c.getFilesDir(), "suggestions_" + shelf(c) + ".json");
     }
 
     /** Cached list, or null when missing/stale. */
     static List<Item> cached(Context c, boolean allowStale) {
         File f = cacheFile(c);
         if (!f.exists()) return null;
-        if (!allowStale && System.currentTimeMillis() - f.lastModified() > MAX_AGE_MS) return null;
+        long maxAge = showNews(c) ? Math.min(News.refreshMinutes(c) * 60000L, MAX_AGE_MS) : MAX_AGE_MS;
+        if (!allowStale && System.currentTimeMillis() - f.lastModified() > maxAge) return null;
         try {
             JSONArray a = new JSONArray(new String(readAll(new FileInputStream(f)), StandardCharsets.UTF_8));
             List<Item> out = new ArrayList<>();
@@ -189,7 +226,39 @@ final class Suggestions {
 
     /** Fetches fresh suggestions from the chosen source (blocking; call off the UI thread). */
     static List<Item> fetch(Context c) throws Exception {
+        List<Item> recs = new ArrayList<>(), news = new ArrayList<>();
+        Exception err = null;
+        if (showRecs(c) && (!source(c).equals(SRC_TMDB) || hasToken(c))) {
+            try {
+                recs = fetchRecs(c);
+            } catch (Exception e) {
+                err = e;
+            }
+        }
+        if (showNews(c)) news = News.fetch(c, showRecs(c) ? 6 : MAX_ITEMS + 2);
+        // Both: alternate a recommendation and a story.
+        List<Item> out = new ArrayList<>();
+        for (int i = 0; i < Math.max(recs.size(), news.size()); i++) {
+            if (i < recs.size()) out.add(recs.get(i));
+            if (i < news.size()) out.add(news.get(i));
+        }
+        android.util.Log.i("TvHome", "top shelf: " + recs.size() + " recommendations, " + news.size() + " news");
+        if (out.isEmpty() && err != null) throw err;
+        JSONArray a = new JSONArray();
+        for (Item it : out) a.put(it.toJson());
+        try (OutputStream os = new FileOutputStream(cacheFile(c))) {
+            os.write(a.toString().getBytes(StandardCharsets.UTF_8));
+        }
+        return out;
+    }
+
+    /** Recommendations from the chosen source, interleaved across services. */
+    static List<Item> fetchRecs(Context c) throws Exception {
         List<List<Item>> sources = source(c).equals(SRC_TMDB) ? fetchTmdb(c) : fetchJustWatch(c);
+        // Rotate: a random pick from each service's popular pool, so the carousel changes through the day.
+        java.util.Random rnd = new java.util.Random();
+        for (List<Item> src : sources) java.util.Collections.shuffle(src, rnd);
+        java.util.Collections.shuffle(sources, rnd);
         List<Item> out = new ArrayList<>();
         Set<String> seen = new HashSet<>();
         for (int round = 0; round < PER_SOURCE && out.size() < MAX_ITEMS; round++) {
@@ -199,11 +268,6 @@ final class Suggestions {
                     if (seen.add(it.title.toLowerCase())) out.add(it);
                 }
             }
-        }
-        JSONArray a = new JSONArray();
-        for (Item it : out) a.put(it.toJson());
-        try (OutputStream os = new FileOutputStream(cacheFile(c))) {
-            os.write(a.toString().getBytes(StandardCharsets.UTF_8));
         }
         return out;
     }
@@ -228,12 +292,12 @@ final class Suggestions {
                         .put("objectTypes", new JSONArray().put(kind.equals("tv") ? "SHOW" : "MOVIE"))
                         .put("monetizationTypes", new JSONArray().put("FLATRATE").put("FREE").put("ADS"));
                 JSONObject vars = new JSONObject().put("country", "IN").put("language", "en")
-                        .put("first", PER_SOURCE + 3).put("filter", filter);
+                        .put("first", POOL).put("filter", filter);
                 JSONObject body = new JSONObject().put("query", JW_QUERY).put("variables", vars);
                 JSONObject res = post("https://apis.justwatch.com/graphql", body.toString());
                 JSONArray edges = res.getJSONObject("data").getJSONObject("popularTitles").getJSONArray("edges");
                 List<Item> list = new ArrayList<>();
-                for (int i = 0; i < edges.length() && list.size() < PER_SOURCE; i++) {
+                for (int i = 0; i < edges.length() && list.size() < POOL; i++) {
                     JSONObject n = edges.getJSONObject(i).getJSONObject("node");
                     JSONObject ct = n.getJSONObject("content");
                     JSONArray bds = ct.optJSONArray("backdrops");
@@ -280,7 +344,7 @@ final class Suggestions {
             String n = names.get(g.optJSONObject(i).optString("shortName"));
             if (n != null) out.add(n);
         }
-        return String.join(" · ", out);
+        return String.join(" \u00b7 ", out);
     }
 
     static JSONObject post(String url, String json) throws Exception {
@@ -320,7 +384,7 @@ final class Suggestions {
                 if (!langs.isEmpty()) q.append("&with_original_language=").append(URLEncoder.encode(String.join("|", langs), "UTF-8"));
                 JSONArray results = get(c, q.toString()).optJSONArray("results");
                 List<Item> list = new ArrayList<>();
-                for (int i = 0; results != null && i < results.length() && list.size() < PER_SOURCE; i++) {
+                for (int i = 0; results != null && i < results.length() && list.size() < POOL; i++) {
                     JSONObject r = results.getJSONObject(i);
                     String backdrop = r.optString("backdrop_path", "");
                     if (backdrop.isEmpty() || backdrop.equals("null")) continue;
@@ -394,10 +458,10 @@ final class Suggestions {
             String n = names.get(ids.optInt(i));
             if (n != null) out.add(n.replace("Action & Adventure", "Action").replace("Sci-Fi & Fantasy", "Sci-Fi"));
         }
-        return String.join(" · ", out);
+        return String.join(" \u00b7 ", out);
     }
 
-    /** TMDB GET. Accepts either a v4 read-access token (eyJ…) or a v3 API key. */
+    /** TMDB GET. Accepts either a v4 read-access token (eyJ\u2026) or a v3 API key. */
     static JSONObject get(Context c, String path) throws Exception {
         String token = prefs(c).getString(K_TOKEN, "").trim();
         if (token.isEmpty()) throw new IllegalStateException("No TMDB token");

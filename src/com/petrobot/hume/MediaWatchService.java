@@ -177,6 +177,26 @@ public class MediaWatchService extends NotificationListenerService {
             }
         }
 
+        /** Drops entries last played more than 7 days ago (and their saved artwork). */
+        static synchronized JSONArray pruneExpired(Context c) {
+            JSONArray a = read(c), keep = new JSONArray();
+            long now = System.currentTimeMillis();
+            boolean changed = false;
+            for (int i = 0; i < a.length(); i++) {
+                JSONObject o = a.optJSONObject(i);
+                if (o == null) continue;
+                if (now - o.optLong("ts", now) > EXPIRE_MS) {
+                    changed = true;
+                    String art = o.optString("art");
+                    if (art.startsWith("/")) new File(art).delete();
+                } else {
+                    keep.put(o);
+                }
+            }
+            if (changed) write(c, keep);
+            return keep;
+        }
+
         static synchronized void remove(Context c, String key) {
             JSONArray old = read(c), out = new JSONArray();
             for (int i = 0; i < old.length(); i++) {
@@ -191,8 +211,11 @@ public class MediaWatchService extends NotificationListenerService {
         }
 
         /** Newest first, as carousel items (pkg set, progress 0..1 or -1). */
+        /** Titles not played again for this long drop off Continue Watching. */
+        static final long EXPIRE_MS = 7L * 24 * 60 * 60 * 1000;
+
         static List<Suggestions.Item> list(Context c) {
-            JSONArray a = read(c);
+            JSONArray a = pruneExpired(c);
             List<Suggestions.Item> out = new ArrayList<>();
             for (int i = 0; i < a.length(); i++) {
                 JSONObject o = a.optJSONObject(i);
