@@ -135,6 +135,29 @@ public class SettingsActivity extends Activity {
             com.petrobot.hume.present.Presenter.open(this);
         });
 
+        section("Weather");
+        row("Show weather", () -> Weather.enabled(this) ? "On" : "Off", () -> {
+            Weather.prefs(this).edit().putBoolean(Weather.K_ENABLED, !Weather.enabled(this)).apply();
+            Weather.changed(this);
+        });
+        row("Location", () -> Weather.manual(this) ? Weather.place(this)
+                : Weather.place(this).isEmpty() ? "Automatic" : "Automatic \u00b7 " + Weather.place(this), this::chooseLocation);
+        row("Temperature", () -> {
+            String u = Weather.prefs(this).getString(Weather.K_UNITS, "auto");
+            return u.equals("c") ? "Celsius" : u.equals("f") ? "Fahrenheit" : "Automatic";
+        }, () -> {
+            String[] keys = {"auto", "c", "f"};
+            String[] names = {"Automatic", "Celsius (\u00b0C)", "Fahrenheit (\u00b0F)"};
+            String cur = Weather.prefs(this).getString(Weather.K_UNITS, "auto");
+            int sel = cur.equals("c") ? 1 : cur.equals("f") ? 2 : 0;
+            dialog("Temperature").setSingleChoiceItems(names, sel, (d, w) -> {
+                Weather.prefs(this).edit().putString(Weather.K_UNITS, keys[w]).apply();
+                Weather.changed(this);
+                refreshAll();
+                d.dismiss();
+            }).show();
+        });
+
         section("Suggestions");
         row("Show suggestions", () -> Suggestions.enabled(this) ? "On" : "Off", () -> {
             Suggestions.prefs(this).edit().putBoolean(Suggestions.K_ENABLED, !Suggestions.enabled(this)).apply();
@@ -327,6 +350,71 @@ public class SettingsActivity extends Activity {
                 .setNegativeButton("Cancel", null)
                 .show();
         in.requestFocus();
+    }
+
+    /** Automatic (from the internet address) or a city found by name. */
+    void chooseLocation() {
+        String[] names = {"Automatic", "Choose City\u2026"};
+        dialog("Weather location").setSingleChoiceItems(names, Weather.manual(this) ? 1 : 0, (d, w) -> {
+            d.dismiss();
+            if (w == 0) {
+                Weather.setPlace(this, null);
+                refreshAll();
+            } else {
+                searchCity();
+            }
+        }).show();
+    }
+
+    void searchCity() {
+        android.widget.EditText in = new android.widget.EditText(this);
+        in.setSingleLine(true);
+        in.setHint("City name, e.g. Bengaluru");
+        in.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_FLAG_CAP_WORDS);
+        int pad = Ui.px(this, 14);
+        FrameLayout box = new FrameLayout(this);
+        box.setPadding(pad, pad / 2, pad, 0);
+        box.addView(in);
+        dialog("Choose City")
+                .setView(box)
+                .setPositiveButton("Search", (d, w) -> {
+                    String q = in.getText().toString().trim();
+                    if (q.isEmpty()) return;
+                    new Thread(() -> {
+                        List<Weather.Place> found;
+                        try {
+                            found = Weather.search(q);
+                        } catch (Exception e) {
+                            found = null;
+                        }
+                        List<Weather.Place> res = found;
+                        runOnUiThread(() -> showCities(q, res));
+                    }).start();
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
+        in.requestFocus();
+    }
+
+    void showCities(String q, List<Weather.Place> res) {
+        if (isFinishing()) return;
+        if (res == null) {
+            Toast.makeText(this, "Couldn't search. Check the internet connection.", Toast.LENGTH_LONG).show();
+            return;
+        }
+        if (res.isEmpty()) {
+            Toast.makeText(this, "No city called \u201c" + q + "\u201d", Toast.LENGTH_LONG).show();
+            return;
+        }
+        String[] names = new String[res.size()];
+        for (int i = 0; i < names.length; i++) {
+            Weather.Place pl = res.get(i);
+            names[i] = pl.detail.isEmpty() ? pl.name : pl.name + "  \u00b7  " + pl.detail;
+        }
+        dialog("Choose City").setItems(names, (d, w) -> {
+            Weather.setPlace(this, res.get(w));
+            refreshAll();
+        }).setNegativeButton("Cancel", null).show();
     }
 
     /** Address, QR and pairing code for sending content from a phone or computer. */

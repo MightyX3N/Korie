@@ -17,6 +17,8 @@ source (Nayuki, MIT) under `src/io/nayuki/qrcodegen`.
 | `MediaWatchService.java` | Notification listener → media sessions → Continue Watching store; DND access |
 | `Profiles.java` | Profiles (max 3), unique emoji avatars, per-profile storage names |
 | `SleepReceiver.java` | Sleep via force-lock device admin; sleep timer alarm |
+| `Weather.java` | Open-Meteo forecast, IP location / city search, cache |
+| `WeatherView.java`, `WeatherIcons.java` | Weather overview card and forecast panel (drawn in code), multicolour weather icons |
 | `Glyphs.java` | Line glyphs drawn in code (Control Center, Presentation tile) |
 | `Ui.java` | Resolution-based sizing (960×540 design grid), fonts |
 | `present/Presenter.java` | Presentation entry point: settings, server lifecycle, player bridge, boot start |

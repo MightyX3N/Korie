@@ -243,6 +243,7 @@ public class MainActivity extends Activity {
         if (folderMode) {
             folderMode = false;
             switcher.setAlpha(1f);
+            weatherCard.setAlpha(weatherAlpha());
             launchTile = null;
             buildGrid();
             shelfEntry = null;
@@ -275,6 +276,9 @@ public class MainActivity extends Activity {
         returningFromSettings = false;
         loadHero();
         if (launchOverlay != null) finishLaunchReturn();
+        updateWeather();
+        handler.removeCallbacks(weatherTick);
+        handler.post(weatherTick);
     }
 
     @Override
@@ -282,6 +286,7 @@ public class MainActivity extends Activity {
         super.onPause();
         resumed = false;
         handler.removeCallbacks(heroAdvance);
+        handler.removeCallbacks(weatherTick);
     }
 
     @Override
@@ -332,6 +337,7 @@ public class MainActivity extends Activity {
         scroll.setOnScrollChangeListener((v, x, y, ox, oy) -> {
             if (launchOverlay == null && !statusFocused()) clockBox.setAlpha(clockAlpha());
             if (launchOverlay == null && !switcher.isFocused()) switcher.setAlpha(folderMode ? 0f : clockAlpha());
+            if (launchOverlay == null && weatherCard != null && !weatherCard.isFocused()) weatherCard.setAlpha(weatherAlpha());
             if (dockRow != null) dockRow.invalidate();
         });
 
@@ -447,6 +453,29 @@ public class MainActivity extends Activity {
         clp.topMargin = dp(24);
         clp.rightMargin = dockOuter;
         root.addView(clockBox, clp);
+
+        // Weather overview under the status row, over the top shelf; OK opens the forecast.
+        weatherCard = new WeatherView(this, false, unit);
+        weatherGlass = new LiquidGlass(dp(20), 0x2E000000, glassSource, screenW, screenH, unit);
+        weatherGlass.lens = dp(6);
+        weatherCard.setBackground(weatherGlass);
+        weatherCard.setFocusable(true);
+        weatherCard.setClickable(true);
+        weatherCard.setOnFocusChangeListener((v, has) -> {
+            weatherGlass.setLit(has);
+            if (has) v.setAlpha(1f);
+            v.animate().scaleX(has ? 1.05f : 1f).scaleY(has ? 1.05f : 1f).translationZ(has ? dp(10) : 0)
+                    .setDuration(200).setInterpolator(LIFT).start();
+        });
+        weatherCard.setPivotX(dp(WeatherView.COMPACT_W));
+        weatherCard.setPivotY(0);
+        weatherCard.setOnClickListener(v -> showWeather());
+        FrameLayout.LayoutParams wlp = new FrameLayout.LayoutParams(dp(WeatherView.COMPACT_W), dp(WeatherView.COMPACT_H),
+                Gravity.TOP | Gravity.END);
+        wlp.topMargin = dp(24) + btn + dp(14);
+        wlp.rightMargin = dockOuter;
+        root.addView(weatherCard, wlp);
+        updateWeather();
 
         setContentView(root);
     }
@@ -619,6 +648,7 @@ public class MainActivity extends Activity {
     void invalidateGlass() {
         if (dockRow != null) dockRow.invalidate();
         if (clockBox != null) clockBox.invalidate();
+        if (weatherCard != null) weatherCard.invalidate();
         if (menuLayer != null && menuLayer.getChildCount() > 0) menuLayer.getChildAt(0).invalidate();
     }
 
@@ -1530,6 +1560,8 @@ public class MainActivity extends Activity {
     boolean heroRequested;
 
     ImageView avatarView, ccButton;
+    WeatherView weatherCard;
+    LiquidGlass weatherGlass;
     int avatarSize;
     FrameLayout pickerLayer;
     BroadcastReceiver wakeReceiver;
@@ -1631,7 +1663,7 @@ public class MainActivity extends Activity {
                 case KeyEvent.KEYCODE_ENTER:
                     if (!down) setShelfMode(continueMode() ? "suggest" : "continue");
                     return true;
-                case KeyEvent.KEYCODE_DPAD_UP: if (down) ccButton.requestFocus(); return true;
+                case KeyEvent.KEYCODE_DPAD_UP: if (down) (weatherShown() ? weatherCard : ccButton).requestFocus(); return true;
                 case KeyEvent.KEYCODE_DPAD_DOWN:
                 case KeyEvent.KEYCODE_BACK:
                     if (down) {
@@ -1655,11 +1687,28 @@ public class MainActivity extends Activity {
                 if (down && f == ccButton) avatarView.requestFocus();
                 return true;
             }
-            if (k == KeyEvent.KEYCODE_DPAD_DOWN || k == KeyEvent.KEYCODE_BACK) {
+            if (k == KeyEvent.KEYCODE_DPAD_DOWN) {
+                if (down) (weatherShown() ? weatherCard : switcher).requestFocus();
+                return true;
+            }
+            if (k == KeyEvent.KEYCODE_BACK) {
                 if (down) switcher.requestFocus();
                 return true;
             }
             return k == KeyEvent.KEYCODE_DPAD_UP;
+        }
+        if (f == weatherCard) {
+            switch (k) {
+                case KeyEvent.KEYCODE_DPAD_UP: if (down) ccButton.requestFocus(); return true;
+                case KeyEvent.KEYCODE_DPAD_DOWN:
+                case KeyEvent.KEYCODE_BACK:
+                    if (down) switcher.requestFocus();
+                    return true;
+                case KeyEvent.KEYCODE_DPAD_LEFT:
+                case KeyEvent.KEYCODE_DPAD_RIGHT:
+                    return true;
+                default: return false;
+            }
         }
         int i = tiles.indexOf(f);
         if (i >= 0 && ((k == KeyEvent.KEYCODE_DPAD_RIGHT && (i % COLS == COLS - 1 || i == tiles.size() - 1))
@@ -1769,6 +1818,7 @@ public class MainActivity extends Activity {
                 .setUpdateListener(null).start();
         clockBox.animate().alpha(0f).setDuration(250).start();
         switcher.animate().alpha(0f).setDuration(250).start();
+        weatherCard.animate().alpha(0f).setDuration(250).start();
 
         handler.postDelayed(() -> {
             try {
@@ -1797,6 +1847,7 @@ public class MainActivity extends Activity {
                 .setUpdateListener(null).withEndAction(this::invalidateGlass).start();
         clockBox.animate().alpha(clockAlpha()).setDuration(420).start();
         switcher.animate().alpha(folderMode ? 0f : clockAlpha()).setDuration(420).start();
+        weatherCard.animate().alpha(weatherAlpha()).setDuration(420).start();
         if (tile != null) tile.animate().alpha(1f).setDuration(300).start();
         ov.animate().withLayer().alpha(0f).scaleX(0.96f).scaleY(0.96f).setDuration(300)
                 .setListener(new AnimatorListenerAdapter() {
@@ -2147,6 +2198,7 @@ public class MainActivity extends Activity {
             folderMode = true;
             setHeroShown(false);
             switcher.setAlpha(0f);
+            weatherCard.setAlpha(0f);
             shelfEmpty.setAlpha(0f);
             buildGrid();
             shelfEntry = null;
@@ -2159,6 +2211,7 @@ public class MainActivity extends Activity {
         animateGridSwap(() -> {
             folderMode = false;
             switcher.animate().alpha(1f).setDuration(250).start();
+            weatherCard.animate().alpha(weatherAlpha()).setDuration(250).start();
             buildGrid();
             shelfEntry = null;
             int i = indexOfKey(FOLDER_KEY);
@@ -2475,6 +2528,7 @@ public class MainActivity extends Activity {
      */
     void showControlCenter() {
         if (pickerLayer != null) root.removeView(pickerLayer);
+        weatherCard.animate().alpha(0f).setDuration(150).start();
         stopSway(null);
         popoverReturn = ccButton;
         FrameLayout layer = new FrameLayout(this);
@@ -2684,6 +2738,78 @@ public class MainActivity extends Activity {
                 .setPositiveButton("OK", null).show();
     }
 
+    // ---------------------------------------------------------------- weather
+
+    /** Refreshes the forecast when it is older than 30 minutes; checked every 5 minutes. */
+    final Runnable weatherTick = new Runnable() {
+        @Override public void run() {
+            Weather.refresh(MainActivity.this, false, MainActivity.this::updateWeather);
+            handler.postDelayed(this, 5 * 60 * 1000L);
+        }
+    };
+
+    boolean weatherShown() {
+        return weatherCard != null && weatherCard.getVisibility() == View.VISIBLE && weatherAlpha() > 0.5f;
+    }
+
+    float weatherAlpha() {
+        return folderMode || pickerLayer != null ? 0f : clockAlpha();
+    }
+
+    /** Shows the cached forecast (hidden when weather is off or nothing has loaded yet). */
+    void updateWeather() {
+        if (weatherCard == null) return;
+        Weather.Data d = Weather.enabled(this) ? Weather.cached(this) : null;
+        boolean show = d != null;
+        if (!show && weatherCard.isFocused()) switcher.requestFocus();
+        weatherCard.setVisibility(show ? View.VISIBLE : View.GONE);
+        weatherCard.setData(d);
+        if (show && !weatherCard.isFocused() && launchOverlay == null) weatherCard.setAlpha(weatherAlpha());
+    }
+
+    /** The full forecast: a glass panel under the status row, like Control Center. */
+    void showWeather() {
+        Weather.Data d = Weather.cached(this);
+        if (d == null) return;
+        if (pickerLayer != null) root.removeView(pickerLayer);
+        stopSway(null);
+        popoverReturn = weatherCard;
+        FrameLayout layer = new FrameLayout(this);
+        layer.setClickable(true);
+        View shade = new View(this);
+        shade.setBackground(new GradientDrawable(GradientDrawable.Orientation.RIGHT_LEFT,
+                new int[]{0xA6000000, 0x4D000000, 0x00000000}));
+        layer.addView(shade, new FrameLayout.LayoutParams(screenW * 3 / 5, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.END));
+
+        WeatherView panel = new WeatherView(this, true, unit);
+        LiquidGlass glass = new LiquidGlass(dp(26), 0x33000000, glassSource, screenW, screenH, unit);
+        glass.lens = dp(7);
+        panel.setBackground(glass);
+        panel.setFocusable(true);
+        panel.setData(d);
+        FrameLayout.LayoutParams plp = new FrameLayout.LayoutParams(dp(WeatherView.FULL_W), dp(WeatherView.FULL_H),
+                Gravity.TOP | Gravity.END);
+        plp.topMargin = dp(70);
+        plp.rightMargin = dockOuter;
+        layer.addView(panel, plp);
+
+        root.addView(layer, match());
+        pickerLayer = layer;
+        pickerCells = new ArrayList<>();
+        pickerCells.add(panel);
+        weatherCard.animate().alpha(0f).setDuration(150).start();
+        layer.setAlpha(0f);
+        panel.setTranslationY(-dp(10));
+        layer.animate().alpha(1f).setDuration(200).start();
+        panel.animate().translationY(0).setDuration(260).setInterpolator(EASE).start();
+        panel.requestFocus();
+        Weather.refresh(this, false, () -> {
+            Weather.Data nd = Weather.cached(this);
+            if (nd != null && panel.isAttachedToWindow()) panel.setData(nd);
+            updateWeather();
+        });
+    }
+
     // ---------------------------------------------------------------- profiles
 
     List<View> pickerCells = new ArrayList<>();
@@ -2695,6 +2821,7 @@ public class MainActivity extends Activity {
      */
     void showProfilePicker(boolean onWake) {
         if (pickerLayer != null) root.removeView(pickerLayer);
+        if (weatherCard != null) weatherCard.animate().alpha(0f).setDuration(150).start();
         popoverReturn = onWake ? null : avatarView;
         stopSway(null);
         FrameLayout layer = new FrameLayout(this);
@@ -2764,7 +2891,7 @@ public class MainActivity extends Activity {
 
     boolean statusFocused() {
         View f = getCurrentFocus();
-        return f != null && (f == ccButton || f == avatarView);
+        return f != null && (f == ccButton || f == avatarView || f == weatherCard);
     }
 
     /** Directional focus inside a popover: nearest cell whose centre lies in that direction. */
@@ -2893,6 +3020,7 @@ public class MainActivity extends Activity {
         FrameLayout l = pickerLayer;
         pickerLayer = null;
         l.animate().alpha(0f).setDuration(220).withEndAction(() -> root.removeView(l)).start();
+        weatherCard.animate().alpha(weatherAlpha()).setDuration(220).start();
         if (popoverReturn != null && popoverReturn.isAttachedToWindow()) popoverReturn.requestFocus();
         else goTop();
         popoverReturn = null;

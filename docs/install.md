@@ -11,7 +11,7 @@
 
 ```sh
 ./build.sh                        # uses JDK 17 and Android build-tools 34
-VERSION_CODE=49 VERSION_NAME=6.1 ./build.sh
+VERSION_CODE=50 VERSION_NAME=6.2 ./build.sh
 ```
 
 The script compiles resources (`aapt2`), Java (`javac`), dexes (`d8`), aligns and signs with

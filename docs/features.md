@@ -38,6 +38,17 @@ Shown behind the dock while a dock app is focused; below the dock the launcher b
   progress bars appears when focused; Menu → *Remove from Continue Watching*.
 - Left / Right browse with a slide animation; the carousel keeps its place when you come back.
 
+## Weather
+
+- A glass **overview card** sits under the status row, over the top shelf: city, current
+  conditions, today's high/low and the next five days. It fades with the top shelf like the time.
+- Press ↓ from the status row (or ↑ from the tab bar) to focus it; **OK** opens the forecast: current
+  temperature, humidity and wind, the next six hours, and a 5-day list with temperature range bars
+  (blue → red, with a dot for the current temperature), as in Apple Weather.
+- Data: [Open-Meteo](https://open-meteo.com) (free, no key), refreshed every 30 minutes and cached.
+  Location comes from the internet address (ipapi.co, ipwho.is or geojs.io) unless you choose a
+  city in Settings.
+
 ## Profiles
 
 - Up to **3 profiles**, each with a **unique emoji** on a pastel circle.
@@ -61,6 +72,7 @@ Opened from the gear in Control Center. Sections:
 
 - **Profiles** — current profile, show profiles on wake.
 - **Presentation** — see [presentation.md](presentation.md).
+- **Weather** — on/off, location (Automatic or Choose City… by name), temperature (Automatic / °C / °F).
 - **Suggestions** — on/off, source, content (movies/series), services, languages (TMDB),
   auto-advance, refresh, TMDB token.
 - **Continue Watching** — access status, clear history.
