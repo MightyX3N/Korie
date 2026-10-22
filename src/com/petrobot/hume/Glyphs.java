@@ -37,6 +37,20 @@ final class Glyphs {
                 p.setStyle(Paint.Style.FILL);
                 c.drawCircle(m, s * 0.78f, s * 0.06f, p);
                 break;
+            case "ethernet":  // three linked network nodes
+                p.setStrokeWidth(s * 0.075f);
+                c.drawLine(m, s * 0.36f, m, s * 0.5f, p);
+                c.drawLine(s * 0.27f, s * 0.5f, s * 0.73f, s * 0.5f, p);
+                c.drawLine(s * 0.27f, s * 0.5f, s * 0.27f, s * 0.62f, p);
+                c.drawLine(s * 0.73f, s * 0.5f, s * 0.73f, s * 0.62f, p);
+                p.setStyle(Paint.Style.FILL);
+                r.set(m - s * 0.12f, s * 0.14f, m + s * 0.12f, s * 0.36f);
+                c.drawRoundRect(r, s * 0.04f, s * 0.04f, p);
+                r.set(s * 0.15f, s * 0.62f, s * 0.39f, s * 0.84f);
+                c.drawRoundRect(r, s * 0.04f, s * 0.04f, p);
+                r.set(s * 0.61f, s * 0.62f, s * 0.85f, s * 0.84f);
+                c.drawRoundRect(r, s * 0.04f, s * 0.04f, p);
+                break;
             case "moon":
                 p.setStyle(Paint.Style.FILL);
                 path.addCircle(m, m, s * 0.34f, Path.Direction.CW);

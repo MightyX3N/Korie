@@ -293,6 +293,13 @@ public class MainActivity extends Activity {
     protected void onDestroy() {
         super.onDestroy();
         if (pkgReceiver != null) unregisterReceiver(pkgReceiver);
+        if (netCallback != null) {
+            try {
+                getSystemService(android.net.ConnectivityManager.class).unregisterNetworkCallback(netCallback);
+            } catch (Exception ignored) {
+                // already unregistered
+            }
+        }
         if (wakeReceiver != null) unregisterReceiver(wakeReceiver);
         handler.removeCallbacksAndMessages(null);
     }
@@ -404,6 +411,11 @@ public class MainActivity extends Activity {
         time.setFormat12Hour("h:mm a");
         time.setFormat24Hour("H:mm");
         time.setAllCaps(true);
+        // Internet status, left of the time: white when online, orange when there is no internet.
+        netIcon = new ImageView(this);
+        LinearLayout.LayoutParams nlp = new LinearLayout.LayoutParams(dp(20), dp(20));
+        nlp.rightMargin = dp(10);
+        clockBox.addView(netIcon, nlp);
         clockBox.addView(time);
 
         ccButton = new ImageView(this);
@@ -426,6 +438,31 @@ public class MainActivity extends Activity {
             v.animate().scaleX(has ? 1.12f : 1f).scaleY(has ? 1.12f : 1f).setDuration(200).setInterpolator(LIFT).start();
         });
         ccButton.setOnClickListener(v -> showControlCenter());
+
+        // Settings: the same glass circle, with a gear.
+        settingsButton = new ImageView(this);
+        settingsButton.setScaleType(ImageView.ScaleType.CENTER);
+        settingsButton.setImageBitmap(Glyphs.get("gear", dp(20), Color.WHITE));
+        LiquidGlass setGlass = new LiquidGlass(btn / 2f, 0x1F000000, glassSource, screenW, screenH, unit);
+        setGlass.lens = dp(4);
+        settingsButton.setBackground(setGlass);
+        settingsButton.setFocusable(true);
+        settingsButton.setClickable(true);
+        LinearLayout.LayoutParams sblp = new LinearLayout.LayoutParams(btn, btn);
+        sblp.leftMargin = dp(12);
+        clockBox.addView(settingsButton, sblp);
+        GradientDrawable setLit = new GradientDrawable();
+        setLit.setShape(GradientDrawable.OVAL);
+        setLit.setColor(Color.WHITE);
+        settingsButton.setOnFocusChangeListener((v, has) -> {
+            settingsButton.setBackground(has ? setLit : setGlass);
+            settingsButton.setImageBitmap(Glyphs.get("gear", dp(20), has ? 0xFF111114 : Color.WHITE));
+            v.animate().scaleX(has ? 1.12f : 1f).scaleY(has ? 1.12f : 1f).setDuration(200).setInterpolator(LIFT).start();
+        });
+        settingsButton.setOnClickListener(v -> {
+            returningFromSettings = true;
+            startActivity(new Intent(this, SettingsActivity.class));
+        });
 
         int av = btn;
         ImageView avatar = new ImageView(this);
@@ -453,6 +490,7 @@ public class MainActivity extends Activity {
         clp.topMargin = dp(24);
         clp.rightMargin = dockOuter;
         root.addView(clockBox, clp);
+        watchNetwork();
 
         // Weather overview under the status row, over the top shelf; OK opens the forecast.
         weatherCard = new WeatherView(this, false, unit);
@@ -1559,7 +1597,8 @@ public class MainActivity extends Activity {
     /** Carousel focused: the dock slides away and the artwork takes the whole screen (tvOS Top Shelf). */
     boolean heroRequested;
 
-    ImageView avatarView, ccButton;
+    ImageView avatarView, ccButton, settingsButton, netIcon;
+    android.net.ConnectivityManager.NetworkCallback netCallback;
     WeatherView weatherCard;
     LiquidGlass weatherGlass;
     int avatarSize;
@@ -1678,13 +1717,16 @@ public class MainActivity extends Activity {
                 default: return false;
             }
         }
-        if (f == ccButton || f == avatarView) {
+        if (f == ccButton || f == settingsButton || f == avatarView) {
+            // Status row, left to right: Control Center, Settings, profile.
+            View[] row = {ccButton, settingsButton, avatarView};
+            int at = f == ccButton ? 0 : f == settingsButton ? 1 : 2;
             if (k == KeyEvent.KEYCODE_DPAD_LEFT) {
-                if (down && f == avatarView) ccButton.requestFocus();
+                if (down && at > 0) row[at - 1].requestFocus();
                 return true;
             }
             if (k == KeyEvent.KEYCODE_DPAD_RIGHT) {
-                if (down && f == ccButton) avatarView.requestFocus();
+                if (down && at < 2) row[at + 1].requestFocus();
                 return true;
             }
             if (k == KeyEvent.KEYCODE_DPAD_DOWN) {
@@ -2738,6 +2780,83 @@ public class MainActivity extends Activity {
                 .setPositiveButton("OK", null).show();
     }
 
+    // ---------------------------------------------------------------- internet status
+
+    /** Follows the default network; Android marks it "validated" once the internet is reachable. */
+    void watchNetwork() {
+        updateNet();
+        if (netCallback != null) return;
+        netCallback = new android.net.ConnectivityManager.NetworkCallback() {
+            @Override public void onAvailable(android.net.Network n) { handler.post(MainActivity.this::updateNet); }
+            @Override public void onLost(android.net.Network n) { handler.post(MainActivity.this::updateNet); }
+            @Override public void onCapabilitiesChanged(android.net.Network n, android.net.NetworkCapabilities nc) {
+                handler.post(MainActivity.this::updateNet);
+            }
+        };
+        try {
+            getSystemService(android.net.ConnectivityManager.class).registerDefaultNetworkCallback(netCallback);
+        } catch (Exception e) {
+            netCallback = null;
+        }
+    }
+
+    int netState = -1;
+    boolean netEthernet;
+
+    void updateNet() {
+        if (netIcon == null) return;
+        android.net.ConnectivityManager cm = getSystemService(android.net.ConnectivityManager.class);
+        android.net.NetworkCapabilities nc = cm.getNetworkCapabilities(cm.getActiveNetwork());
+        int state = nc == null ? 0
+                : nc.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED) ? 2 : 1;
+        boolean eth = nc != null && nc.hasTransport(android.net.NetworkCapabilities.TRANSPORT_ETHERNET);
+        boolean back = netState == 0 || netState == 1;
+        if (state == netState && eth == netEthernet) return;
+        netState = state;
+        netEthernet = eth;
+        netIcon.setImageBitmap(netGlyph(state, eth, dp(20)));
+        netIcon.setContentDescription(state == 2 ? "Online" : state == 1 ? "No internet" : "Offline");
+        // Back online: refresh what needs the internet.
+        if (state == 2 && back) {
+            Weather.refresh(this, true, this::updateWeather);
+            loadHero();
+        }
+    }
+
+    /** Wi-Fi or Ethernet glyph; orange with "!" (no internet) or crossed out (no network). */
+    Bitmap netGlyph(int state, boolean eth, int s) {
+        int col = state == 2 ? Color.WHITE : 0xFFFF9F0A;
+        Bitmap b = Bitmap.createBitmap(s, s, Bitmap.Config.ARGB_8888);
+        Canvas c = new Canvas(b);
+        Bitmap g = Glyphs.get(eth ? "ethernet" : "wifi", s, col);
+        Paint sh = new Paint(Paint.ANTI_ALIAS_FLAG);
+        sh.setColorFilter(new android.graphics.PorterDuffColorFilter(0x59000000, android.graphics.PorterDuff.Mode.SRC_IN));
+        c.drawBitmap(g, 0, s * 0.04f, sh);  // soft shadow like the time's
+        c.drawBitmap(g, 0, 0, null);
+        Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
+        p.setStrokeCap(Paint.Cap.ROUND);
+        if (state == 0) {
+            Paint cut = new Paint(Paint.ANTI_ALIAS_FLAG);
+            cut.setXfermode(new android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.CLEAR));
+            cut.setStrokeWidth(s * 0.22f);
+            cut.setStrokeCap(Paint.Cap.ROUND);
+            c.drawLine(s * 0.16f, s * 0.12f, s * 0.86f, s * 0.86f, cut);
+            p.setColor(col);
+            p.setStrokeWidth(s * 0.09f);
+            c.drawLine(s * 0.16f, s * 0.12f, s * 0.86f, s * 0.86f, p);
+        } else if (state == 1) {
+            p.setColor(0xFF1C1C1E);
+            c.drawCircle(s * 0.8f, s * 0.24f, s * 0.2f, p);
+            p.setColor(col);
+            c.drawCircle(s * 0.8f, s * 0.24f, s * 0.16f, p);
+            p.setColor(0xFF1C1C1E);
+            p.setStrokeWidth(s * 0.06f);
+            c.drawLine(s * 0.8f, s * 0.16f, s * 0.8f, s * 0.25f, p);
+            c.drawCircle(s * 0.8f, s * 0.32f, s * 0.035f, p);
+        }
+        return b;
+    }
+
     // ---------------------------------------------------------------- weather
 
     /** Refreshes the forecast when it is older than 30 minutes; checked every 5 minutes. */
@@ -2891,7 +3010,7 @@ public class MainActivity extends Activity {
 
     boolean statusFocused() {
         View f = getCurrentFocus();
-        return f != null && (f == ccButton || f == avatarView || f == weatherCard);
+        return f != null && (f == ccButton || f == settingsButton || f == avatarView || f == weatherCard);
     }
 
     /** Directional focus inside a popover: nearest cell whose centre lies in that direction. */

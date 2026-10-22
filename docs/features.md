@@ -22,8 +22,16 @@
 | Move mode | Arrows / OK | Move the wiggling card / finish |
 | Dock | Up | Top shelf (or the tab bar if the shelf is empty) |
 | Tab bar | Left / Right | Suggestions ⇄ Continue Watching |
-| Status row | Left / Right | Control Center button ⇄ profile avatar |
+| Status row | Left / Right | Control Center ⇄ Settings ⇄ profile avatar |
 | Anywhere | Home | Back to the first app in the dock |
+
+## Status row
+
+Top right, as on tvOS: an **internet indicator**, the time, then glass **Control Center** and
+**Settings** buttons and the profile avatar. The indicator shows a white Wi-Fi or Ethernet symbol
+when the internet works, orange with "!" when the TV is on a network that can't reach the internet,
+and orange and crossed out with no network. When the internet comes back, weather and suggestions
+refresh by themselves.
 
 ## Top shelf
 
