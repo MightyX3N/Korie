@@ -137,6 +137,7 @@ final class WeatherView extends View {
             r.set(by0, cy - th / 2, by1, cy + th / 2);
             c.drawRoundRect(r, th / 2, th / 2, bar);
             float a = by0 + (by1 - by0) * (day.min - lo) / span, b = by0 + (by1 - by0) * (day.max - lo) / span;
+            bar.setColor(0xFFFFFFFF);  // opaque: the track's 20% alpha must not carry over to the range
             bar.setShader(new LinearGradient(a, 0, Math.max(b, a + 1), 0, tempColor(day.min, f), tempColor(day.max, f), Shader.TileMode.CLAMP));
             r.set(a, cy - th / 2, Math.max(b, a + th), cy + th / 2);
             c.drawRoundRect(r, th / 2, th / 2, bar);
