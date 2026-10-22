@@ -28,9 +28,10 @@
 ## Status row
 
 Top right, as on tvOS: an **internet indicator**, the time, then glass **Control Center** and
-**Settings** buttons and the profile avatar. The indicator shows a white Wi-Fi or Ethernet symbol
-when the internet works, orange with "!" when the TV is on a network that can't reach the internet,
-and orange and crossed out with no network. When the internet comes back, weather and suggestions
+**Settings** buttons and the profile avatar. The indicator is drawn like Apple's symbols, in white
+only: Wi-Fi bars lit by signal strength (unlit bars at 30%) or an Ethernet symbol when the internet
+works; dimmed bars with "!" when the TV is on a network that can't reach the internet; dimmed bars
+with a slash when there is no network. When the internet comes back, weather and suggestions
 refresh by themselves.
 
 ## Top shelf
@@ -53,8 +54,13 @@ Shown behind the dock while a dock app is focused; below the dock the launcher b
 - Press ↓ from the status row (or ↑ from the tab bar) to focus it; **OK** opens the forecast: current
   temperature, humidity and wind, the next six hours, and a 5-day list with temperature range bars
   (blue → red, with a dot for the current temperature), as in Apple Weather.
-- Data: [Open-Meteo](https://open-meteo.com) (free, no key), refreshed every 30 minutes and cached.
-  Location comes from the internet address (ipapi.co, ipwho.is or geojs.io) unless you choose a
+- Data from free services that need no key: [Open-Meteo](https://open-meteo.com) (default),
+  [MET Norway](https://api.met.no) (Yr) and [wttr.in](https://wttr.in) (3 days). The chosen source
+  is tried first and the others are used if it can't be reached; the forecast panel shows which
+  one answered and when.
+- Updates every **15 minutes** by default (10, 15, 30 or 60 in Settings), and right away when the
+  internet comes back. The last forecast is cached, so it shows instantly and while offline.
+- Location comes from the internet address (ipapi.co, ipwho.is or geojs.io) unless you choose a
   city in Settings.
 
 ## Profiles
@@ -80,7 +86,8 @@ Opened from the gear in Control Center. Sections:
 
 - **Profiles** — current profile, show profiles on wake.
 - **Presentation** — see [presentation.md](presentation.md).
-- **Weather** — on/off, location (Automatic or Choose City… by name), temperature (Automatic / °C / °F).
+- **Weather** — on/off, location (Automatic or Choose City… by name), source (Open-Meteo / MET
+  Norway / wttr.in), update interval (10 / 15 / 30 / 60 minutes), temperature (Automatic / °C / °F).
 - **Suggestions** — on/off, source, content (movies/series), services, languages (TMDB),
   auto-advance, refresh, TMDB token.
 - **Continue Watching** — access status, clear history.

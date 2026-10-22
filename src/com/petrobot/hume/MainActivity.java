@@ -413,7 +413,7 @@ public class MainActivity extends Activity {
         time.setAllCaps(true);
         // Internet status, left of the time: white when online, orange when there is no internet.
         netIcon = new ImageView(this);
-        LinearLayout.LayoutParams nlp = new LinearLayout.LayoutParams(dp(20), dp(20));
+        LinearLayout.LayoutParams nlp = new LinearLayout.LayoutParams(dp(24), dp(20));
         nlp.rightMargin = dp(10);
         clockBox.addView(netIcon, nlp);
         clockBox.addView(time);
@@ -2800,7 +2800,7 @@ public class MainActivity extends Activity {
         }
     }
 
-    int netState = -1;
+    int netState = -1, netBars = -1;
     boolean netEthernet;
 
     void updateNet() {
@@ -2810,11 +2810,22 @@ public class MainActivity extends Activity {
         int state = nc == null ? 0
                 : nc.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED) ? 2 : 1;
         boolean eth = nc != null && nc.hasTransport(android.net.NetworkCapabilities.TRANSPORT_ETHERNET);
+        int bars = 3;
+        if (nc != null && !eth) {
+            try {
+                android.net.wifi.WifiManager wm = getApplicationContext().getSystemService(android.net.wifi.WifiManager.class);
+                int level = android.net.wifi.WifiManager.calculateSignalLevel(wm.getConnectionInfo().getRssi(), 4);
+                bars = level <= 1 ? 1 : level == 2 ? 2 : 3;
+            } catch (Exception ignored) {
+                // keep full bars
+            }
+        }
         boolean back = netState == 0 || netState == 1;
-        if (state == netState && eth == netEthernet) return;
+        if (state == netState && eth == netEthernet && bars == netBars) return;
         netState = state;
         netEthernet = eth;
-        netIcon.setImageBitmap(netGlyph(state, eth, dp(20)));
+        netBars = bars;
+        netIcon.setImageBitmap(netGlyph(state, eth, bars, dp(20)));
         netIcon.setContentDescription(state == 2 ? "Online" : state == 1 ? "No internet" : "Offline");
         // Back online: refresh what needs the internet.
         if (state == 2 && back) {
@@ -2823,47 +2834,107 @@ public class MainActivity extends Activity {
         }
     }
 
-    /** Wi-Fi or Ethernet glyph; orange with "!" (no internet) or crossed out (no network). */
-    Bitmap netGlyph(int state, boolean eth, int s) {
-        int col = state == 2 ? Color.WHITE : 0xFFFF9F0A;
-        Bitmap b = Bitmap.createBitmap(s, s, Bitmap.Config.ARGB_8888);
+    /**
+     * Apple-style network symbol, white only: Wi-Fi as a dot-wedge and two bands lit by signal
+     * strength (unlit at 30%), or Ethernet; "!" beside it without internet (wifi.exclamationmark)
+     * and a slash through dimmed bands with no network (wifi.slash).
+     */
+    Bitmap netGlyph(int state, boolean eth, int bars, int s) {
+        int w = Math.round(s * 1.2f);
+        Bitmap b = Bitmap.createBitmap(w, s, Bitmap.Config.ARGB_8888);
         Canvas c = new Canvas(b);
-        Bitmap g = Glyphs.get(eth ? "ethernet" : "wifi", s, col);
-        Paint sh = new Paint(Paint.ANTI_ALIAS_FLAG);
-        sh.setColorFilter(new android.graphics.PorterDuffColorFilter(0x59000000, android.graphics.PorterDuff.Mode.SRC_IN));
-        c.drawBitmap(g, 0, s * 0.04f, sh);  // soft shadow like the time's
-        c.drawBitmap(g, 0, 0, null);
+        int on = Color.WHITE, off = 0x4DFFFFFF;
+        if (eth && state != 0) drawEthernet(c, s, state == 2 ? on : off);
+        else drawWifi(c, s, state == 2 ? bars : 0, on, off);
         Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
+        p.setColor(on);
         p.setStrokeCap(Paint.Cap.ROUND);
-        if (state == 0) {
+        if (state == 1) {  // exclamation mark to the right
+            p.setStrokeWidth(s * 0.13f);
+            float x = s * 1.08f;
+            c.drawLine(x, s * 0.2f, x, s * 0.6f, p);
+            c.drawCircle(x, s * 0.82f, s * 0.075f, p);
+        } else if (state == 0) {  // slash with a clear gap around it
             Paint cut = new Paint(Paint.ANTI_ALIAS_FLAG);
             cut.setXfermode(new android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.CLEAR));
-            cut.setStrokeWidth(s * 0.22f);
             cut.setStrokeCap(Paint.Cap.ROUND);
-            c.drawLine(s * 0.16f, s * 0.12f, s * 0.86f, s * 0.86f, cut);
-            p.setColor(col);
-            p.setStrokeWidth(s * 0.09f);
-            c.drawLine(s * 0.16f, s * 0.12f, s * 0.86f, s * 0.86f, p);
-        } else if (state == 1) {
-            p.setColor(0xFF1C1C1E);
-            c.drawCircle(s * 0.8f, s * 0.24f, s * 0.2f, p);
-            p.setColor(col);
-            c.drawCircle(s * 0.8f, s * 0.24f, s * 0.16f, p);
-            p.setColor(0xFF1C1C1E);
-            p.setStrokeWidth(s * 0.06f);
-            c.drawLine(s * 0.8f, s * 0.16f, s * 0.8f, s * 0.25f, p);
-            c.drawCircle(s * 0.8f, s * 0.32f, s * 0.035f, p);
+            cut.setStrokeWidth(s * 0.24f);
+            c.drawLine(s * 0.12f, s * 0.1f, s * 0.9f, s * 0.92f, cut);
+            p.setStrokeWidth(s * 0.1f);
+            c.drawLine(s * 0.12f, s * 0.1f, s * 0.9f, s * 0.92f, p);
         }
-        return b;
+        // Soft shadow behind everything, like the time's.
+        Bitmap out = Bitmap.createBitmap(w, s, Bitmap.Config.ARGB_8888);
+        Canvas oc = new Canvas(out);
+        Paint sh = new Paint(Paint.ANTI_ALIAS_FLAG);
+        sh.setColorFilter(new android.graphics.PorterDuffColorFilter(0x40000000, android.graphics.PorterDuff.Mode.SRC_IN));
+        oc.drawBitmap(b, 0, s * 0.05f, sh);
+        oc.drawBitmap(b, 0, 0, null);
+        return out;
+    }
+
+    /** SF-style Wi-Fi: a wedge and two equal bands fanning 90 degrees from a point near the bottom. */
+    void drawWifi(Canvas c, float s, int lit, int on, int off) {
+        float cx = s * 0.5f, cy = s * 0.88f, rw = s * 0.24f, t = s * 0.15f, gap = s * 0.075f;
+        Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
+        p.setStrokeJoin(Paint.Join.ROUND);
+        p.setStrokeWidth(s * 0.05f);
+        p.setStyle(Paint.Style.FILL_AND_STROKE);
+        RectF r = new RectF();
+        for (int i = 0; i < 3; i++) {
+            android.graphics.Path path = new android.graphics.Path();
+            if (i == 0) {
+                path.moveTo(cx, cy);
+                r.set(cx - rw, cy - rw, cx + rw, cy + rw);
+                path.arcTo(r, -135, 90);
+            } else {
+                float inner = rw + gap + (i - 1) * (t + gap), outer = inner + t;
+                r.set(cx - outer, cy - outer, cx + outer, cy + outer);
+                path.arcTo(r, -135, 90, true);
+                r.set(cx - inner, cy - inner, cx + inner, cy + inner);
+                path.arcTo(r, -45, -90);
+            }
+            path.close();
+            // Unlit bands: drawn opaque on a faded layer so fill and rounded edge don't overlap.
+            boolean dim = i >= lit;
+            if (dim) c.saveLayerAlpha(0, 0, c.getWidth(), c.getHeight(), Color.alpha(off));
+            p.setColor(dim ? (off | 0xFF000000) : on);
+            c.drawPath(path, p);
+            if (dim) c.restore();
+        }
+    }
+
+    /** Ethernet: three solid nodes joined by lines, drawn bolder to match the Wi-Fi weight. */
+    void drawEthernet(Canvas c, float s, int col) {
+        Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
+        p.setColor(col);
+        p.setStrokeWidth(s * 0.09f);
+        p.setStrokeCap(Paint.Cap.ROUND);
+        float m = s * 0.5f;
+        c.drawLine(m, s * 0.36f, m, s * 0.52f, p);
+        c.drawLine(s * 0.24f, s * 0.52f, s * 0.76f, s * 0.52f, p);
+        c.drawLine(s * 0.24f, s * 0.52f, s * 0.24f, s * 0.64f, p);
+        c.drawLine(s * 0.76f, s * 0.52f, s * 0.76f, s * 0.64f, p);
+        RectF r = new RectF(m - s * 0.15f, s * 0.08f, m + s * 0.15f, s * 0.36f);
+        c.drawRoundRect(r, s * 0.06f, s * 0.06f, p);
+        r.set(s * 0.09f, s * 0.62f, s * 0.39f, s * 0.9f);
+        c.drawRoundRect(r, s * 0.06f, s * 0.06f, p);
+        r.set(s * 0.61f, s * 0.62f, s * 0.91f, s * 0.9f);
+        c.drawRoundRect(r, s * 0.06f, s * 0.06f, p);
     }
 
     // ---------------------------------------------------------------- weather
 
-    /** Refreshes the forecast when it is older than 30 minutes; checked every 5 minutes. */
+    /**
+     * Once a minute: fetch when the forecast is due (every 15 minutes by default), move "Now" on,
+     * and pick up Wi-Fi signal changes.
+     */
     final Runnable weatherTick = new Runnable() {
         @Override public void run() {
             Weather.refresh(MainActivity.this, false, MainActivity.this::updateWeather);
-            handler.postDelayed(this, 5 * 60 * 1000L);
+            updateWeather();
+            updateNet();
+            handler.postDelayed(this, 60 * 1000L);
         }
     };
 

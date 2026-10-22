@@ -16,7 +16,7 @@ import android.view.View;
  * and a 5-day list with temperature range bars coloured from cool blue to hot red.
  */
 final class WeatherView extends View {
-    static final float COMPACT_W = 236, COMPACT_H = 150, FULL_W = 380, FULL_H = 434;
+    static final float COMPACT_W = 236, COMPACT_H = 150, FULL_W = 380, FULL_H = 456;
 
     final boolean full;
     final float u;
@@ -149,6 +149,9 @@ final class WeatherView extends View {
                 c.drawCircle(nx, cy, th * 0.6f, bar);
             }
         }
+        // Source and time of the last update.
+        String when = android.text.format.DateFormat.getTimeFormat(getContext()).format(new java.util.Date(d.fetchedAt));
+        text(c, Weather.sourceName(d.source) + "  \u00b7  Updated " + when, mid, getHeight() - 14 * u, 10.5f, medium, 0.5f, Paint.Align.CENTER);
     }
 
     /** Apple Weather's palette: blue (cold) -> teal -> green -> yellow -> orange -> red (hot). */

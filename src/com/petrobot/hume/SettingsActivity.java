@@ -142,6 +142,32 @@ public class SettingsActivity extends Activity {
         });
         row("Location", () -> Weather.manual(this) ? Weather.place(this)
                 : Weather.place(this).isEmpty() ? "Automatic" : "Automatic \u00b7 " + Weather.place(this), this::chooseLocation);
+        row("Source", () -> Weather.sourceName(Weather.source(this)), () -> {
+            String[] keys = Weather.SOURCES;
+            String[] names = {"Open-Meteo", "MET Norway (Yr)", "wttr.in  (3 days)"};
+            int sel = java.util.Arrays.asList(keys).indexOf(Weather.source(this));
+            dialog("Weather source").setMessage(null).setSingleChoiceItems(names, Math.max(0, sel), (d, w) -> {
+                Weather.prefs(this).edit().putString(Weather.K_SOURCE, keys[w]).apply();
+                Weather.changed(this);
+                refreshAll();
+                d.dismiss();
+                Toast.makeText(this, "If it can't be reached, the other sources are used.", Toast.LENGTH_LONG).show();
+            }).show();
+        });
+        row("Update every", () -> Weather.refreshMinutes(this) + " minutes", () -> {
+            int[] mins = Weather.REFRESH_CHOICES;
+            String[] names = new String[mins.length];
+            int sel = 1;
+            for (int i = 0; i < mins.length; i++) {
+                names[i] = mins[i] + " minutes" + (mins[i] == 15 ? "  (default)" : "");
+                if (mins[i] == Weather.refreshMinutes(this)) sel = i;
+            }
+            dialog("Update weather every").setSingleChoiceItems(names, sel, (d, w) -> {
+                Weather.prefs(this).edit().putInt(Weather.K_REFRESH, mins[w]).apply();
+                refreshAll();
+                d.dismiss();
+            }).show();
+        });
         row("Temperature", () -> {
             String u = Weather.prefs(this).getString(Weather.K_UNITS, "auto");
             return u.equals("c") ? "Celsius" : u.equals("f") ? "Fahrenheit" : "Automatic";
