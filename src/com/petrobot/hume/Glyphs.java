@@ -297,6 +297,13 @@ final class Glyphs {
                 c.drawCircle(s * 0.44f, s * 0.44f, s * 0.24f, p);
                 c.drawLine(s * 0.62f, s * 0.62f, s * 0.82f, s * 0.82f, p);
                 break;
+            case "mic":  // dictation: capsule on a stand
+                r.set(s * 0.38f, s * 0.12f, s * 0.62f, s * 0.58f);
+                c.drawRoundRect(r, s * 0.12f, s * 0.12f, p);
+                r.set(s * 0.26f, s * 0.3f, s * 0.74f, s * 0.72f);
+                c.drawArc(r, 0, 180, false, p);
+                c.drawLine(m, s * 0.72f, m, s * 0.88f, p);
+                break;
             case "present":  // Presentation: screen with a play triangle
                 r.set(s * 0.1f, s * 0.2f, s * 0.9f, s * 0.74f);
                 c.drawRoundRect(r, s * 0.08f, s * 0.08f, p);

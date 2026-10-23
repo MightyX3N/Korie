@@ -109,6 +109,7 @@ Open any screen without clicking through the UI:
 | Command | Opens |
 |---|---|
 | `adb shell am start -n com.petrobot.hume/.MainActivity --es panel cc` | Control Center (`inputs`, `weather`, `present` also work) |
+| `adb shell am start -n com.petrobot.hume/.MainActivity --es panel search --es q panchayat` | Search, with a query typed in |
 | `adb shell am start -n com.petrobot.hume/.MainActivity --ez pick_profile true` | Profile switcher |
 | `adb shell am start -n com.petrobot.hume/.SettingsActivity --es page "Top Shelf"` | A Settings page by its title |
 | `adb shell am start -n com.petrobot.hume/.SetupActivity --ei step 3` | Setup page 0–7 |

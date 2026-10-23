@@ -14,6 +14,8 @@
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
+    <!-- Search dictation: asked on screen the first time the mic is used. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <!-- Normal-level permission: lets us try reading apps' published TV rows for the top shelf. -->
     <uses-permission android:name="com.android.providers.tv.permission.READ_EPG_DATA" />
 
@@ -25,6 +27,18 @@
         <intent>
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+        <!-- Search: the TV's voice input (e.g. Google's, which has no launcher icon), and the
+             browsers and apps that open streaming services' links. -->
+        <intent>
+            <action android:name="android.speech.action.RECOGNIZE_SPEECH" />
+        </intent>
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="https" />
         </intent>
     </queries>
 

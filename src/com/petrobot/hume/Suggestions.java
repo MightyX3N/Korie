@@ -43,8 +43,11 @@ final class Suggestions {
             K_SOURCE = "source", K_SHELF = "shelf";
     /** What the top shelf shows: recommendations, news, both (alternating) or nothing. */
     static final String SHELF_RECS = "recs", SHELF_NEWS = "news", SHELF_BOTH = "both", SHELF_NONE = "none";
-    /** Recommendation sources: JustWatch needs no key (unofficial API); TMDB needs a token. */
-    static final String SRC_JUSTWATCH = "justwatch", SRC_TMDB = "tmdb";
+    /**
+     * Recommendation sources: JustWatch needs no key (unofficial API); TMDB needs a token; Stremio
+     * is Cinemeta's public top lists, opened in the Stremio or Nuvio app.
+     */
+    static final String SRC_JUSTWATCH = "justwatch", SRC_TMDB = "tmdb", SRC_STREMIO = "stremio";
     static final long MAX_AGE_MS = 2L * 60 * 60 * 1000;  // recommendations rotate every 2 hours
     /** POOL titles are fetched per service; PER_SOURCE of them are picked at random each refresh. */
     static final int PER_SOURCE = 3, POOL = 20, MAX_ITEMS = 10;
@@ -70,6 +73,14 @@ final class Suggestions {
             new Provider(350, "Apple TV", "com.apple.atve.androidtv.appletv", "atp", "appletvplus"),
             new Provider(232, "ZEE5", "com.graymatrix.did", "zee", "zee5"),
             new Provider(237, "SonyLIV", "com.sonyliv", "snl", "sonyliv"));
+
+    /**
+     * Apps that open Cinemeta titles by IMDb id. Not streaming services, so they never appear in
+     * PROVIDERS; Stremio comes first because it is the one on the Play Store.
+     */
+    static final int STREMIO_ID = -1, NUVIO_ID = -2;
+    static final Provider STREMIO = new Provider(STREMIO_ID, "Stremio", "com.stremio.one", "", ""),
+            NUVIO = new Provider(NUVIO_ID, "Nuvio", "com.nuvio.tv", "", "");
 
     /** Original-language filters offered in settings (TMDB ISO 639-1 codes). */
     static final String[] LANG_CODES = {"hi", "en", "ta", "te", "ml", "kn", "bn", "mr"};
@@ -117,6 +128,11 @@ final class Suggestions {
             for (Provider p : PROVIDERS) if (p.id == providerId) return p;
             return null;
         }
+
+        /** The app that opens this title: its service, or for Stremio titles whichever player is installed. */
+        Provider provider(Context c) {
+            return providerId == STREMIO_ID ? stremioApp(c) : provider();
+        }
     }
 
     // ------------------------------------------------------------------ settings
@@ -162,7 +178,16 @@ final class Suggestions {
         return prefs(c).getString(K_SOURCE, SRC_JUSTWATCH);
     }
 
-    /** Whether the chosen source is usable right now (JustWatch always; TMDB once a token is set). */
+    /** Stremio when installed (or neither is), else Nuvio. */
+    static Provider stremioApp(Context c) {
+        return !installed(c, STREMIO.pkg) && installed(c, NUVIO.pkg) ? NUVIO : STREMIO;
+    }
+
+    static String sourceName(String s) {
+        return s.equals(SRC_TMDB) ? "TMDB" : s.equals(SRC_STREMIO) ? "Stremio" : "JustWatch";
+    }
+
+    /** Whether the chosen source is usable right now (JustWatch and Stremio always; TMDB once a token is set). */
     static boolean ready(Context c) {
         return showNews(c) || !source(c).equals(SRC_TMDB) || hasToken(c);
     }
@@ -254,7 +279,9 @@ final class Suggestions {
 
     /** Recommendations from the chosen source, interleaved across services. */
     static List<Item> fetchRecs(Context c) throws Exception {
-        List<List<Item>> sources = source(c).equals(SRC_TMDB) ? fetchTmdb(c) : fetchJustWatch(c);
+        String from = source(c);
+        List<List<Item>> sources = from.equals(SRC_TMDB) ? fetchTmdb(c)
+                : from.equals(SRC_STREMIO) ? fetchStremio(c) : fetchJustWatch(c);
         // Rotate: a random pick from each service's popular pool, so the carousel changes through the day.
         java.util.Random rnd = new java.util.Random();
         for (List<Item> src : sources) java.util.Collections.shuffle(src, rnd);
@@ -365,6 +392,54 @@ final class Suggestions {
         } finally {
             con.disconnect();
         }
+    }
+
+    /**
+     * Stremio's Cinemeta "Popular" lists (public, no key): one per kind. Backdrops and logos are
+     * absolute metahub.space URLs; the IMDb id goes in link for the deep link.
+     */
+    static List<List<Item>> fetchStremio(Context c) throws Exception {
+        String t = types(c);
+        List<String> kinds = t.equals("both") ? Arrays.asList("tv", "movie") : Arrays.asList(t);
+        List<List<Item>> sources = new ArrayList<>();
+        for (String kind : kinds) {
+            String url = "https://v3-cinemeta.strem.io/catalog/" + (kind.equals("tv") ? "series" : "movie") + "/top.json";
+            HttpURLConnection con = (HttpURLConnection) new URL(url).openConnection();
+            con.setConnectTimeout(8000);
+            con.setReadTimeout(20000);
+            JSONArray metas;
+            try {
+                if (con.getResponseCode() != 200) throw new IllegalStateException("Cinemeta HTTP " + con.getResponseCode());
+                metas = new JSONObject(new String(readAll(con.getInputStream()), StandardCharsets.UTF_8)).optJSONArray("metas");
+            } finally {
+                con.disconnect();
+            }
+            List<Item> list = new ArrayList<>();
+            for (int i = 0; metas != null && i < metas.length() && list.size() < POOL; i++) {
+                JSONObject m = metas.getJSONObject(i);
+                String id = m.optString("id"), backdrop = m.optString("background");
+                if (!id.startsWith("tt") || backdrop.isEmpty()) continue;
+                Item it = new Item();
+                it.id = id.hashCode();
+                it.type = kind;
+                it.providerId = STREMIO_ID;
+                it.title = m.optString("name");
+                it.overview = m.optString("description");
+                it.backdrop = backdrop;
+                it.logo = m.optString("logo");
+                String year = m.optString("releaseInfo", m.optString("year"));
+                it.year = year.length() >= 4 ? year.substring(0, 4) : "";
+                it.rating = m.optDouble("imdbRating", 0);
+                JSONArray g = m.optJSONArray("genres");
+                List<String> names = new ArrayList<>();
+                for (int j = 0; g != null && j < g.length() && names.size() < 2; j++) names.add(g.optString(j));
+                it.genres = String.join(", ", names);
+                it.link = id;
+                list.add(it);
+            }
+            sources.add(list);
+        }
+        return sources;
     }
 
     static List<List<Item>> fetchTmdb(Context c) throws Exception {
@@ -557,10 +632,14 @@ final class Suggestions {
      * search is the most precise link available.
      */
     static void open(Context c, Item it) {
-        Provider p = it.provider();
+        Provider p = it.provider(c);
         if (p == null) return;
         if (!installed(c, p.pkg)) {
             start(c, new Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=" + p.pkg)));
+            return;
+        }
+        if (it.providerId == STREMIO_ID) {
+            openStremio(c, it, p);
             return;
         }
         String q = it.title;
@@ -587,6 +666,22 @@ final class Suggestions {
         for (Intent i : tries) {
             if (i.resolveActivity(pm) != null && start(c, i)) return;
         }
+        Intent launch = pm.getLeanbackLaunchIntentForPackage(p.pkg);
+        if (launch == null) launch = pm.getLaunchIntentForPackage(p.pkg);
+        if (launch != null) start(c, launch);
+    }
+
+    /**
+     * Stremio titles open on their detail page: Stremio takes stremio:///detail/{type}/{id}/{videoId},
+     * Nuvio takes nuvio://detail/{type}/{id} (its stremio:// handler only installs add-ons).
+     */
+    static void openStremio(Context c, Item it, Provider p) {
+        String type = it.type.equals("tv") ? "series" : "movie";
+        String url = p.id == NUVIO_ID ? "nuvio://detail/" + type + "/" + it.link
+                : "stremio:///detail/" + type + "/" + it.link + (type.equals("movie") ? "/" + it.link : "");
+        PackageManager pm = c.getPackageManager();
+        Intent i = view(url, p.pkg);
+        if (i.resolveActivity(pm) != null && start(c, i)) return;
         Intent launch = pm.getLeanbackLaunchIntentForPackage(p.pkg);
         if (launch == null) launch = pm.getLaunchIntentForPackage(p.pkg);
         if (launch != null) start(c, launch);

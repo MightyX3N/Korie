@@ -39,7 +39,8 @@ Key files (full map in **[docs/architecture.md](docs/architecture.md)**):
 | `MainActivity.java` | Home: dock/grid, focus, carousel, status row, Control Center, profiles UI, Liquid Glass, idle mode |
 | `SettingsActivity.java` | Settings pages |
 | `SetupActivity.java` | First-time setup pages |
-| `Suggestions.java`, `News.java` | Carousel content (JustWatch/TMDB recommendations, Indian news RSS) |
+| `Suggestions.java`, `News.java` | Carousel content (JustWatch/TMDB/Stremio recommendations, Indian news RSS) |
+| `Search.java`, `SearchPanel.java` | Search: titles on every service with Open / Get, apps and settings; the search screen |
 | `MediaWatchService.java` | Continue Watching from media sessions |
 | `Weather*.java` | Weather data, pill and forecast panel, icons |
 | `Perms.java`, `PowerService.java` | On-screen permission flows; accessibility service for Power Off / Clean |
@@ -134,7 +135,11 @@ Include the numbers in your PR. `--es perf <layer>` (see getting-started) helps 
 - The accessibility service (`PowerService`) does only what the user asked from Hume (sleep, close
   apps). Don't extend it to read screen content.
 - No analytics, no tracking, no accounts. Network calls go only to the content sources a feature
-  needs (weather, news, recommendations, IP location) and never send personal data.
+  needs (weather, news, recommendations, search, IP location) and never send personal data.
+  Search queries go only to JustWatch (and Stremio's Cinemeta when Stremio/Nuvio is installed);
+  recent searches stay on the TV.
+- The microphone is used only while the user is dictating in Search (after Android's own prompt);
+  Hume never records or stores audio itself.
 - Never commit secrets (API tokens, passwords) — TMDB keys are entered by the user at runtime.
 
 ## 7. Testing a change

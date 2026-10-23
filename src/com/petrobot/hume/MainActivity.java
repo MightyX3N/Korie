@@ -157,7 +157,10 @@ public class MainActivity extends Activity {
     View dockRow;
     boolean returningFromSettings;
     final java.util.concurrent.ExecutorService io = java.util.concurrent.Executors.newSingleThreadExecutor();
-    final Runnable heroAdvance = () -> heroStep(1, false);
+    final Runnable heroAdvance = () -> {
+        if (this.search != null) scheduleAdvance();  // nothing to see under search; keep the slot
+        else heroStep(1, false);
+    };
     ShelfScrollView scroll;
     LinearLayout content;
     LinearLayout clockBox;
@@ -280,6 +283,7 @@ public class MainActivity extends Activity {
             else if (panel.equals("inputs")) showInputs(ccButton);
             else if (panel.equals("weather")) showWeather();
             else if (panel.equals("present")) com.petrobot.hume.present.Presenter.open(this);
+            else if (panel.equals("search")) showSearch(intent.getStringExtra("q"));
             return;
         }
         if (idle) exitIdle();
@@ -289,6 +293,7 @@ public class MainActivity extends Activity {
         if (pickerLayer != null) {
             popoverReturn = null;
             FrameLayout l = pickerLayer;
+            releaseSearch();
             pickerLayer = null;
             weatherOpen = false;
             root.removeView(l);
@@ -531,6 +536,28 @@ public class MainActivity extends Activity {
             v.animate().scaleX(has ? 1.12f : 1f).scaleY(has ? 1.12f : 1f).setDuration(200).setInterpolator(LIFT).start();
         });
         refreshButton.setOnClickListener(v -> refreshAll());
+
+        // Search, beside Control Center: apps, settings, and movies and shows on every service.
+        searchButton = new ImageView(this);
+        searchButton.setScaleType(ImageView.ScaleType.CENTER);
+        searchButton.setImageBitmap(Glyphs.get("search", dp(20), Color.WHITE));
+        LiquidGlass seGlass = new LiquidGlass(btn / 2f, 0x1F000000, glassSource, screenW, screenH, unit).adaptive();
+        seGlass.lens = dp(4);
+        searchButton.setBackground(seGlass);
+        searchButton.setFocusable(true);
+        searchButton.setClickable(true);
+        LinearLayout.LayoutParams sblp = new LinearLayout.LayoutParams(btn, btn);
+        sblp.leftMargin = dp(12);
+        clockBox.addView(searchButton, sblp);
+        GradientDrawable seLit = new GradientDrawable();
+        seLit.setShape(GradientDrawable.OVAL);
+        seLit.setColor(Color.WHITE);
+        searchButton.setOnFocusChangeListener((v, has) -> {
+            searchButton.setBackground(has ? seLit : seGlass);
+            searchButton.setImageBitmap(Glyphs.get("search", dp(20), has ? 0xFF111114 : Color.WHITE));
+            v.animate().scaleX(has ? 1.12f : 1f).scaleY(has ? 1.12f : 1f).setDuration(200).setInterpolator(LIFT).start();
+        });
+        searchButton.setOnClickListener(v -> showSearch(null));
 
         ccButton = new ImageView(this);
         ccButton.setScaleType(ImageView.ScaleType.CENTER);
@@ -1892,7 +1919,7 @@ public class MainActivity extends Activity {
         if (it.rating > 0) meta.add(String.format(java.util.Locale.US, "\u2605 %.1f", it.rating));
         heroMeta.setText(String.join("  \u00B7  ", meta));
         heroOverview.setText(it.overview);
-        Suggestions.Provider p = it.provider();
+        Suggestions.Provider p = it.provider(this);
         heroBtnText.setText(p != null && !Suggestions.installed(this, p.pkg) ? "Get" : "\u25B6  Open");
         int icon = p == null ? 0 : getResources().getIdentifier("provider_" + p.jwShort, "drawable", getPackageName());
         heroProvider.setImageResource(icon);
@@ -1941,7 +1968,9 @@ public class MainActivity extends Activity {
     /** Carousel focused: the dock slides away and the artwork takes the whole screen (tvOS Top Shelf). */
     boolean heroRequested;
 
-    ImageView avatarView, ccButton, refreshButton, netIcon;
+    ImageView avatarView, ccButton, refreshButton, searchButton, netIcon;
+    /** The search screen while it is open (its layer is also pickerLayer, so Home and idle treat it as an overlay). */
+    SearchPanel search;
     android.net.ConnectivityManager.NetworkCallback netCallback;
     WeatherView weatherCard;
     LiquidGlass weatherGlass;
@@ -2120,12 +2149,13 @@ public class MainActivity extends Activity {
                 default: return false;
             }
         }
-        if (f == refreshButton || f == ccButton || f == avatarView) {
-            // Status row, left to right: Refresh, Control Center, profile.
+        if (f == refreshButton || f == searchButton || f == ccButton || f == avatarView) {
+            // Status row, left to right: Refresh, Search, Control Center, profile.
             if (k == KeyEvent.KEYCODE_DPAD_LEFT) {
                 if (down) {
                     if (f == avatarView) ccButton.requestFocus();
-                    else if (f == ccButton) refreshButton.requestFocus();
+                    else if (f == ccButton) searchButton.requestFocus();
+                    else if (f == searchButton) refreshButton.requestFocus();
                     else if (switcher.getVisibility() == View.VISIBLE) switcher.requestFocus();
                     else if (weatherShown()) weatherCard.requestFocus();
                 }
@@ -2133,7 +2163,8 @@ public class MainActivity extends Activity {
             }
             if (k == KeyEvent.KEYCODE_DPAD_RIGHT) {
                 if (down) {
-                    if (f == refreshButton) ccButton.requestFocus();
+                    if (f == refreshButton) searchButton.requestFocus();
+                    else if (f == searchButton) ccButton.requestFocus();
                     else if (f == ccButton) avatarView.requestFocus();
                 }
                 return true;
@@ -2709,7 +2740,21 @@ public class MainActivity extends Activity {
             return true;
         }
         resetIdle();
-        navSound(this, ev);
+        if (!replayingBack) navSound(this, ev);  // a replayed Back already clicked
+        if (search != null && pickerLayer == search.layer && menuLayer == null) {
+            return search.dispatch(ev) || super.dispatchKeyEvent(ev);
+        }
+        if (pickerLayer == null && menuLayer == null && moveIndex < 0 && keyboardSearch(ev)) return true;
+        if (pickerLayer == null && menuLayer == null && moveIndex < 0 && holdBackSearch(ev)) return true;
+        if (ev.getKeyCode() == KeyEvent.KEYCODE_SEARCH && pickerLayer == null && menuLayer == null && moveIndex < 0) {
+            // The remote's search/mic button: open Search and start listening, like tvOS's Siri button.
+            if (ev.getAction() == KeyEvent.ACTION_UP) {
+                showSearch(null);
+                if (search.mic != null) search.mic.requestFocus();
+                search.listen();
+            }
+            return true;
+        }
         if (pickerLayer != null && menuLayer == null) {
             int pk = ev.getKeyCode();
             boolean pd = ev.getAction() == KeyEvent.ACTION_DOWN;
@@ -3036,7 +3081,7 @@ public class MainActivity extends Activity {
      * and a row of round shortcuts. Geometry in design units: 141-wide columns, 13 gaps.
      */
     void showControlCenter() {
-        if (pickerLayer != null) root.removeView(pickerLayer);
+        dropPicker();
         stopSway(null);
         popoverReturn = ccButton;
         FrameLayout layer = new FrameLayout(this);
@@ -3382,7 +3427,7 @@ public class MainActivity extends Activity {
             toast("This TV has no inputs");
             return;
         }
-        if (pickerLayer != null) root.removeView(pickerLayer);
+        dropPicker();
         stopSway(null);
         popoverReturn = from;
         FrameLayout layer = new FrameLayout(this);
@@ -3724,7 +3769,7 @@ public class MainActivity extends Activity {
     void showWeather() {
         Weather.Data d = Weather.cached(this);
         if (d == null) return;
-        if (pickerLayer != null) root.removeView(pickerLayer);
+        dropPicker();
         stopSway(null);
         popoverReturn = weatherCard;
         FrameLayout layer = new FrameLayout(this);
@@ -3808,7 +3853,7 @@ public class MainActivity extends Activity {
      * one, plus Add User.
      */
     void showProfilePicker(boolean onWake) {
-        if (pickerLayer != null) root.removeView(pickerLayer);
+        dropPicker();
         popoverReturn = onWake ? null : avatarView;
         stopSway(null);
         FrameLayout layer = new FrameLayout(this);
@@ -3890,9 +3935,141 @@ public class MainActivity extends Activity {
         }
     }
 
+    // ---------------------------------------------------------------- Search
+
+    /** Opens search over the blurred Home Screen; q (adb hook, voice) starts with that text. */
+    void showSearch(String q) {
+        dropPicker();
+        closeMenu();
+        stopSway(null);
+        popoverReturn = searchButton;
+        search = new SearchPanel(this);
+        pickerLayer = search.layer;
+        pickerCells = new ArrayList<>();
+        root.addView(search.layer, match());
+        search.firstKey().requestFocus();  // only possible once the layer is attached
+        SearchPanel opened = search;
+        search.layer.setAlpha(0f);
+        // Once search covers the screen, the Home layers under it stop drawing (the backdrop is a snapshot).
+        search.layer.animate().alpha(1f).setDuration(200).withEndAction(() -> {
+            if (search != opened) return;
+            hiddenUnderSearch.clear();
+            for (int i = 0; i < root.getChildCount(); i++) {
+                View c = root.getChildAt(i);
+                if (c != opened.layer && c != launchOverlay && c.getVisibility() == View.VISIBLE) {
+                    c.setVisibility(View.INVISIBLE);
+                    hiddenUnderSearch.add(c);
+                }
+            }
+        }).start();
+        if (q != null && !q.isEmpty()) search.setQuery(q);
+    }
+
+    /** How long Back is held on Home to open Search. */
+    static final long BACK_HOLD_MS = 1000;
+
+    /** Back pressed on Home and held for BACK_HOLD_MS: open Search (the release is swallowed). */
+    final Runnable backHold = () -> {
+        backDown = null;
+        swallowUp = true;
+        showSearch(null);
+    };
+    KeyEvent backDown;
+    boolean replayingBack;
+
+    /**
+     * The remote shortcut for Search: hold Back on Home. A short press must still behave exactly
+     * as before, so Back is held back until it is released (or held long enough), then replayed.
+     */
+    boolean holdBackSearch(KeyEvent ev) {
+        if (ev.getKeyCode() != KeyEvent.KEYCODE_BACK || replayingBack) return false;
+        if (ev.getAction() == KeyEvent.ACTION_DOWN) {
+            if (ev.getRepeatCount() == 0) {
+                backDown = new KeyEvent(ev);
+                handler.removeCallbacks(backHold);
+                handler.postDelayed(backHold, BACK_HOLD_MS);
+            }
+            return true;
+        }
+        handler.removeCallbacks(backHold);
+        KeyEvent d = backDown;
+        backDown = null;
+        if (d == null) return true;
+        replayingBack = true;
+        try {
+            dispatchKeyEvent(d);
+            dispatchKeyEvent(ev);
+        } finally {
+            replayingBack = false;
+        }
+        return true;
+    }
+
+    /**
+     * Keyboard shortcuts on Home (a USB/Bluetooth keyboard, not the remote): typing a letter or
+     * digit opens Search with it typed; "/", Ctrl+F and Ctrl+K open it empty.
+     */
+    boolean keyboardSearch(KeyEvent ev) {
+        if (ev.getAction() != KeyEvent.ACTION_DOWN || ev.getRepeatCount() > 0) return false;
+        android.view.InputDevice dev = ev.getDevice();
+        if (dev == null || dev.getKeyboardType() != android.view.InputDevice.KEYBOARD_TYPE_ALPHABETIC) return false;
+        int k = ev.getKeyCode();
+        boolean shortcut = (ev.isCtrlPressed() && (k == KeyEvent.KEYCODE_F || k == KeyEvent.KEYCODE_K))
+                || (k == KeyEvent.KEYCODE_SLASH && !ev.isCtrlPressed() && !ev.isAltPressed());
+        int ch = ev.isCtrlPressed() || ev.isAltPressed() || ev.isMetaPressed() ? 0 : ev.getUnicodeChar();
+        if (!shortcut && !Character.isLetterOrDigit(ch)) return false;
+        swallowUp = true;  // the key's release must not reach the search screen
+        showSearch(shortcut ? null : String.valueOf((char) ch).toLowerCase());
+        return true;
+    }
+
+    void closeSearch() {
+        if (search == null) return;
+        FrameLayout l = search.layer;
+        releaseSearch();
+        if (pickerLayer == l) {
+            pickerLayer = null;
+            l.animate().alpha(0f).setDuration(200).withEndAction(() -> root.removeView(l)).start();
+        }
+        if (popoverReturn != null && popoverReturn.isAttachedToWindow()) popoverReturn.requestFocus();
+        else goTop();
+        popoverReturn = null;
+    }
+
+    final List<View> hiddenUnderSearch = new ArrayList<>();
+
+    void releaseSearch() {
+        for (View c : hiddenUnderSearch) c.setVisibility(View.VISIBLE);
+        hiddenUnderSearch.clear();
+        if (search == null) return;
+        search.release();
+        search = null;
+    }
+
+    /** Removes whichever overlay is open (stopping search's work if it was search). */
+    void dropPicker() {
+        if (pickerLayer == null) return;
+        if (search != null && pickerLayer == search.layer) releaseSearch();
+        root.removeView(pickerLayer);
+    }
+
+    @Override
+    protected void onActivityResult(int req, int res, Intent data) {
+        super.onActivityResult(req, res, data);
+        if (req == SearchPanel.REQ_VOICE && res == RESULT_OK && search != null) search.onVoice(data);
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int req, String[] perms, int[] results) {
+        super.onRequestPermissionsResult(req, perms, results);
+        if (req == SearchPanel.REQ_MIC && search != null) {
+            search.onMicPermission(results.length > 0 && results[0] == PackageManager.PERMISSION_GRANTED);
+        }
+    }
+
     boolean statusFocused() {
         View f = getCurrentFocus();
-        return f != null && (f == ccButton || f == avatarView || f == refreshButton);
+        return f != null && (f == ccButton || f == avatarView || f == refreshButton || f == searchButton);
     }
 
     /** Directional focus inside a popover: nearest cell whose centre lies in that direction. */

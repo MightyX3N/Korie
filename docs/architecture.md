@@ -15,7 +15,9 @@ source (Nayuki, MIT) under `src/io/nayuki/qrcodegen`.
 | `MainActivity.java` | Home screen: grid/dock, focus & move, launch zoom, carousel (Continue Watching + news + recommendations), status row, Liquid Glass, Control Center (incl. Memory/Clean), profile switcher, idle mode, menus |
 | `SetupActivity.java` | First-time setup pages (Apple-style, one question per page) |
 | `SettingsActivity.java` | All settings, tvOS list layout |
-| `Suggestions.java` | JustWatch / TMDB fetch, cache, artwork, deep links |
+| `Suggestions.java` | JustWatch / TMDB / Stremio (Cinemeta) recommendations: fetch, cache, artwork, deep links |
+| `Search.java` | Search data: JustWatch title search (every service in India) and Cinemeta, matching each service to its installed app, Open / Get, recent searches |
+| `SearchPanel.java` | The search screen: one-row keyboard (English, digits, Hindi, voice), Apps & Settings and Movies & TV rows, the How to Watch sheet |
 | `MediaWatchService.java` | Notification listener → media sessions → Continue Watching store; DND access |
 | `Profiles.java` | Profiles (max 3), unique emoji avatars, per-profile storage names |
 | `SleepReceiver.java` | Sleep via device admin (or PowerService); sleep timer alarm |
@@ -49,6 +51,22 @@ source (Nayuki, MIT) under `src/io/nayuki/qrcodegen`.
 - **Recommendations without system access.** Android's preview/Watch Next rows need a
   system-signature permission (verified: 0 rows readable), so the top shelf uses JustWatch/TMDB
   and Continue Watching uses published media sessions.
+
+- **Search without a list of services.** JustWatch says which services in India have a title and
+  gives each one's links; Hume finds the app for each service itself (the package in the Android
+  TV link, an installed non-browser handler of the web link, a remembered match, or an installed
+  app with the same name), so new services need no update. Android 11+ hides other apps unless
+  declared, so the manifest's `<queries>` lists launcher apps, voice input, the speech service
+  and https handlers.
+- **Search stays light.** It is an overlay in `MainActivity` (no new activity): apps match from
+  the list already in memory on each key press; titles are fetched 350 ms after typing pauses with
+  the previous request cut off, the last 20 searches are cached, posters are decoded at card size
+  into a heap-capped LRU, and while Search is open the Home layers under it stop drawing and the
+  carousel pauses. Typing measured p50 6 ms / p90 11 ms per frame on the 1 GB Android 9 TV.
+- **Dictation.** `SpeechRecognizer` (Google's TV voice service) with partial results fills the
+  field live after Android's microphone prompt; otherwise `RecognizerIntent` opens the TV's voice
+  prompt. The remotes' Assistant key is routed by Android to Google Assistant before apps, so the
+  remote shortcut is holding Back for 1 s (Back is replayed when released sooner).
 
 ## Performance (Mi Box, Mali-450 MP, GLES 2.0)
 

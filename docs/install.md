@@ -44,11 +44,13 @@ last resort for TVs that have no such screen.
 | Continue Watching + Do Not Disturb | `adb shell cmd notification allow_listener com.petrobot.hume/com.petrobot.hume.MediaWatchService` |
 | Power Off + Sleep Timer | `adb shell dpm set-active-admin com.petrobot.hume/.SleepReceiver\$Admin` |
 | Wi-Fi name in Control Center | `adb shell pm grant com.petrobot.hume android.permission.ACCESS_FINE_LOCATION` |
+| Search dictation (microphone) | `adb shell pm grant com.petrobot.hume android.permission.RECORD_AUDIO` — not normally needed: without it, Search uses the TV's own voice prompt |
 
-## Optional: TMDB suggestions
+## Optional: recommendation source
 
-Suggestions use JustWatch by default (no setup). To use TMDB instead, open **Settings → Source →
-TMDB** and enter a free API key from themoviedb.org (Settings → API). The short v3 *API Key* is
+Recommendations use JustWatch by default (no setup). **Settings → Top Shelf → Source** also offers
+**Stremio** (Cinemeta's popular movies and series, no setup; titles open in the Stremio app, or in
+Nuvio when only Nuvio is installed) and **TMDB**. For TMDB, enter a free API key from themoviedb.org (Settings → API). The short v3 *API Key* is
 easiest to type with a remote. It can also be set from a computer:
 
 ```sh
