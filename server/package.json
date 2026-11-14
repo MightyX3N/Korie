@@ -1,0 +1,29 @@
+{
+  "name": "korie-server",
+  "version": "0.6.0",
+  "description": "",
+  "scripts": {
+    "start": "node --disable-warning=ExperimentalWarning src/main.ts",
+    "check": "tsc -p ."
+  },
+  "keywords": [],
+  "author": "",
+  "license": "UNLICENSED",
+  "dependencies": {
+    "@ctrl/video-filename-parser": "^5.12.0",
+    "@fastify/cors": "^11.4.3",
+    "@fastify/static": "^10.1.11",
+    "fastify": "^5.12.8",
+    "music-metadata": "^12.5.0",
+    "sharp": "^0.35.5",
+    "wasmoon": "^1.16.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "typescript": "^7.0.2"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=22.18"
+  }
+}

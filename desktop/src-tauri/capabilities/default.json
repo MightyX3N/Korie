@@ -1,0 +1,6 @@
+{
+  "identifier": "default",
+  "description": "The connect page may ask the app to find servers and open one.",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}

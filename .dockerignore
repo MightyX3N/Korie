@@ -1,0 +1,8 @@
+**/node_modules
+**/dist
+**/target
+android
+desktop
+shots
+data
+*.log

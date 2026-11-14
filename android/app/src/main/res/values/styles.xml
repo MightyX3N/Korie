@@ -1,0 +1,11 @@
+<resources>
+    <style name="Korie" parent="@android:style/Theme.Material.NoActionBar.Fullscreen">
+        <item name="android:windowBackground">@color/ground</item>
+        <item name="android:colorPrimary">@color/ground</item>
+        <item name="android:colorAccent">@color/accent</item>
+        <item name="android:statusBarColor">@color/ground</item>
+        <item name="android:navigationBarColor">@color/ground</item>
+    </style>
+    <color name="ground">#0a1420</color>
+    <color name="accent">#2fb0ea</color>
+</resources>

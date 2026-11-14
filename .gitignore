@@ -1,0 +1,15 @@
+node_modules/
+data/
+dist/
+secret.dat
+*.log
+release/
+shots/
+**/target/
+android/.gradle/
+android/app/build/
+android/build/
+android/local.properties
+*.keystore
+*.pass
+.DS_Store

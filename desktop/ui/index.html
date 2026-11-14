@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Korie</title>
+<style>
+  html { font-size: clamp(14px, min(1.04vw, 1.85vh), 40px); }
+  body { margin: 0; min-height: 100vh; background: #0a1420; color: #eaf1f8; font-family: system-ui, sans-serif; display: flex; align-items: center; justify-content: center; }
+  main { width: min(40rem, 90vw); display: flex; flex-direction: column; gap: 1.2rem; }
+  .brand { font-size: 2.4rem; font-weight: 700; display: flex; align-items: center; gap: 0.7rem; }
+  .brand i { width: 1rem; height: 1rem; border-radius: 0.25rem; background: #2fb0ea; display: block; }
+  h1 { font-size: 1.8rem; margin: 0.6rem 0 0; font-weight: 600; }
+  p { color: #c9d6e6; font-size: 1.1rem; line-height: 1.45; margin: 0; }
+  button, input { font: inherit; font-size: 1.15rem; border: 0; border-radius: 0.7rem; padding: 0.9rem 1.2rem; text-align: left; background: #16293f; color: #eaf1f8; outline: none; }
+  button small { display: block; color: #9fb2c8; font-size: 0.9rem; margin-top: 0.2rem; }
+  button:focus, input:focus { background: #2fb0ea; color: #04131d; }
+  button:focus small { color: #04131d; }
+  input { background: #102033; box-shadow: inset 0 0 0 0.12rem #ffffff22; }
+  input:focus { background: #102033; color: #eaf1f8; box-shadow: inset 0 0 0 0.15rem #2fb0ea; }
+  .list { display: flex; flex-direction: column; gap: 0.5rem; }
+  .spin { width: 2.4rem; height: 2.4rem; border-radius: 50%; border: 0.25rem solid #ffffff22; border-top-color: #2fb0ea; animation: s 0.9s linear infinite; }
+  @keyframes s { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<main>
+  <div class="brand"><i></i>korie</div>
+  <h1 id="title">Looking for your Korie server…</h1>
+  <p id="text">Korie looks for its server on this network.</p>
+  <div id="spin" class="spin"></div>
+  <div id="list" class="list"></div>
+</main>
+<script>
+const invoke = (c, a) => window.__TAURI__.core.invoke(c, a);
+const $ = (id) => document.getElementById(id);
+let servers = [];
+function button(label, small, fn) {
+  const b = document.createElement("button");
+  b.textContent = label;
+  if (small) { const s = document.createElement("small"); s.textContent = small; b.append(s); }
+  b.onclick = fn;
+  return b;
+}
+async function connect(url) {
+  try { location.href = (await invoke("connect", { url })) + "/"; }
+  catch (e) { render("unreachable"); }
+}
+function render(why) {
+  const list = $("list");
+  list.textContent = "";
+  $("spin").style.display = why === "looking" ? "" : "none";
+  const titles = {
+    looking: ["Looking for your Korie server…", "Korie looks for its server on this network."],
+    pick: ["Which Korie server?", servers.length ? "More than one Korie server answered on this network." : "Pick a Korie server."],
+    none: ["No Korie server found", "No Korie server answered on this network. Check that it's running, or type its address (like 192.168.1.20:8100)."],
+    unreachable: ["Can't reach that server", "Nothing answered at that address. Check it and try again."],
+  };
+  const [t, x] = titles[why] || titles.none;
+  $("title").textContent = t;
+  $("text").textContent = x;
+  if (why === "looking") return;
+  for (const s of servers) list.append(button(s.name || "Korie", s.url.replace(/^http:\/\//, ""), () => connect(s.url)));
+  list.append(button("Look again", "", look));
+  const input = document.createElement("input");
+  input.placeholder = "Type the address, like 192.168.1.20:8100";
+  input.onkeydown = (e) => { if (e.key === "Enter" && input.value.trim()) connect(input.value.trim()); };
+  list.append(input);
+  (list.querySelector("button") || input).focus();
+}
+async function look() {
+  render("looking");
+  servers = await invoke("look");
+  if (servers.length === 1) connect(servers[0].url);
+  else render(servers.length ? "pick" : "none");
+}
+document.addEventListener("keydown", (e) => {
+  const items = [...document.querySelectorAll("button, input")];
+  const i = items.indexOf(document.activeElement);
+  if (e.key === "ArrowDown" && i < items.length - 1) { items[i + 1].focus(); e.preventDefault(); }
+  if (e.key === "ArrowUp" && i > 0) { items[i - 1].focus(); e.preventDefault(); }
+});
+(async () => {
+  render("looking");
+  const r = await invoke("start", { forget: location.hash === "#forget" });
+  if (r.open) { location.href = r.open + "/"; return; }
+  servers = r.servers;
+  render(servers.length ? "pick" : "none");
+})();
+</script>
+</body>
+</html>

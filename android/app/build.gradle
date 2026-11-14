@@ -1,0 +1,32 @@
+plugins { id "com.android.application" }
+
+android {
+    namespace "app.korie.tv"
+    compileSdk 35
+    defaultConfig {
+        applicationId "app.korie.tv"
+        minSdk 24
+        targetSdk 35
+        versionCode 1
+        versionName "0.6.0"
+    }
+    signingConfigs {
+        release {
+            storeFile file(System.getenv("KORIE_KEYSTORE") ?: "missing.keystore")
+            storePassword System.getenv("KORIE_KEYSTORE_PASS") ?: ""
+            keyAlias "korie"
+            keyPassword System.getenv("KORIE_KEYSTORE_PASS") ?: ""
+        }
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.release
+        }
+    }
+    buildFeatures { buildConfig true }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
