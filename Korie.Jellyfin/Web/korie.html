@@ -1,0 +1,39 @@
+<div id="koriePage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button,emby-checkbox" data-controller="__plugin/korie.js">
+    <div data-role="content">
+        <div class="content-primary">
+            <style>
+                #koriePage .korie-card { background: rgba(255,255,255,.05); border-radius: .6em; padding: 1em 1.2em; margin: 0 0 1em; }
+                #koriePage .korie-head { display: flex; align-items: center; gap: 1em; flex-wrap: wrap; }
+                #koriePage .korie-head h3 { margin: 0; flex: 1; min-width: 12em; }
+                #koriePage .korie-dim { opacity: .7; font-size: .92em; }
+                #koriePage .korie-note { background: rgba(232,163,61,.15); border-radius: .4em; padding: .5em .8em; margin: .6em 0 0; }
+                #koriePage .korie-error { background: rgba(232,106,92,.18); border-radius: .4em; padding: .5em .8em; margin: .6em 0 0; }
+                #koriePage .korie-log { white-space: pre-wrap; font-family: monospace; font-size: .85em; opacity: .8; max-height: 14em; overflow: auto; }
+                #koriePage .korie-tabs { display: flex; gap: .5em; margin: 0 0 1.2em; flex-wrap: wrap; }
+                #koriePage .korie-tabs .emby-button.active { background: #00a4dc; color: #fff; }
+                #koriePage textarea { width: 100%; min-height: 6em; box-sizing: border-box; font: inherit; padding: .6em; background: rgba(0,0,0,.25); color: inherit; border: 1px solid rgba(255,255,255,.15); border-radius: .3em; }
+            </style>
+            <div class="verticalSection">
+                <h2 class="sectionTitle">Korie</h2>
+                <p class="korie-dim">Add-ons bring other services (DRTV, Stremio, RomM ...) into Jellyfin: each one you turn on shows as a channel. Korie also reads your libraries the way your folders are laid out: groups of shows, films split in parts (CD 1, CD 2) and your own .nfo files.</p>
+            </div>
+            <div class="korie-tabs">
+                <button is="emby-button" type="button" class="raised emby-button active" data-tab="installed">Installed</button>
+                <button is="emby-button" type="button" class="raised emby-button" data-tab="store">Store</button>
+                <button is="emby-button" type="button" class="raised emby-button" data-tab="repos">Repositories</button>
+            </div>
+            <div data-panel="installed"></div>
+            <div data-panel="store" class="hide"></div>
+            <div data-panel="repos" class="hide">
+                <div class="korie-card">
+                    <h3>Repositories</h3>
+                    <p class="korie-dim">Places Korie gets add-ons from, one address per line. Each holds an index.json in the Korie Store's format. Only add repositories you trust: their add-ons run on this server.</p>
+                    <textarea id="korieRepos" spellcheck="false"></textarea>
+                    <div style="margin-top: 1em">
+                        <button is="emby-button" type="button" class="raised button-submit emby-button" id="korieSaveRepos"><span>Save</span></button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

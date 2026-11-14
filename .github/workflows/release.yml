@@ -1,0 +1,62 @@
+# A version tag (git tag v0.1.0 && git push --tags) builds the plugin, attaches it to a GitHub
+# release, and publishes Jellyfin's plugin catalogue on GitHub Pages:
+#   https://mightyx3n.github.io/Korie/manifest.json  (add this under Dashboard > Plugins > Repositories)
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      - name: Build
+        run: |
+          V="${GITHUB_REF_NAME#v}"
+          dotnet build Korie.Jellyfin/Korie.Jellyfin.csproj -c Release -o out -p:Version="$V"
+          mkdir pkg
+          cp out/Korie.Jellyfin.dll out/MoonSharp.Interpreter.dll pkg/
+          (cd pkg && zip -q "../korie_$V.zip" *)
+          md5sum "korie_$V.zip" | cut -d' ' -f1 > md5.txt
+          echo "V=$V" >> "$GITHUB_ENV"
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" "korie_$V.zip" --title "Korie $V" \
+            --notes "Korie $V for Jellyfin 12.4 and later.
+          md5: $(cat md5.txt)" || gh release upload "$GITHUB_REF_NAME" "korie_$V.zip" --clobber
+      - name: Catalogue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir site
+          gh api "repos/${GITHUB_REPOSITORY}/releases" > releases.json
+          python3 tools/manifest.py releases.json > site/manifest.json
+          cp icon.png site/icon.png
+          cat site/manifest.json
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  pages:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4
