@@ -16,12 +16,37 @@ uses: the Android TV app, the Windows/Mac/Linux app, or any browser.
 
 ## Running the server
 
-On a NAS with Docker, use `docker-compose.yml`: it pulls `ghcr.io/mightyx3n/korie:latest`
-(built by GitHub on every push, for x86 and ARM NASes) and uses `/volume1/Media` as `/media`.
+Korie runs in Docker. GitHub builds the image (`ghcr.io/mightyx3n/korie:latest`, for x86 and
+ARM) on every push. On a NAS, paste this into the Docker app as a project (or save it as
+`docker-compose.yml` and run `docker compose up -d`). Change `/volume1/Media` to the folder
+with your films, series and music, and `/volume1/docker/korie` to where Korie may keep its data:
+
+```yaml
+# Korie on the NAS. Paste this into the NAS's Docker app as a project (or run
+# "docker compose up -d" next to it). Korie sees /volume1/Media as /media: add
+# its folders in Korie under Settings → Libraries. Open http://<NAS>:8100.
+services:
+  korie:
+    image: ghcr.io/mightyx3n/korie:latest
+    container_name: korie
+    restart: unless-stopped
+    # host networking lets TVs and PCs find Korie by themselves (UDP 7361);
+    # Korie uses port 8100, so it doesn't clash with Jellyfin
+    network_mode: host
+    environment:
+      - TZ=Europe/Copenhagen
+    volumes:
+      - /volume1/docker/korie:/data
+      # the same media share Jellyfin uses
+      - /volume1/Media:/media:ro
+```
+
 Or without compose:
 
     docker run -d --name korie --network host --restart unless-stopped \
       -v /volume1/docker/korie:/data -v /volume1/Media:/media:ro ghcr.io/mightyx3n/korie:latest
+
+To update: pull the image again and restart the container (`docker compose pull && docker compose up -d`).
 
 Then open `http://<nas>:8100` and add your folders under Settings → Libraries.
 Host networking lets TVs and PCs find the server by themselves (UDP 7361). Without it,
