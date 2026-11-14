@@ -1,16 +1,17 @@
-# Korie on the NAS. Korie sees /volume1/Media as /media (add its folders in
-# Korie under Settings → Libraries). Keep this file in /volume1/docker/korie.
+# Korie on the NAS. Paste this into the NAS's Docker app as a project (or run
+# "docker compose up -d" next to it). Korie sees /volume1/Media as /media: add
+# its folders in Korie under Settings → Libraries. Open http://<NAS>:8100.
 services:
   korie:
-    image: korie:latest
-    build: .
+    image: ghcr.io/mightyx3n/korie:latest
     container_name: korie
     restart: unless-stopped
-    # host networking lets TVs and PCs find Korie by themselves (UDP 7361)
+    # host networking lets TVs and PCs find Korie by themselves (UDP 7361);
+    # Korie uses port 8100, so it doesn't clash with Jellyfin
     network_mode: host
     environment:
       - TZ=Europe/Copenhagen
     volumes:
-      - ./korie-data:/data
+      - /volume1/docker/korie:/data
       # the same media share Jellyfin uses
       - /volume1/Media:/media:ro

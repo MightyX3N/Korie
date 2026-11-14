@@ -1,0 +1,56 @@
+# Builds Korie's server image on every push to main and publishes it as
+# ghcr.io/mightyx3n/korie (latest, and the version from server/package.json).
+name: Docker image
+
+on:
+  push:
+    branches: [main]
+    paths: ["server/**", "client/**", "Dockerfile", ".github/workflows/docker.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # the TMDb key, scrambled into the image (never in the repository)
+      - name: TMDb key
+        env:
+          TMDB_KEY: ${{ secrets.TMDB_KEY }}
+        run: |
+          if [ -n "$TMDB_KEY" ]; then
+            printf '%s' "$TMDB_KEY" > /tmp/key && node tools/make_secret.mjs /tmp/key && rm /tmp/key
+          else
+            echo "No TMDB_KEY secret: the image has no built-in TMDb key (one can be set in Korie's settings)."
+          fi
+
+      - name: Version
+        id: v
+        run: echo "version=$(node -p "require('./server/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ghcr.io/mightyx3n/korie:latest
+            ghcr.io/mightyx3n/korie:${{ steps.v.outputs.version }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/MightyX3N/Korie
+            org.opencontainers.image.description=Korie media centre server
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

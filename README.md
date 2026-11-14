@@ -16,11 +16,12 @@ uses: the Android TV app, the Windows/Mac/Linux app, or any browser.
 
 ## Running the server
 
-On a NAS with Docker, use `docker-compose.yml` (change the media folders to yours), or:
+On a NAS with Docker, use `docker-compose.yml`: it pulls `ghcr.io/mightyx3n/korie:latest`
+(built by GitHub on every push, for x86 and ARM NASes) and uses `/volume1/Media` as `/media`.
+Or without compose:
 
-    docker load -i korie-0.6.0.tar.gz
     docker run -d --name korie --network host --restart unless-stopped \
-      -v /volume1/docker/korie:/data -v /volume1/Movies:/media/films:ro korie:0.6.0
+      -v /volume1/docker/korie:/data -v /volume1/Media:/media:ro ghcr.io/mightyx3n/korie:latest
 
 Then open `http://<nas>:8100` and add your folders under Settings → Libraries.
 Host networking lets TVs and PCs find the server by themselves (UDP 7361). Without it,
