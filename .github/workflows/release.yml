@@ -1,5 +1,6 @@
-# A version tag (git tag v0.1.0 && git push --tags) builds the plugin, attaches it to a GitHub
-# release, and publishes Jellyfin's plugin catalogue on GitHub Pages:
+# Makes a release: either push a version tag (git tag v0.1.0 && git push --tags), or on GitHub open
+# Actions > Release > Run workflow and type the version. It builds the plugin, attaches it to a
+# GitHub release (making the tag if needed), and publishes Jellyfin's plugin catalogue on GitHub Pages:
 #   https://mightyx3n.github.io/Korie/manifest.json  (add this under Dashboard > Plugins > Repositories)
 name: Release
 
@@ -7,6 +8,10 @@ on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release, like 0.1.0"
+        required: true
 
 permissions:
   contents: write
@@ -23,7 +28,8 @@ jobs:
           dotnet-version: "10.0.x"
       - name: Build
         run: |
-          V="${GITHUB_REF_NAME#v}"
+          V="${{ github.event.inputs.version }}"
+          [ -n "$V" ] || V="${GITHUB_REF_NAME#v}"
           dotnet build Korie.Jellyfin/Korie.Jellyfin.csproj -c Release -o out -p:Version="$V"
           mkdir pkg
           cp out/Korie.Jellyfin.dll out/MoonSharp.Interpreter.dll pkg/
@@ -31,13 +37,12 @@ jobs:
           md5sum "korie_$V.zip" | cut -d' ' -f1 > md5.txt
           echo "V=$V" >> "$GITHUB_ENV"
       - name: Release
-        if: startsWith(github.ref, 'refs/tags/')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" "korie_$V.zip" --title "Korie $V" \
+          gh release create "v$V" "korie_$V.zip" --target "$GITHUB_SHA" --title "Korie $V" \
             --notes "Korie $V for Jellyfin 12.4 and later.
-          md5: $(cat md5.txt)" || gh release upload "$GITHUB_REF_NAME" "korie_$V.zip" --clobber
+          md5: $(cat md5.txt)" || gh release upload "v$V" "korie_$V.zip" --clobber
       - name: Catalogue
         env:
           GH_TOKEN: ${{ github.token }}
