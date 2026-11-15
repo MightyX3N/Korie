@@ -7,8 +7,9 @@ android {
         applicationId "app.korie.tv"
         minSdk 24
         targetSdk 35
-        versionCode 1
-        versionName "0.6.0"
+        // the release build sets these from the version tag (v0.6.0 -> 0.6.0, 600)
+        versionCode((System.getenv("KORIE_VERSION_CODE") ?: "600") as int)
+        versionName System.getenv("KORIE_VERSION") ?: "0.6.0"
     }
     signingConfigs {
         release {

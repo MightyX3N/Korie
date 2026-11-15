@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Korie: every list of things from the server (Films, Series, a series' seasons and episodes,
+     Live TV, add-ons, search results). Posters in a grid, or a list with pictures and text. -->
+<window>
+	<defaultcontrol always="true">5100</defaultcontrol>
+	<backgroundcolor>background</backgroundcolor>
+	<views>50,51</views>
+	<menucontrol>9000</menucontrol>
+	<controls>
+		<include>KorieBackground</include>
+		<control type="group">
+			<visible>Control.IsVisible(51) | Container.Content(seasons)</visible>
+			<include content="KorieBackdrop"><param name="art">$INFO[Container.ListItem.Art(fanart)]</param></include>
+		</control>
+		<include content="KorieRail"><param name="right">5100</param></include>
+		<include content="KorieHeader">
+			<param name="title">$VAR[KorieListTitle]</param>
+			<param name="note">$VAR[KorieListCount]</param>
+		</include>
+
+		<control type="label">
+			<left>444</left><top>220</top><width>1300</width><height>120</height>
+			<font>korie_body28</font><textcolor>korie_dim</textcolor>
+			<wrapmultiline>true</wrapmultiline>
+			<label>Nothing here yet.</label>
+			<visible>Integer.IsEqual(Container.NumItems,0) + !Container.IsUpdating</visible>
+		</control>
+
+		<control type="group" id="5100">
+			<!-- 50: posters (films, series, seasons, albums) -->
+			<control type="panel" id="50">
+				<left>444</left><top>152</top><width>1456</width><height>800</height>
+				<onleft>$VAR[KorieToMenu]</onleft>
+				<onup>9000</onup>
+				<orientation>vertical</orientation>
+				<scrolltime tween="cubic" easing="out">240</scrolltime>
+				<preloaditems>2</preloaditems>
+				<visible>Container.Content(movies) | Container.Content(tvshows) | Container.Content(seasons) | Container.Content(albums) | Container.Content(sets)</visible>
+				<itemlayout width="206" height="340">
+					<control type="group">
+						<left>14</left><top>14</top>
+						<include content="KorieCardPoster"/>
+					</control>
+					<control type="label">
+						<left>14</left><top>284</top><width>172</width><height>34</height>
+						<font>korie_body22</font><textcolor>korie_soft</textcolor>
+						<label>$INFO[ListItem.Label]</label>
+					</control>
+				</itemlayout>
+				<focusedlayout width="206" height="340">
+					<control type="group">
+						<left>14</left><top>14</top>
+						<include content="KorieCardPoster"><param name="focus">Control.HasFocus(50)</param></include>
+					</control>
+					<control type="label">
+						<left>14</left><top>284</top><width>172</width><height>34</height>
+						<font>korie_body22</font><textcolor>korie_ink</textcolor>
+						<scroll>true</scroll>
+						<label>$INFO[ListItem.Label]</label>
+					</control>
+				</focusedlayout>
+			</control>
+
+			<!-- 51: a list with pictures and text (episodes, live channels, add-ons, rows, search results) -->
+			<control type="list" id="51">
+				<left>444</left><top>152</top><width>1412</width><height>928</height>
+				<onleft>$VAR[KorieToMenu]</onleft>
+				<onup>9000</onup>
+				<orientation>vertical</orientation>
+				<scrolltime tween="cubic" easing="out">220</scrolltime>
+				<visible>!Container.Content(movies) + !Container.Content(tvshows) + !Container.Content(seasons) + !Container.Content(albums) + !Container.Content(sets)</visible>
+				<itemlayout width="1412" height="196">
+					<include content="KorieListRow"><param name="focus">false</param></include>
+				</itemlayout>
+				<focusedlayout width="1412" height="196">
+					<include content="KorieListRow"><param name="focus">Control.HasFocus(51)</param></include>
+				</focusedlayout>
+			</control>
+		</control>
+
+		<!-- the focused film or series, under the grid -->
+		<control type="group">
+			<left>380</left><top>956</top><width>1540</width><height>124</height>
+			<visible>Control.IsVisible(50) + Integer.IsGreater(Container.NumItems,0)</visible>
+			<control type="image">
+				<texture colordiffuse="korie_shade90">colors/white.png</texture>
+			</control>
+			<control type="image">
+				<height>1</height>
+				<texture colordiffuse="korie_ink15">colors/white.png</texture>
+			</control>
+			<control type="grouplist">
+				<left>64</left><top>0</top><width>1412</width><height>124</height>
+				<orientation>horizontal</orientation>
+				<itemgap>32</itemgap>
+				<align>left</align>
+				<control type="label">
+					<width>auto</width><height>124</height><aligny>center</aligny>
+					<font>korie_heading34</font><textcolor>korie_ink</textcolor>
+					<label>$INFO[Container(50).ListItem.Label]</label>
+				</control>
+				<control type="label">
+					<width>auto</width><height>124</height><aligny>center</aligny>
+					<font>korie_body24</font><textcolor>korie_dim</textcolor>
+					<label>$INFO[Container(50).ListItem.Year]$INFO[Container(50).ListItem.Duration(hh:mm), · ,]$INFO[Container(50).ListItem.Genre, · ]$INFO[Container(50).ListItem.Rating, · , / 10]</label>
+				</control>
+			</control>
+			<control type="label">
+				<right>64</right><top>0</top><width>700</width><height>124</height>
+				<align>right</align><aligny>center</aligny>
+				<font>korie_body22</font><textcolor>korie_dim</textcolor>
+				<label>OK: open · Menu: options</label>
+			</control>
+		</control>
+	</controls>
+</window>

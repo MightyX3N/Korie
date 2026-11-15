@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Korie starts on "Who's watching?" (it goes straight Home when there's only one person) -->
+<window>
+	<onload>ReplaceWindow(1190)</onload>
+	<controls>
+		<include>KorieBackground</include>
+	</controls>
+</window>

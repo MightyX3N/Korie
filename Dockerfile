@@ -18,7 +18,9 @@ COPY server/builtin ./builtin
 # the TMDb key, scrambled (tools/make_secret.mjs); never in the repository
 COPY server/secret.dat* ./
 COPY --from=client /korie/client/dist /korie/client/dist
-ENV KORIE_DATA=/data KORIE_CLIENT=/korie/client/dist NODE_ENV=production
+# the Kodi add-ons the server hands out as a Kodi repository
+COPY kodi /korie/kodi
+ENV KORIE_DATA=/data KORIE_CLIENT=/korie/client/dist KORIE_KODI=/korie/kodi NODE_ENV=production
 VOLUME /data
 EXPOSE 8100/tcp 7361/udp
 ENTRYPOINT ["/usr/bin/tini", "--"]

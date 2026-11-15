@@ -18,6 +18,7 @@ import { img, picture, valid } from "./images.ts";
 import { subscribe } from "./events.ts";
 import { serverId } from "./ident.ts";
 import { startDiscovery } from "./discovery.ts";
+import * as kodi from "./kodi.ts";
 
 const app = Fastify({ logger: false, bodyLimit: 1024 * 1024, routerOptions: { maxParamLength: 8192 } });
 
@@ -62,6 +63,28 @@ const body = (req: FastifyRequest): Record<string, any> => (req.body ?? {}) as R
 const allowed = (p: people.Person) => (aid: string) => people.mayUseAddon(p, aid);
 
 // --- hello, people, signing in ------------------------------------------------------------
+
+if (process.env.KORIE_DEBUG_HTTP) app.addHook("onResponse", async (req, reply) => log("http", `${req.method} ${req.url} ${req.headers.range ?? ""} -> ${reply.statusCode}`));
+
+// the Kodi repository (see kodi.ts)
+app.get("/kodi", async (_req, reply: FastifyReply) => reply.redirect("/kodi/"));
+app.get("/kodi/*", async (req: Req, reply: FastifyReply) => {
+  const rel = decodeURIComponent((req.params as any)["*"] ?? "");
+  const f = await kodi.serve(rel, kodi.baseOf(req.headers.host));
+  if (!f) throw new HttpError(404, "Not found.");
+  const buf = typeof f.body === "string" ? Buffer.from(f.body) : f.body;
+  reply.header("Content-Type", f.type).header("Cache-Control", "no-cache").header("Accept-Ranges", "bytes");
+  // Kodi reads zip files in pieces (it jumps to the zip's index at the end first)
+  const range = req.headers.range?.match(/bytes=(\d*)-(\d*)/);
+  if (range) {
+    let start = range[1] ? Number(range[1]) : buf.length - Number(range[2] || 0);
+    let end = range[1] && range[2] ? Math.min(Number(range[2]), buf.length - 1) : buf.length - 1;
+    if (!range[1]) start = Math.max(0, start);
+    if (start >= buf.length || start > end) return reply.code(416).header("Content-Range", `bytes */${buf.length}`).send();
+    return reply.code(206).header("Content-Range", `bytes ${start}-${end}/${buf.length}`).header("Content-Length", end - start + 1).send(buf.subarray(start, end + 1));
+  }
+  return reply.header("Content-Length", buf.length).send(buf);
+});
 
 app.get("/api/hello", async () => ({ korie: true, id: serverId(), name: setting("server_name"), version: VERSION }));
 
@@ -255,7 +278,7 @@ app.post("/api/play", async (req: Req) => {
   if (row) {
     if (!row.file) throw new HttpError(400, "There's no file to play.");
     const d = lib.data(row);
-    src = { file: row.file, disc: d.disc ?? null };
+    src = { file: row.file, disc: d.disc ?? null, ...(Array.isArray(d.parts) && d.parts.length > 1 ? { parts: d.parts } : {}) };
     subFiles = d.subs ?? [];
     if (row.kind === "episode") {
       const s = lib.getRow(row.parent ?? "");
@@ -288,6 +311,19 @@ app.post("/api/play", async (req: Req) => {
       next = eps[eps.findIndex((e) => e.id === id) + 1]?.id ?? null;
     }
   }
+  const prog0 = views.progressOf(p.id, id);
+  const resume = prog0 && !prog0.watched ? prog0.position : 0;
+  // Kodi plays nearly everything itself: hand it the original file or stream, nothing probed or converted
+  if (body(req).kodi) {
+    const k = kodiSource(src, req.headers.host);
+    if (k) {
+      const subs = [
+        ...subFiles.map((f) => `http://${req.headers.host}/api/raw/${playback.token({ file: f })}/${encodeURIComponent(path.basename(f))}`),
+        ...extra.map((x) => x.url),
+      ];
+      return { mode: "kodi", url: k, subs, id, title, subtitle, resume, next, live: !!src.live };
+    }
+  }
   let pl: playback.Plan;
   try {
     pl = await playback.plan(src, caps, audio, burn, subFiles, extra);
@@ -298,7 +334,31 @@ app.post("/api/play", async (req: Req) => {
   return { ...pl, id, title, subtitle, resume: prog && !prog.watched ? prog.position : 0, next };
 });
 
-app.get("/api/media/:tok", async (req: Req, reply: FastifyReply) => {
+/** The address Kodi should open for a source, or null when the server has to convert it (disc folders). */
+function kodiSource(src: playback.Source, host: string | undefined): string | null {
+  const media = (f: string) => `http://${host}/api/media/${playback.token({ file: f })}/${encodeURIComponent(path.basename(f))}`;
+  if (src.url) {
+    // Kodi's way of sending request headers: url|Name=value&Name=value
+    const h = Object.entries(src.headers ?? {}).map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join("&");
+    return h ? `${src.url}|${h}` : src.url;
+  }
+  if (!src.file || src.disc === "dvd" || src.disc === "bluray") return null;
+  // one film in several files: Kodi plays them as one
+  if (src.parts && src.parts.length > 1) return "stack://" + src.parts.map((f) => media(f).replace(/,/g, ",,")).join(" , ");
+  return media(src.file);
+}
+
+// a subtitle file as it is (Kodi reads .srt/.ass itself)
+app.get("/api/raw/:tok/:name", async (req: Req, reply: FastifyReply) => {
+  const src = playback.source(req.params.tok);
+  if (!src?.file || !fs.existsSync(src.file)) throw new HttpError(404, "Not found.");
+  return reply.header("Content-Type", "application/octet-stream").send(fs.createReadStream(src.file));
+});
+
+app.get("/api/media/:tok/:name", async (req: Req, reply: FastifyReply) => mediaFile(req, reply));
+app.get("/api/media/:tok", async (req: Req, reply: FastifyReply) => mediaFile(req, reply));
+
+async function mediaFile(req: Req, reply: FastifyReply) {
   const src = playback.source(req.params.tok);
   if (!src?.file) throw new HttpError(404, "Not found.");
   const st = fs.statSync(src.file);
@@ -313,7 +373,7 @@ app.get("/api/media/:tok", async (req: Req, reply: FastifyReply) => {
   }
   reply.headers({ "Content-Type": type, "Accept-Ranges": "bytes", "Content-Length": st.size });
   return reply.send(fs.createReadStream(src.file));
-});
+}
 
 app.get("/api/stream/:tok", (req: Req, reply: FastifyReply) => {
   const src = playback.source(req.params.tok);

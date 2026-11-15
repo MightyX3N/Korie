@@ -75,7 +75,30 @@ export async function find(kind: "film" | "series", title: string, year: string)
   const want = norm(title);
   // an exact title match (or original title) wins over popularity
   const exact = r.find((x) => norm(x.title) === want || norm(x.original) === want);
-  return (exact ?? r[0]).id;
+  if (exact) return exact.id;
+  // otherwise only something that's clearly the same name, not whatever TMDb lists first
+  // (or the top hit when the year from the file agrees)
+  const close = r.find((x) => similar(title, x.title) || similar(title, x.original));
+  if (close) return close.id;
+  return year && r[0].year === year ? r[0].id : null;
+}
+
+/** Most of the words in common (either way round). */
+function similar(a: string, b: string): boolean {
+  const words = (s: string) => new Set(s.toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "").split(/[^\p{L}\p{N}]+/u).filter((w) => w.length > 1));
+  const x = words(a);
+  const y = words(b);
+  if (!x.size || !y.size) return false;
+  let both = 0;
+  for (const w of x) if (y.has(w)) both++;
+  return both / Math.min(x.size, y.size) >= 0.6 && both / Math.max(x.size, y.size) >= 0.4;
+}
+
+/** The TMDb id for an IMDb id (from a .nfo). */
+export async function byImdb(kind: "film" | "series", imdb: string): Promise<number | null> {
+  const r = await get(`find/${imdb}`, { external_source: "imdb_id" });
+  const hit = (kind === "film" ? r?.movie_results : r?.tv_results)?.[0];
+  return hit?.id ?? null;
 }
 
 export function norm(s: string): string {

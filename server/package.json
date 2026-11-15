@@ -1,6 +1,6 @@
 {
   "name": "korie-server",
-  "version": "0.6.0",
+  "version": "0.7.6",
   "description": "",
   "scripts": {
     "start": "node --disable-warning=ExperimentalWarning src/main.ts",
@@ -16,7 +16,8 @@
     "fastify": "^5.12.8",
     "music-metadata": "^12.5.0",
     "sharp": "^0.35.5",
-    "wasmoon": "^1.16.0"
+    "wasmoon": "^1.16.0",
+    "yazl": "^3.3.1"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",

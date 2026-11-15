@@ -14,7 +14,7 @@ import { fetchText } from "./net.ts";
 // --- what a source is ---------------------------------------------------------------------
 
 /** A local file or folder (DVD), or a web address an add-on gave (with headers). */
-export interface Source { file?: string; url?: string; headers?: Record<string, string>; disc?: "dvd" | "bluray" | "iso" | null; live?: boolean }
+export interface Source { file?: string; url?: string; headers?: Record<string, string>; disc?: "dvd" | "bluray" | "iso" | null; live?: boolean; parts?: string[] }
 
 export function token(src: Source): string {
   const body = Buffer.from(JSON.stringify(src)).toString("base64url");
@@ -66,6 +66,8 @@ async function inputArgs(src: Source): Promise<string[]> {
     return [...(h ? ["-headers", h] : []), "-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "5", "-i", src.url];
   }
   const f = src.file!;
+  // one film in several files (CD1, CD2): FFmpeg plays them one after another
+  if (src.parts && src.parts.length > 1) return ["-f", "concat", "-safe", "0", "-i", await partsList(src.parts)];
   if (src.disc === "dvd" || src.disc === "iso") {
     if (await hasDvdDemuxer()) return ["-f", "dvdvideo", "-preindex", "0", "-i", src.disc === "dvd" ? path.join(f, "VIDEO_TS") : f];
     if (src.disc === "dvd") {
@@ -87,6 +89,23 @@ async function inputArgs(src: Source): Promise<string[]> {
   }
   if (src.disc === "bluray") return ["-i", "bluray:" + f];
   return ["-i", f];
+}
+
+/** FFmpeg's list of the parts, with each part's length so the whole film's length is right. */
+async function partsList(parts: string[]): Promise<string> {
+  const key = crypto.createHash("md5").update(parts.map((p) => p + ":" + safeMtime(p)).join("|")).digest("hex");
+  const file = path.join(DATA, "cache", "parts", key + ".txt");
+  if (fs.existsSync(file)) return file;
+  const lines = ["ffconcat version 1.0"];
+  for (const p of parts) {
+    const out = await run(FFPROBE, ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", p], 60000);
+    lines.push(`file '${p.replace(/'/g, "'\\''")}'`);
+    const d = Number(out.trim());
+    if (d > 0) lines.push(`duration ${d}`);
+  }
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, lines.join("\n") + "\n");
+  return file;
 }
 
 export async function probe(src: Source): Promise<Probe> {
@@ -204,7 +223,7 @@ export async function plan(src: Source, caps: Caps, audio: number | null, burn: 
   const videoOk = !v || codecOk(v.codec, caps.video);
   const audioOk = !chosenAudio || codecOk(chosenAudio.codec, caps.audio);
   const firstAudio = audio === null || auds[0] === chosenAudio;
-  const direct = !!src.file && !src.disc && containerOk && videoOk && audioOk && firstAudio && burn === null;
+  const direct = !!src.file && !src.disc && !src.parts && containerOk && videoOk && audioOk && firstAudio && burn === null;
   const why = direct ? "plays as it is" : !src.file ? "from the internet, through the server" : !containerOk ? `repackaged (${container.split(",")[0]})` : !videoOk ? `video converted (${v?.codec})` : !audioOk ? `sound converted (${chosenAudio?.codec})` : "converted";
   const q = new URLSearchParams();
   if (audio !== null && chosenAudio) q.set("audio", String(chosenAudio.index));

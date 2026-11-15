@@ -54,7 +54,10 @@ function art(dir: string, files: string[], base: string, names: string[]): strin
 
 // --- Kodi .nfo (only the fields Korie uses) ---------------------------------------------
 
-export interface Nfo { title?: string; year?: string; plot?: string; tmdb?: number; genres?: string[]; rating?: number; director?: string }
+export interface Nfo {
+  root?: string; title?: string; year?: string; plot?: string; tmdb?: number; imdb?: string; genres?: string[]; rating?: number; director?: string;
+  runtime?: number; poster?: string; fanart?: string; season?: number; episode?: number; aired?: string;
+}
 
 function tag(xml: string, name: string): string | undefined {
   const m = xml.match(new RegExp(`<${name}(?:\\s[^>]*)?>([\\s\\S]*?)</${name}>`, "i"));
@@ -65,22 +68,63 @@ function tag(xml: string, name: string): string | undefined {
 export function readNfo(file: string): Nfo {
   let xml: string;
   try {
-    xml = fs.readFileSync(file, "utf8");
+    xml = fs.readFileSync(file, "utf8").replace(/^\uFEFF/, "");
   } catch {
     return {};
   }
   const out: Nfo = {};
-  out.title = tag(xml, "title");
-  out.year = tag(xml, "year") ?? tag(xml, "premiered")?.slice(0, 4);
-  out.plot = tag(xml, "plot");
-  out.director = tag(xml, "director");
-  const uid = xml.match(/<uniqueid[^>]*type="tmdb"[^>]*>(\d+)<\/uniqueid>/i)?.[1] ?? tag(xml, "tmdbid");
-  if (uid && /^\d+$/.test(uid)) out.tmdb = Number(uid);
-  const genres = [...xml.matchAll(/<genre>([^<]+)<\/genre>/gi)].map((m) => m[1].trim());
+  out.root = xml.match(/<(movie|tvshow|episodedetails|musicvideo)[\s>]/i)?.[1].toLowerCase();
+  out.title = tag(xml, "title") || undefined;
+  out.year = (tag(xml, "year") || tag(xml, "premiered") || tag(xml, "aired") || "").slice(0, 4) || undefined;
+  out.plot = tag(xml, "plot") || tag(xml, "outline") || undefined;
+  out.director = tag(xml, "director") || undefined;
+  out.aired = tag(xml, "aired") || tag(xml, "premiered") || undefined;
+  const uid = (type: string) => xml.match(new RegExp(`<uniqueid[^>]*type="${type}"[^>]*>\\s*([^<\\s]+)\\s*</uniqueid>`, "i"))?.[1];
+  const tm = uid("tmdb") ?? tag(xml, "tmdbid") ?? tag(xml, "tmdb");
+  if (tm && /^\d+$/.test(tm)) out.tmdb = Number(tm);
+  const im = uid("imdb") ?? tag(xml, "imdbid") ?? tag(xml, "imdb") ?? tag(xml, "id");
+  if (im && /^tt\d+$/.test(im)) out.imdb = im;
+  // Kodi also writes a bare IMDb link or <id>tt...</id>
+  if (!out.imdb) out.imdb = xml.match(/imdb\.com\/title\/(tt\d+)/i)?.[1];
+  const genres = [...xml.matchAll(/<genre>([^<]+)<\/genre>/gi)].map((m) => m[1].trim()).filter(Boolean);
   if (genres.length) out.genres = genres;
-  const r = Number(tag(xml, "rating"));
+  const r = Number(tag(xml, "rating") ?? xml.match(/<rating[^>]*>[\s\S]*?<value>([\d.]+)<\/value>/i)?.[1]);
   if (r) out.rating = r;
+  const rt = Number(tag(xml, "runtime"));
+  if (rt) out.runtime = rt;
+  const sn = Number(tag(xml, "season"));
+  const ep = Number(tag(xml, "episode"));
+  if (tag(xml, "season") !== undefined && Number.isFinite(sn)) out.season = sn;
+  if (ep) out.episode = ep;
+  // pictures: <thumb aspect="poster">, and <fanart><thumb>; not the actors' photos
+  const noActors = xml.replace(/<actor>[\s\S]*?<\/actor>/gi, "");
+  const thumbs = [...noActors.matchAll(/<thumb([^>]*)>\s*(https?:[^<\s]+)\s*<\/thumb>/gi)];
+  const fan = noActors.match(/<fanart>([\s\S]*?)<\/fanart>/i)?.[1] ?? "";
+  const fanUrl = fan.match(/<thumb[^>]*>\s*(https?:[^<\s]+)\s*<\/thumb>/i)?.[1];
+  const posterThumb = thumbs.find((t) => /aspect="poster"/i.test(t[1])) ?? thumbs.find((t) => !/aspect=/i.test(t[1]) && !fan.includes(t[2]));
+  if (posterThumb) out.poster = posterThumb[2];
+  if (fanUrl) out.fanart = fanUrl;
   return out;
+}
+
+/** The .nfo to use: the first of these names that exists (any case). */
+function nfoIn(dir: string, files: string[], names: string[]): Nfo | null {
+  const lower = new Map(files.map((f) => [f.toLowerCase(), f]));
+  for (const n of names) {
+    const hit = lower.get(n.toLowerCase());
+    if (hit) return readNfo(path.join(dir, hit));
+  }
+  return null;
+}
+
+/** A folder with just one film in it: whatever .nfo is there describes it (unless it's a show's or an episode's). */
+function onlyNfo(dir: string, files: string[]): Nfo | null {
+  const nfos = files.filter((f) => ext(f) === "nfo");
+  for (const f of nfos) {
+    const n = readNfo(path.join(dir, f));
+    if (n.root === "movie" || (!n.root && (n.title || n.tmdb || n.imdb))) return n;
+  }
+  return null;
 }
 
 // --- names ----------------------------------------------------------------------------
@@ -91,7 +135,7 @@ export function titleYear(raw: string): { title: string; year: string } {
   return { title, year: r.year ?? "" };
 }
 
-const SEASON_DIR = /^(?:season|series|staffel|sæson|saison|s)[\s._-]*(\d{1,3})$/i;
+const SEASON_DIR = /^(?:season|series|staffel|sæson|saeson|saison|sezon|temporada|s)[\s._-]*(\d{1,3})(?:[^\d].*)?$/i;
 
 function episodeOf(name: string, seasonFromDir: number | null): { season: number; episode: number; episodeEnd?: number; title: string } | null {
   const base = name.replace(/\.[^.]+$/, "");
@@ -118,9 +162,9 @@ function episodeOf(name: string, seasonFromDir: number | null): { season: number
 // --- what a scan finds ----------------------------------------------------------------
 
 export interface FoundFilm {
-  id: string; file: string; title: string; year: string; nfo: Nfo; poster: string; backdrop: string; subs: string[]; disc?: "dvd" | "bluray" | "iso";
+  id: string; file: string; title: string; year: string; nfo: Nfo; poster: string; backdrop: string; subs: string[]; disc?: "dvd" | "bluray" | "iso"; parts?: string[];
 }
-export interface FoundEpisode { id: string; file: string; season: number; episode: number; episodeEnd?: number; title: string; thumb: string; subs: string[] }
+export interface FoundEpisode { id: string; file: string; season: number; episode: number; episodeEnd?: number; title: string; thumb: string; subs: string[]; nfo?: Nfo }
 export interface FoundSeries { id: string; dir: string; title: string; year: string; nfo: Nfo; poster: string; backdrop: string; episodes: FoundEpisode[] }
 export interface FoundTrack { id: string; file: string; title: string; artist: string; track: number; disc: number; duration: number }
 export interface FoundAlbum { id: string; title: string; artist: string; year: string; cover: string; tracks: FoundTrack[] }
@@ -130,96 +174,169 @@ function subsFor(dir: string, files: string[], base: string): string[] {
   return files.filter((f) => SUBS.has(ext(f)) && f.toLowerCase().startsWith(b)).map((f) => path.join(dir, f));
 }
 
+// one film in several files: "Film CD1.avi", "Film - Part 2.mkv", "CD 1.avi" (Kodi's stacking names)
+const STACK = /^(.*?)([\s._-]*(?:cd|dvd|part|pt|disc|disk)[\s._-]*([0-9]{1,2}|[a-d]))(.*?)$/i;
+
+function stacks(videos: string[]): string[][] {
+  const groups = new Map<string, { n: string; f: string }[]>();
+  const out: string[][] = [];
+  for (const f of videos) {
+    const base = f.replace(/\.[^.]+$/, "");
+    const m = base.match(STACK);
+    if (!m) {
+      out.push([f]);
+      continue;
+    }
+    const k = (m[1] + "\u0000" + m[4] + "\u0000" + ext(f)).toLowerCase();
+    const g = groups.get(k) ?? [];
+    g.push({ n: m[3].toLowerCase(), f });
+    groups.set(k, g);
+  }
+  for (const g of groups.values()) {
+    if (g.length < 2) out.push(...g.map((x) => [x.f]));
+    else out.push(g.sort((a, b) => a.n.localeCompare(b.n, undefined, { numeric: true })).map((x) => x.f));
+  }
+  return out;
+}
+
 export function scanFilms(root: string): FoundFilm[] {
   const out: FoundFilm[] = [];
+  const disc = (dir: string, files: string[], kind: "dvd" | "bluray"): void => {
+    const name = path.basename(dir);
+    const ty = titleYear(name);
+    const inner = kind === "dvd" ? path.join(dir, "VIDEO_TS") : path.join(dir, "BDMV");
+    const nfo = nfoIn(dir, files, ["movie.nfo", name + ".nfo", "VIDEO_TS.nfo", "index.nfo"]) ?? nfoIn(inner, list(inner).files, ["VIDEO_TS.nfo", "index.nfo", "movie.nfo"]) ?? onlyNfo(dir, files) ?? {};
+    out.push({
+      id: idFor("f", dir), file: dir, title: nfo.title || ty.title, year: nfo.year || ty.year, nfo,
+      poster: art(dir, files, name, ["poster", "folder", "cover"]), backdrop: art(dir, files, name, ["fanart", "backdrop", "landscape"]), subs: [], disc: kind,
+    });
+  };
   const walk = (dir: string, depth: number): void => {
     const { files, dirs } = list(dir);
     // a DVD or Blu-ray folder is one film
-    if (dirs.some((d) => d.toUpperCase() === "VIDEO_TS") || files.some((f) => f.toUpperCase() === "VIDEO_TS.IFO")) {
-      const name = path.basename(dir);
-      const ty = titleYear(name);
-      out.push({ id: idFor("f", dir), file: dir, ...ty, nfo: {}, poster: art(dir, files, name, ["poster", "folder", "cover"]), backdrop: art(dir, files, name, ["fanart", "backdrop"]), subs: [], disc: "dvd" });
-      return;
-    }
-    if (dirs.some((d) => d.toUpperCase() === "BDMV")) {
-      const name = path.basename(dir);
-      out.push({ id: idFor("f", dir), file: dir, ...titleYear(name), nfo: {}, poster: art(dir, files, name, ["poster", "folder", "cover"]), backdrop: art(dir, files, name, ["fanart", "backdrop"]), subs: [], disc: "bluray" });
-      return;
-    }
+    if (dirs.some((d) => d.toUpperCase() === "VIDEO_TS") || files.some((f) => f.toUpperCase() === "VIDEO_TS.IFO")) return disc(dir, files, "dvd");
+    if (dirs.some((d) => d.toUpperCase() === "BDMV")) return disc(dir, files, "bluray");
     const videos = files.filter((f) => VIDEO.has(ext(f)) && !/(^|[\s._-])(sample|trailer)([\s._-]|$)/i.test(f));
-    for (const f of videos) {
+    const films = stacks(videos);
+    const parent = path.basename(dir);
+    for (const parts of films) {
+      const f = parts[0];
       const base = f.replace(/\.[^.]+$/, "");
-      const parent = path.basename(dir);
+      const stem = parts.length > 1 ? (base.match(STACK)?.[1] ?? "").replace(/[\s._-]+$/, "") : base;
+      const alone = films.length === 1;
       // a film in its own folder: the folder name is usually the cleanest
-      let ty = titleYear(base);
-      if (depth > 0 && videos.length === 1) {
+      let ty = titleYear(stem || parent);
+      if (depth > 0 && (alone || !stem)) {
         const fy = titleYear(parent);
-        if (fy.year || !ty.year) ty = { title: fy.title || ty.title, year: fy.year || ty.year };
+        if (fy.year || !ty.year || !stem) ty = { title: fy.title || ty.title, year: fy.year || ty.year };
       }
-      const nfoFile = [base + ".nfo", "movie.nfo"].map((n) => path.join(dir, n)).find((p) => fs.existsSync(p));
-      const nfo = nfoFile ? readNfo(nfoFile) : {};
+      const names = [base + ".nfo", ...(stem ? [stem + ".nfo"] : []), ...parts.slice(1).map((p) => p.replace(/\.[^.]+$/, "") + ".nfo")];
+      if (alone) names.push("movie.nfo", parent + ".nfo");
+      const nfo = nfoIn(dir, files, names) ?? (alone ? onlyNfo(dir, files) : null) ?? {};
+      const artBase = stem || base;
       out.push({
         id: idFor("f", path.join(dir, f)), file: path.join(dir, f), title: nfo.title || ty.title, year: nfo.year || ty.year, nfo,
-        poster: art(dir, files, base, videos.length === 1 ? ["poster", "folder", "cover"] : ["poster"]),
-        backdrop: art(dir, files, base, videos.length === 1 ? ["fanart", "backdrop", "landscape"] : ["fanart"]),
+        poster: art(dir, files, artBase, alone ? ["poster", "folder", "cover"] : ["poster"]) || (artBase !== base ? art(dir, files, base, ["poster"]) : ""),
+        backdrop: art(dir, files, artBase, alone ? ["fanart", "backdrop", "landscape"] : ["fanart"]),
         subs: subsFor(dir, files, base), disc: ext(f) === "iso" ? "iso" : undefined,
+        parts: parts.length > 1 ? parts.map((p) => path.join(dir, p)) : undefined,
       });
     }
-    if (depth < 6) for (const d of dirs) walk(path.join(dir, d), depth + 1);
+    if (depth < 8) for (const d of dirs) walk(path.join(dir, d), depth + 1);
   };
   walk(root, 0);
   return out;
 }
 
+const isSeasonDir = (d: string) => SEASON_DIR.test(d) || /^specials?$/i.test(d);
+
+/** Is this folder one show? It has a tvshow.nfo, season folders, or episode files of its own. */
+function looksLikeShow(dir: string, l: Listing): boolean {
+  if (l.files.some((f) => f.toLowerCase() === "tvshow.nfo")) return true;
+  if (l.dirs.some(isSeasonDir)) return true;
+  if (!l.files.some((f) => VIDEO.has(ext(f)) && episodeOf(f, null) !== null)) return false;
+  // episodes of its own, but also show folders inside: it's a group with some loose episodes
+  return !l.dirs.some((d) => {
+    const sub = list(path.join(dir, d));
+    return sub.files.some((f) => f.toLowerCase() === "tvshow.nfo") || sub.dirs.some(isSeasonDir);
+  });
+}
+
+function showFrom(dir: string, l: Listing): FoundSeries {
+  const nfo = nfoIn(dir, l.files, ["tvshow.nfo"]) ?? {};
+  const ty = titleYear(path.basename(dir));
+  const s: FoundSeries = {
+    id: idFor("s", dir), dir, title: nfo.title || ty.title, year: nfo.year || ty.year, nfo,
+    poster: art(dir, l.files, "", ["poster", "folder", "cover"]), backdrop: art(dir, l.files, "", ["fanart", "backdrop", "landscape"]), episodes: [],
+  };
+  const walk = (d: string, season: number | null, depth: number): void => {
+    const { files, dirs } = list(d);
+    for (const f of files.filter((x) => VIDEO.has(ext(x)))) {
+      const base = f.replace(/\.[^.]+$/, "");
+      const enfo = nfoIn(d, files, [base + ".nfo"]);
+      let e = episodeOf(f, season);
+      // an episode .nfo knows its own season and number
+      if (enfo?.episode) e = { season: enfo.season ?? e?.season ?? season ?? 1, episode: enfo.episode, episodeEnd: e?.episodeEnd, title: e?.title ?? "" };
+      if (!e) continue;
+      if (enfo?.title) e.title = enfo.title;
+      s.episodes.push({ id: idFor("e", path.join(d, f)), file: path.join(d, f), ...e, thumb: art(d, files, base, ["thumb"]), subs: subsFor(d, files, base), nfo: enfo ?? undefined });
+    }
+    if (depth < 4) {
+      for (const sub of dirs) {
+        const m = sub.match(SEASON_DIR);
+        const sn = m ? Number(m[1]) : /^specials?$/i.test(sub) ? 0 : season;
+        walk(path.join(d, sub), sn, depth + 1);
+      }
+    }
+  };
+  walk(dir, null, 0);
+  s.episodes.sort((a, b) => a.season - b.season || a.episode - b.episode);
+  return s;
+}
+
 export function scanSeries(root: string): FoundSeries[] {
   const out: FoundSeries[] = [];
+  // folders are shows, or groups of shows ("TV/Danish/Show/Season 1"): look down until it's a show
+  const visit = (dir: string, l: Listing, depth: number): void => {
+    for (const name of l.dirs) {
+      const d = path.join(dir, name);
+      const sub = list(d);
+      if (looksLikeShow(d, sub)) {
+        const s = showFrom(d, sub);
+        if (s.episodes.length) out.push(s);
+      } else if (depth < 5) {
+        visit(d, sub, depth + 1);
+      }
+    }
+    loose(dir, l.files);
+  };
+  // loose episode files in a folder that isn't a show: grouped by the show name in the file name
+  const loose = (dir: string, files: string[]): void => {
+    const groups = new Map<string, FoundSeries>();
+    for (const f of files.filter((x) => VIDEO.has(ext(x)))) {
+      const e = episodeOf(f, null);
+      if (!e) continue;
+      const show = filenameParse(f.replace(/\.[^.]+$/, ""), true).title || "Unknown";
+      let s = groups.get(show.toLowerCase());
+      if (!s) {
+        s = { id: idFor("s", path.join(dir, "#" + show.toLowerCase())), dir, title: show, year: "", nfo: {}, poster: "", backdrop: "", episodes: [] };
+        groups.set(show.toLowerCase(), s);
+        out.push(s);
+      }
+      const base = f.replace(/\.[^.]+$/, "");
+      const enfo = nfoIn(dir, files, [base + ".nfo"]);
+      if (enfo?.title) e.title = enfo.title;
+      s.episodes.push({ id: idFor("e", path.join(dir, f)), file: path.join(dir, f), ...e, thumb: art(dir, files, base, ["thumb"]), subs: subsFor(dir, files, base), nfo: enfo ?? undefined });
+    }
+  };
   const top = list(root);
-  // each folder is a show
-  for (const showDir of top.dirs) {
-    const dir = path.join(root, showDir);
-    const showFiles = list(dir).files;
-    const nfo = fs.existsSync(path.join(dir, "tvshow.nfo")) ? readNfo(path.join(dir, "tvshow.nfo")) : {};
-    const ty = titleYear(showDir);
-    const s: FoundSeries = {
-      id: idFor("s", dir), dir, title: nfo.title || ty.title, year: nfo.year || ty.year, nfo,
-      poster: art(dir, showFiles, "", ["poster", "folder", "cover"]), backdrop: art(dir, showFiles, "", ["fanart", "backdrop", "landscape"]), episodes: [],
-    };
-    const walk = (d: string, season: number | null, depth: number): void => {
-      const { files, dirs } = list(d);
-      for (const f of files.filter((x) => VIDEO.has(ext(x)))) {
-        const e = episodeOf(f, season);
-        if (!e) continue;
-        const base = f.replace(/\.[^.]+$/, "");
-        s.episodes.push({ id: idFor("e", path.join(d, f)), file: path.join(d, f), ...e, thumb: art(d, files, base, ["thumb"]), subs: subsFor(d, files, base) });
-      }
-      if (depth < 4) {
-        for (const sub of dirs) {
-          const m = sub.match(SEASON_DIR);
-          const sn = m ? Number(m[1]) : /^specials?$/i.test(sub) ? 0 : season;
-          walk(path.join(d, sub), sn, depth + 1);
-        }
-      }
-    };
-    walk(dir, null, 0);
-    if (s.episodes.length) {
-      s.episodes.sort((a, b) => a.season - b.season || a.episode - b.episode);
-      out.push(s);
-    }
+  // the library folder itself can be one show
+  if (top.dirs.some(isSeasonDir) || top.files.some((f) => f.toLowerCase() === "tvshow.nfo")) {
+    const s = showFrom(root, top);
+    if (s.episodes.length) out.push(s);
+    return out;
   }
-  // loose episode files straight in the series folder: grouped by show name
-  const loose = new Map<string, FoundSeries>();
-  for (const f of top.files.filter((x) => VIDEO.has(ext(x)))) {
-    const e = episodeOf(f, null);
-    if (!e) continue;
-    const show = filenameParse(f.replace(/\.[^.]+$/, ""), true).title || "Unknown";
-    let s = loose.get(show.toLowerCase());
-    if (!s) {
-      s = { id: idFor("s", path.join(root, "#" + show.toLowerCase())), dir: root, title: show, year: "", nfo: {}, poster: "", backdrop: "", episodes: [] };
-      loose.set(show.toLowerCase(), s);
-      out.push(s);
-    }
-    s.episodes.push({ id: idFor("e", path.join(root, f)), file: path.join(root, f), ...e, thumb: "", subs: subsFor(root, top.files, f.replace(/\.[^.]+$/, "")) });
-  }
+  visit(root, top, 0);
   return out;
 }
 

@@ -1,0 +1,17 @@
+# Korie
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Language: en_GB\n"
+
+msgctxt "#30000"
+msgid "Server"
+msgstr ""
+
+msgctxt "#30001"
+msgid "Server address (empty: find it by itself)"
+msgstr ""
+
+msgctxt "#30002"
+msgid "Profile"
+msgstr ""

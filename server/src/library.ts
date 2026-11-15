@@ -7,7 +7,7 @@ import { DATA, log } from "./config.ts";
 import { db, json, now } from "./db.ts";
 import { img } from "./images.ts";
 import * as tmdb from "./tmdb.ts";
-import { scanFilms, scanMusic, scanSeries, type FoundAlbum, type FoundFilm, type FoundSeries } from "./scanner.ts";
+import { scanFilms, scanMusic, scanSeries, type FoundAlbum, type FoundFilm, type FoundSeries, type Nfo } from "./scanner.ts";
 import { emit } from "./events.ts";
 
 export type Kind = "film" | "series" | "episode" | "album" | "track";
@@ -81,25 +81,50 @@ function existing(id: string): Record<string, any> | null {
   return r ? json(r.data, {}) : null;
 }
 
+/** What a .nfo says, as the item's own details (TMDb fills in the rest). */
+function fromNfo(n: Nfo): Record<string, any> {
+  return defined({
+    nfo: n, overview: n.plot, genres: n.genres, rating: n.rating, runtime: n.runtime, director: n.director, nfoPoster: n.poster, nfoBackdrop: n.fanart,
+  });
+}
+
+/** Without the empty ones (a null would delete what TMDb filled in). */
+function defined(o: Record<string, any>): Record<string, any> {
+  return Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined && v !== null && v !== ""));
+}
+
+/** A .nfo that changed (or appeared) since the last look: the details are fetched again. */
+const nfoChanged = db.prepare(`UPDATE items SET data = json_remove(data, '$.checked', '$.titled', '$.tmdb')
+  WHERE id = ? AND NOT coalesce(json_extract(data, '$.fixed'), 0) AND coalesce(json_extract(data, '$.nfo'), '{}') <> ?`);
+
+function noteNfo(id: string, n: Nfo): void {
+  nfoChanged.run(id, JSON.stringify(n));
+}
+
 function saveFilms(f: Folder, found: FoundFilm[]): void {
   for (const x of found) {
+    noteNfo(x.id, x.nfo);
     upsert.run({
       id: x.id, kind: "film", folder: f.id, parent: null, file: x.file, title: x.title, sort: sortTitle(x.title), year: x.year, added: now(),
-      data: JSON.stringify({ subs: x.subs, disc: x.disc ?? null, localPoster: x.poster, localBackdrop: x.backdrop, nfo: x.nfo }),
+      data: JSON.stringify({ subs: x.subs, disc: x.disc ?? null, parts: x.parts ?? null, localPoster: x.poster, localBackdrop: x.backdrop, ...fromNfo(x.nfo) }),
     });
   }
 }
 
 function saveSeries(f: Folder, found: FoundSeries[]): void {
   for (const s of found) {
+    noteNfo(s.id, s.nfo);
     upsert.run({
       id: s.id, kind: "series", folder: f.id, parent: null, file: s.dir, title: s.title, sort: sortTitle(s.title), year: s.year, added: now(),
-      data: JSON.stringify({ localPoster: s.poster, localBackdrop: s.backdrop, nfo: s.nfo }),
+      data: JSON.stringify({ localPoster: s.poster, localBackdrop: s.backdrop, ...fromNfo(s.nfo) }),
     });
     for (const e of s.episodes) {
       upsert.run({
         id: e.id, kind: "episode", folder: f.id, parent: s.id, file: e.file, title: e.title, sort: String(e.season * 10000 + e.episode).padStart(8, "0"), year: "", added: now(),
-        data: JSON.stringify({ season: e.season, episode: e.episode, episodeEnd: e.episodeEnd ?? null, subs: e.subs, localThumb: e.thumb, fileTitle: e.title }),
+        data: JSON.stringify({
+          season: e.season, episode: e.episode, episodeEnd: e.episodeEnd ?? null, subs: e.subs, localThumb: e.thumb, fileTitle: e.title,
+          ...defined({ nfoTitle: e.nfo?.title, overview: e.nfo?.plot, aired: e.nfo?.aired, nfoThumb: e.nfo?.poster }),
+        }),
       });
     }
   }
@@ -195,8 +220,10 @@ export async function enrich(force = false): Promise<void> {
   await pool(todo, 4, async (r) => {
     const d = json<Record<string, any>>(r.data, {});
     try {
-      if (r.kind === "film") await fillFilm(r.id, d.nfo?.tmdb ?? d.tmdb ?? (await tmdb.find("film", r.title, r.year)));
-      else await fillSeries(r.id, d.nfo?.tmdb ?? d.tmdb ?? (await tmdb.find("series", r.title, r.year)));
+      const kind = r.kind === "film" ? "film" : "series";
+      const id = d.nfo?.tmdb ?? d.tmdb ?? (d.nfo?.imdb ? await tmdb.byImdb(kind, d.nfo.imdb) : null) ?? (await tmdb.find(kind, r.title, r.year));
+      if (kind === "film") await fillFilm(r.id, id);
+      else await fillSeries(r.id, id);
     } catch (e) {
       log("tmdb", `${r.title}: ${e instanceof Error ? e.message : e}`);
     }
@@ -207,6 +234,9 @@ export async function enrich(force = false): Promise<void> {
   emit("library");
 }
 
+/** Items being matched by hand right now: their .nfo doesn't override the pick. */
+const fixing = new Set<string>();
+
 const patch = db.prepare("UPDATE items SET data = json_patch(data, ?) WHERE id = ?");
 
 export async function fillFilm(id: string, tmdbId: number | null): Promise<void> {
@@ -216,12 +246,15 @@ export async function fillFilm(id: string, tmdbId: number | null): Promise<void>
   }
   const f = await tmdb.film(tmdbId);
   if (!f) return;
+  // the person's own .nfo wins over TMDb (unless they picked a different match by hand)
+  const n: Nfo = fixing.has(id) ? {} : (data(getRow(id)!).nfo ?? {});
   patch.run(JSON.stringify({
-    checked: now(), tmdb: f.tmdb, tmdbTitle: f.title, overview: f.overview, genres: f.genres, runtime: f.runtime, rating: f.rating,
-    director: f.director, cast: f.cast, poster: f.poster, backdrop: f.backdrop,
+    checked: now(), tmdb: f.tmdb, tmdbTitle: f.title, overview: n.plot || f.overview, genres: n.genres ?? f.genres, runtime: n.runtime || f.runtime, rating: n.rating || f.rating,
+    director: n.director || f.director, cast: f.cast, poster: f.poster, backdrop: f.backdrop,
   }), id);
   // TMDb's name and year are tidier than a file name's (unless someone fixed it by hand)
-  db.prepare("UPDATE items SET title = ?, sort = ?, year = ?, data = json_set(data, '$.titled', 1) WHERE id = ?").run(f.title, sortTitle(f.title), f.year, id);
+  const title = n.title || f.title;
+  db.prepare("UPDATE items SET title = ?, sort = ?, year = ?, data = json_set(data, '$.titled', 1) WHERE id = ?").run(title, sortTitle(title), n.year || f.year, id);
 }
 
 export async function fillSeries(id: string, tmdbId: number | null): Promise<void> {
@@ -231,8 +264,11 @@ export async function fillSeries(id: string, tmdbId: number | null): Promise<voi
   }
   const s = await tmdb.series(tmdbId);
   if (!s) return;
+  const n: Nfo = fixing.has(id) ? {} : (data(getRow(id)!).nfo ?? {});
+  if (n.title) s.title = n.title;
+  if (n.year) s.year = n.year;
   patch.run(JSON.stringify({
-    checked: now(), tmdb: s.tmdb, overview: s.overview, genres: s.genres, rating: s.rating, cast: s.cast, poster: s.poster, backdrop: s.backdrop,
+    checked: now(), tmdb: s.tmdb, overview: n.plot || s.overview, genres: n.genres ?? s.genres, rating: n.rating || s.rating, cast: s.cast, poster: s.poster, backdrop: s.backdrop,
     seasonInfo: Object.fromEntries(Object.entries(s.seasons).map(([n, x]) => [n, { title: x.title, poster: x.poster }])),
   }), id);
   db.prepare("UPDATE items SET title = ?, sort = ?, year = ?, data = json_set(data, '$.titled', 1) WHERE id = ?").run(s.title, sortTitle(s.title), s.year, id);
@@ -242,8 +278,8 @@ export async function fillSeries(id: string, tmdbId: number | null): Promise<voi
       const d = json<Record<string, any>>(e.data, {});
       const info = s.seasons[d.season]?.episodes[d.episode];
       if (!info) continue;
-      patch.run(JSON.stringify({ overview: info.overview, runtime: info.runtime, still: info.still, aired: info.aired }), e.id);
-      db.prepare("UPDATE items SET title = ?, data = json_set(data, '$.titled', 1) WHERE id = ?").run(info.title || d.fileTitle || `Episode ${d.episode}`, e.id);
+      patch.run(JSON.stringify({ overview: d.overview || info.overview, runtime: info.runtime, still: info.still, aired: d.aired || info.aired }), e.id);
+      db.prepare("UPDATE items SET title = ?, data = json_set(data, '$.titled', 1) WHERE id = ?").run(d.nfoTitle || info.title || d.fileTitle || `Episode ${d.episode}`, e.id);
     }
   })();
 }
@@ -253,8 +289,13 @@ export async function fixMatch(id: string, tmdbId: number): Promise<boolean> {
   const r = getRow(id);
   if (!r || (r.kind !== "film" && r.kind !== "series")) return false;
   patch.run(JSON.stringify({ fixed: false }), id);
-  if (r.kind === "film") await fillFilm(id, tmdbId);
-  else await fillSeries(id, tmdbId);
+  fixing.add(id);
+  try {
+    if (r.kind === "film") await fillFilm(id, tmdbId);
+    else await fillSeries(id, tmdbId);
+  } finally {
+    fixing.delete(id);
+  }
   patch.run(JSON.stringify({ fixed: true }), id);
   emit("library");
   return true;
@@ -289,8 +330,8 @@ export function data(r: Row): Record<string, any> {
 export function pictures(r: Row): { poster: string; backdrop: string; thumb: string } {
   const d = data(r);
   const local = (p: string) => (p ? "file:" + p : "");
-  const poster = local(d.localPoster) || d.poster || (r.kind === "album" ? local(d.cover) : "");
-  const backdrop = local(d.localBackdrop) || d.backdrop || "";
-  const thumb = local(d.localThumb) || d.still || backdrop || "";
+  const poster = local(d.localPoster) || d.poster || d.nfoPoster || (r.kind === "album" ? local(d.cover) : "");
+  const backdrop = local(d.localBackdrop) || d.backdrop || d.nfoBackdrop || "";
+  const thumb = local(d.localThumb) || d.still || d.nfoThumb || backdrop || "";
   return { poster: img(poster), backdrop: img(backdrop), thumb: img(thumb) };
 }

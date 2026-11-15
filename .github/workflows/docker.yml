@@ -1,10 +1,11 @@
-# Builds Korie's server image on every push to main and publishes it as
-# ghcr.io/mightyx3n/korie (latest, and the version from server/package.json).
+# Builds Korie's server image and publishes it as ghcr.io/mightyx3n/korie:
+# every push to main gives :latest, a version tag (v0.7.0) gives :0.7.0 and :latest.
 name: Docker image
 
 on:
   push:
     branches: [main]
+    tags: ["v*"]
     paths: ["server/**", "client/**", "Dockerfile", ".github/workflows/docker.yml"]
   workflow_dispatch:
 
@@ -29,9 +30,15 @@ jobs:
             echo "No TMDB_KEY secret: the image has no built-in TMDb key (one can be set in Korie's settings)."
           fi
 
+      # a version tag sets the version the server reports; otherwise package.json's
       - name: Version
         id: v
-        run: echo "version=$(node -p "require('./server/package.json').version")" >> "$GITHUB_OUTPUT"
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = tag ]; then
+            V="${GITHUB_REF_NAME#v}"
+            node -e "const f='server/package.json',fs=require('fs'),c=JSON.parse(fs.readFileSync(f));c.version=process.argv[1];fs.writeFileSync(f,JSON.stringify(c,null,2)+'\\n')" "$V"
+          fi
+          echo "version=$(node -p "require('./server/package.json').version")" >> "$GITHUB_OUTPUT"
 
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3

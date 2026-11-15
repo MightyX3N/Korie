@@ -10,6 +10,9 @@ import type { Person } from "./people.ts";
 export interface Card {
   id: string; kind: string; title: string; subtitle: string; year: string; poster: string; thumb: string; backdrop: string;
   progress: number; watched: boolean; source: string;
+  // what a film's page needs, so a client can show it without asking again (Kodi's info screen reads only the card)
+  overview?: string; genres?: string[]; rating?: number; runtime?: number; director?: string;
+  cast?: { name: string; role: string; photo: string }[]; position?: number; duration?: number;
 }
 
 interface Prog { position: number; duration: number; watched: number; updated: number; snapshot: string | null }
@@ -47,7 +50,12 @@ export function rowCard(person: Person, r: lib.Row): Card {
     const s = lib.getRow(r.parent ?? "");
     subtitle = `${s?.title ?? ""} · S${d.season}E${d.episode}`;
   }
-  return { id: r.id, kind: r.kind, title: r.title, subtitle, year: r.year, poster: pics.poster, thumb: pics.thumb, backdrop: pics.backdrop, progress: frac(p), watched, source: "" };
+  return {
+    id: r.id, kind: r.kind, title: r.title, subtitle, year: r.year, poster: pics.poster, thumb: pics.thumb, backdrop: pics.backdrop, progress: frac(p), watched, source: "",
+    overview: d.overview ?? d.nfo?.plot ?? "", genres: d.genres ?? d.nfo?.genres ?? [], rating: d.rating ?? d.nfo?.rating ?? 0,
+    runtime: d.runtime ?? 0, director: d.director ?? d.nfo?.director ?? "", cast: castView(d.cast).slice(0, 10),
+    position: p && !p.watched ? p.position : 0, duration: p?.duration ?? 0,
+  };
 }
 
 export function addonCard(person: Person, a: browse.AItem): Card {
@@ -55,6 +63,9 @@ export function addonCard(person: Person, a: browse.AItem): Card {
   return {
     id: a.id, kind: a.kind, title: a.title, subtitle: a.subtitle || a.year, year: a.year, poster: img(a.poster), thumb: img(a.thumb || a.backdrop || a.poster),
     backdrop: img(a.backdrop), progress: frac(p), watched: !!p?.watched, source: addons.manifests.get(a.source)?.name ?? a.source,
+    overview: a.overview ?? "", genres: a.genres ?? [], rating: a.rating ?? 0, runtime: a.runtime ?? 0, director: a.director ?? "",
+    cast: (a.cast ?? []).slice(0, 10).map((c) => ({ name: c.name, role: c.role, photo: img(c.photo) })),
+    position: p && !p.watched ? p.position : 0, duration: p?.duration ?? 0,
   };
 }
 

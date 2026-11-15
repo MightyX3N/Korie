@@ -1,0 +1,465 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Korie: who's watching. The people come from the Korie server (the add-on puts them in
+     Window(Home) properties korie.p.1 ... korie.p.8); a lock shows who has a PIN. -->
+<window type="window" id="1190">
+	<defaultcontrol always="true">1000</defaultcontrol>
+	<onload>RunPlugin(plugin://plugin.video.korie/?a=people)</onload>
+	<controls>
+		<include>KorieBackground</include>
+		<include>KorieLogo</include>
+		<include>KorieClock</include>
+		<control type="label">
+			<left>0</left><top>290</top><width>1920</width><height>100</height>
+			<align>center</align><aligny>center</aligny>
+			<font>korie_heading72</font><textcolor>korie_ink</textcolor>
+			<label>Who's watching?</label>
+		</control>
+		<control type="label">
+			<left>260</left><top>392</top><width>1400</width><height>60</height>
+			<align>center</align><aligny>center</aligny><wrapmultiline>true</wrapmultiline>
+			<font>korie_body28</font><textcolor>korie_dim</textcolor>
+			<label>$INFO[Window(Home).Property(korie.p.status)]</label>
+			<visible>String.IsEmpty(Window(Home).Property(korie.p.1.name))</visible>
+		</control>
+		<control type="grouplist" id="1000">
+			<left>0</left><top>460</top><width>1920</width><height>340</height>
+			<orientation>horizontal</orientation>
+			<align>center</align>
+			<itemgap>28</itemgap>
+			<usecontrolcoords>true</usecontrolcoords>
+			<control type="group" id="1201">
+				<width>276</width><height>320</height>
+				<visible>!String.IsEmpty(Window(Home).Property(korie.p.1.name))</visible>
+				<control type="image">
+					<left>18</left><top>-10</top><width>240</width><height>240</height>
+					<texture border="32" colordiffuse="korie_accent">korie/ring28.png</texture>
+					<visible>Control.HasFocus(1301)</visible>
+				</control>
+				<control type="button" id="1301">
+					<onright>1302</onright>
+					<left>28</left><top>0</top><width>220</width><height>220</height>
+					<texturefocus border="28" colordiffuse="$INFO[Window(Home).Property(korie.p.1.colour)]">korie/r28.png</texturefocus>
+					<texturenofocus border="28" colordiffuse="$INFO[Window(Home).Property(korie.p.1.colour)]">korie/r28.png</texturenofocus>
+					<label />
+					<onclick>RunPlugin(plugin://plugin.video.korie/?a=signin&amp;n=1)</onclick>
+				</control>
+				<control type="label">
+					<left>28</left><top>0</top><width>220</width><height>220</height>
+					<align>center</align><aligny>center</aligny>
+					<font>korie_heading110</font><textcolor>korie_ground</textcolor>
+					<label>$INFO[Window(Home).Property(korie.p.1.letter)]</label>
+				</control>
+				<control type="group">
+					<left>192</left><top>164</top>
+					<visible>!String.IsEmpty(Window(Home).Property(korie.p.1.pin))</visible>
+					<control type="image">
+						<width>44</width><height>44</height>
+						<texture colordiffuse="korie_shade90">korie/pill.png</texture>
+					</control>
+					<control type="image">
+						<left>10</left><top>10</top><width>24</width><height>24</height>
+						<texture colordiffuse="korie_ink">korie/icon-lock.png</texture>
+					</control>
+				</control>
+				<control type="label">
+					<left>0</left><top>240</top><width>276</width><height>50</height>
+					<align>center</align>
+					<font>korie_body36</font>
+					<textcolor>korie_soft</textcolor>
+					<label>$INFO[Window(Home).Property(korie.p.1.name)]</label>
+					<visible>!Control.HasFocus(1301)</visible>
+				</control>
+				<control type="label">
+					<left>0</left><top>240</top><width>276</width><height>50</height>
+					<align>center</align>
+					<font>korie_body36</font>
+					<textcolor>korie_ink</textcolor>
+					<label>$INFO[Window(Home).Property(korie.p.1.name)]</label>
+					<visible>Control.HasFocus(1301)</visible>
+				</control>
+			</control>
+			<control type="group" id="1202">
+				<width>276</width><height>320</height>
+				<visible>!String.IsEmpty(Window(Home).Property(korie.p.2.name))</visible>
+				<control type="image">
+					<left>18</left><top>-10</top><width>240</width><height>240</height>
+					<texture border="32" colordiffuse="korie_accent">korie/ring28.png</texture>
+					<visible>Control.HasFocus(1302)</visible>
+				</control>
+				<control type="button" id="1302">
+					<onleft>1301</onleft>
+					<onright>1303</onright>
+					<left>28</left><top>0</top><width>220</width><height>220</height>
+					<texturefocus border="28" colordiffuse="$INFO[Window(Home).Property(korie.p.2.colour)]">korie/r28.png</texturefocus>
+					<texturenofocus border="28" colordiffuse="$INFO[Window(Home).Property(korie.p.2.colour)]">korie/r28.png</texturenofocus>
+					<label />
+					<onclick>RunPlugin(plugin://plugin.video.korie/?a=signin&amp;n=2)</onclick>
+				</control>
+				<control type="label">
+					<left>28</left><top>0</top><width>220</width><height>220</height>
+					<align>center</align><aligny>center</aligny>
+					<font>korie_heading110</font><textcolor>korie_ground</textcolor>
+					<label>$INFO[Window(Home).Property(korie.p.2.letter)]</label>
+				</control>
+				<control type="group">
+					<left>192</left><top>164</top>
+					<visible>!String.IsEmpty(Window(Home).Property(korie.p.2.pin))</visible>
+					<control type="image">
+						<width>44</width><height>44</height>
+						<texture colordiffuse="korie_shade90">korie/pill.png</texture>
+					</control>
+					<control type="image">
+						<left>10</left><top>10</top><width>24</width><height>24</height>
+						<texture colordiffuse="korie_ink">korie/icon-lock.png</texture>
+					</control>
+				</control>
+				<control type="label">
+					<left>0</left><top>240</top><width>276</width><height>50</height>
+					<align>center</align>
+					<font>korie_body36</font>
+					<textcolor>korie_soft</textcolor>
+					<label>$INFO[Window(Home).Property(korie.p.2.name)]</label>
+					<visible>!Control.HasFocus(1302)</visible>
+				</control>
+				<control type="label">
+					<left>0</left><top>240</top><width>276</width><height>50</height>
+					<align>center</align>
+					<font>korie_body36</font>
+					<textcolor>korie_ink</textcolor>
+					<label>$INFO[Window(Home).Property(korie.p.2.name)]</label>
+					<visible>Control.HasFocus(1302)</visible>
+				</control>
+			</control>
+			<control type="group" id="1203">
+				<width>276</width><height>320</height>
+				<visible>!String.IsEmpty(Window(Home).Property(korie.p.3.name))</visible>
+				<control type="image">
+					<left>18</left><top>-10</top><width>240</width><height>240</height>
+					<texture border="32" colordiffuse="korie_accent">korie/ring28.png</texture>
+					<visible>Control.HasFocus(1303)</visible>
+				</control>
+				<control type="button" id="1303">
+					<onleft>1302</onleft>
+					<onright>1304</onright>
+					<left>28</left><top>0</top><width>220</width><height>220</height>
+					<texturefocus border="28" colordiffuse="$INFO[Window(Home).Property(korie.p.3.colour)]">korie/r28.png</texturefocus>
+					<texturenofocus border="28" colordiffuse="$INFO[Window(Home).Property(korie.p.3.colour)]">korie/r28.png</texturenofocus>
+					<label />
+					<onclick>RunPlugin(plugin://plugin.video.korie/?a=signin&amp;n=3)</onclick>
+				</control>
+				<control type="label">
+					<left>28</left><top>0</top><width>220</width><height>220</height>
+					<align>center</align><aligny>center</aligny>
+					<font>korie_heading110</font><textcolor>korie_ground</textcolor>
+					<label>$INFO[Window(Home).Property(korie.p.3.letter)]</label>
+				</control>
+				<control type="group">
+					<left>192</left><top>164</top>
+					<visible>!String.IsEmpty(Window(Home).Property(korie.p.3.pin))</visible>
+					<control type="image">
+						<width>44</width><height>44</height>
+						<texture colordiffuse="korie_shade90">korie/pill.png</texture>
+					</control>
+					<control type="image">
+						<left>10</left><top>10</top><width>24</width><height>24</height>
+						<texture colordiffuse="korie_ink">korie/icon-lock.png</texture>
+					</control>
+				</control>
+				<control type="label">
+					<left>0</left><top>240</top><width>276</width><height>50</height>
+					<align>center</align>
+					<font>korie_body36</font>
+					<textcolor>korie_soft</textcolor>
+					<label>$INFO[Window(Home).Property(korie.p.3.name)]</label>
+					<visible>!Control.HasFocus(1303)</visible>
+				</control>
+				<control type="label">
+					<left>0</left><top>240</top><width>276</width><height>50</height>
+					<align>center</align>
+					<font>korie_body36</font>
+					<textcolor>korie_ink</textcolor>
+					<label>$INFO[Window(Home).Property(korie.p.3.name)]</label>
+					<visible>Control.HasFocus(1303)</visible>
+				</control>
+			</control>
+			<control type="group" id="1204">
+				<width>276</width><height>320</height>
+				<visible>!String.IsEmpty(Window(Home).Property(korie.p.4.name))</visible>
+				<control type="image">
+					<left>18</left><top>-10</top><width>240</width><height>240</height>
+					<texture border="32" colordiffuse="korie_accent">korie/ring28.png</texture>
+					<visible>Control.HasFocus(1304)</visible>
+				</control>
+				<control type="button" id="1304">
+					<onleft>1303</onleft>
+					<onright>1305</onright>
+					<left>28</left><top>0</top><width>220</width><height>220</height>
+					<texturefocus border="28" colordiffuse="$INFO[Window(Home).Property(korie.p.4.colour)]">korie/r28.png</texturefocus>
+					<texturenofocus border="28" colordiffuse="$INFO[Window(Home).Property(korie.p.4.colour)]">korie/r28.png</texturenofocus>
+					<label />
+					<onclick>RunPlugin(plugin://plugin.video.korie/?a=signin&amp;n=4)</onclick>
+				</control>
+				<control type="label">
+					<left>28</left><top>0</top><width>220</width><height>220</height>
+					<align>center</align><aligny>center</aligny>
+					<font>korie_heading110</font><textcolor>korie_ground</textcolor>
+					<label>$INFO[Window(Home).Property(korie.p.4.letter)]</label>
+				</control>
+				<control type="group">
+					<left>192</left><top>164</top>
+					<visible>!String.IsEmpty(Window(Home).Property(korie.p.4.pin))</visible>
+					<control type="image">
+						<width>44</width><height>44</height>
+						<texture colordiffuse="korie_shade90">korie/pill.png</texture>
+					</control>
+					<control type="image">
+						<left>10</left><top>10</top><width>24</width><height>24</height>
+						<texture colordiffuse="korie_ink">korie/icon-lock.png</texture>
+					</control>
+				</control>
+				<control type="label">
+					<left>0</left><top>240</top><width>276</width><height>50</height>
+					<align>center</align>
+					<font>korie_body36</font>
+					<textcolor>korie_soft</textcolor>
+					<label>$INFO[Window(Home).Property(korie.p.4.name)]</label>
+					<visible>!Control.HasFocus(1304)</visible>
+				</control>
+				<control type="label">
+					<left>0</left><top>240</top><width>276</width><height>50</height>
+					<align>center</align>
+					<font>korie_body36</font>
+					<textcolor>korie_ink</textcolor>
+					<label>$INFO[Window(Home).Property(korie.p.4.name)]</label>
+					<visible>Control.HasFocus(1304)</visible>
+				</control>
+			</control>
+			<control type="group" id="1205">
+				<width>276</width><height>320</height>
+				<visible>!String.IsEmpty(Window(Home).Property(korie.p.5.name))</visible>
+				<control type="image">
+					<left>18</left><top>-10</top><width>240</width><height>240</height>
+					<texture border="32" colordiffuse="korie_accent">korie/ring28.png</texture>
+					<visible>Control.HasFocus(1305)</visible>
+				</control>
+				<control type="button" id="1305">
+					<onleft>1304</onleft>
+					<onright>1306</onright>
+					<left>28</left><top>0</top><width>220</width><height>220</height>
+					<texturefocus border="28" colordiffuse="$INFO[Window(Home).Property(korie.p.5.colour)]">korie/r28.png</texturefocus>
+					<texturenofocus border="28" colordiffuse="$INFO[Window(Home).Property(korie.p.5.colour)]">korie/r28.png</texturenofocus>
+					<label />
+					<onclick>RunPlugin(plugin://plugin.video.korie/?a=signin&amp;n=5)</onclick>
+				</control>
+				<control type="label">
+					<left>28</left><top>0</top><width>220</width><height>220</height>
+					<align>center</align><aligny>center</aligny>
+					<font>korie_heading110</font><textcolor>korie_ground</textcolor>
+					<label>$INFO[Window(Home).Property(korie.p.5.letter)]</label>
+				</control>
+				<control type="group">
+					<left>192</left><top>164</top>
+					<visible>!String.IsEmpty(Window(Home).Property(korie.p.5.pin))</visible>
+					<control type="image">
+						<width>44</width><height>44</height>
+						<texture colordiffuse="korie_shade90">korie/pill.png</texture>
+					</control>
+					<control type="image">
+						<left>10</left><top>10</top><width>24</width><height>24</height>
+						<texture colordiffuse="korie_ink">korie/icon-lock.png</texture>
+					</control>
+				</control>
+				<control type="label">
+					<left>0</left><top>240</top><width>276</width><height>50</height>
+					<align>center</align>
+					<font>korie_body36</font>
+					<textcolor>korie_soft</textcolor>
+					<label>$INFO[Window(Home).Property(korie.p.5.name)]</label>
+					<visible>!Control.HasFocus(1305)</visible>
+				</control>
+				<control type="label">
+					<left>0</left><top>240</top><width>276</width><height>50</height>
+					<align>center</align>
+					<font>korie_body36</font>
+					<textcolor>korie_ink</textcolor>
+					<label>$INFO[Window(Home).Property(korie.p.5.name)]</label>
+					<visible>Control.HasFocus(1305)</visible>
+				</control>
+			</control>
+			<control type="group" id="1206">
+				<width>276</width><height>320</height>
+				<visible>!String.IsEmpty(Window(Home).Property(korie.p.6.name))</visible>
+				<control type="image">
+					<left>18</left><top>-10</top><width>240</width><height>240</height>
+					<texture border="32" colordiffuse="korie_accent">korie/ring28.png</texture>
+					<visible>Control.HasFocus(1306)</visible>
+				</control>
+				<control type="button" id="1306">
+					<onleft>1305</onleft>
+					<onright>1307</onright>
+					<left>28</left><top>0</top><width>220</width><height>220</height>
+					<texturefocus border="28" colordiffuse="$INFO[Window(Home).Property(korie.p.6.colour)]">korie/r28.png</texturefocus>
+					<texturenofocus border="28" colordiffuse="$INFO[Window(Home).Property(korie.p.6.colour)]">korie/r28.png</texturenofocus>
+					<label />
+					<onclick>RunPlugin(plugin://plugin.video.korie/?a=signin&amp;n=6)</onclick>
+				</control>
+				<control type="label">
+					<left>28</left><top>0</top><width>220</width><height>220</height>
+					<align>center</align><aligny>center</aligny>
+					<font>korie_heading110</font><textcolor>korie_ground</textcolor>
+					<label>$INFO[Window(Home).Property(korie.p.6.letter)]</label>
+				</control>
+				<control type="group">
+					<left>192</left><top>164</top>
+					<visible>!String.IsEmpty(Window(Home).Property(korie.p.6.pin))</visible>
+					<control type="image">
+						<width>44</width><height>44</height>
+						<texture colordiffuse="korie_shade90">korie/pill.png</texture>
+					</control>
+					<control type="image">
+						<left>10</left><top>10</top><width>24</width><height>24</height>
+						<texture colordiffuse="korie_ink">korie/icon-lock.png</texture>
+					</control>
+				</control>
+				<control type="label">
+					<left>0</left><top>240</top><width>276</width><height>50</height>
+					<align>center</align>
+					<font>korie_body36</font>
+					<textcolor>korie_soft</textcolor>
+					<label>$INFO[Window(Home).Property(korie.p.6.name)]</label>
+					<visible>!Control.HasFocus(1306)</visible>
+				</control>
+				<control type="label">
+					<left>0</left><top>240</top><width>276</width><height>50</height>
+					<align>center</align>
+					<font>korie_body36</font>
+					<textcolor>korie_ink</textcolor>
+					<label>$INFO[Window(Home).Property(korie.p.6.name)]</label>
+					<visible>Control.HasFocus(1306)</visible>
+				</control>
+			</control>
+			<control type="group" id="1207">
+				<width>276</width><height>320</height>
+				<visible>!String.IsEmpty(Window(Home).Property(korie.p.7.name))</visible>
+				<control type="image">
+					<left>18</left><top>-10</top><width>240</width><height>240</height>
+					<texture border="32" colordiffuse="korie_accent">korie/ring28.png</texture>
+					<visible>Control.HasFocus(1307)</visible>
+				</control>
+				<control type="button" id="1307">
+					<onleft>1306</onleft>
+					<onright>1308</onright>
+					<left>28</left><top>0</top><width>220</width><height>220</height>
+					<texturefocus border="28" colordiffuse="$INFO[Window(Home).Property(korie.p.7.colour)]">korie/r28.png</texturefocus>
+					<texturenofocus border="28" colordiffuse="$INFO[Window(Home).Property(korie.p.7.colour)]">korie/r28.png</texturenofocus>
+					<label />
+					<onclick>RunPlugin(plugin://plugin.video.korie/?a=signin&amp;n=7)</onclick>
+				</control>
+				<control type="label">
+					<left>28</left><top>0</top><width>220</width><height>220</height>
+					<align>center</align><aligny>center</aligny>
+					<font>korie_heading110</font><textcolor>korie_ground</textcolor>
+					<label>$INFO[Window(Home).Property(korie.p.7.letter)]</label>
+				</control>
+				<control type="group">
+					<left>192</left><top>164</top>
+					<visible>!String.IsEmpty(Window(Home).Property(korie.p.7.pin))</visible>
+					<control type="image">
+						<width>44</width><height>44</height>
+						<texture colordiffuse="korie_shade90">korie/pill.png</texture>
+					</control>
+					<control type="image">
+						<left>10</left><top>10</top><width>24</width><height>24</height>
+						<texture colordiffuse="korie_ink">korie/icon-lock.png</texture>
+					</control>
+				</control>
+				<control type="label">
+					<left>0</left><top>240</top><width>276</width><height>50</height>
+					<align>center</align>
+					<font>korie_body36</font>
+					<textcolor>korie_soft</textcolor>
+					<label>$INFO[Window(Home).Property(korie.p.7.name)]</label>
+					<visible>!Control.HasFocus(1307)</visible>
+				</control>
+				<control type="label">
+					<left>0</left><top>240</top><width>276</width><height>50</height>
+					<align>center</align>
+					<font>korie_body36</font>
+					<textcolor>korie_ink</textcolor>
+					<label>$INFO[Window(Home).Property(korie.p.7.name)]</label>
+					<visible>Control.HasFocus(1307)</visible>
+				</control>
+			</control>
+			<control type="group" id="1208">
+				<width>276</width><height>320</height>
+				<visible>!String.IsEmpty(Window(Home).Property(korie.p.8.name))</visible>
+				<control type="image">
+					<left>18</left><top>-10</top><width>240</width><height>240</height>
+					<texture border="32" colordiffuse="korie_accent">korie/ring28.png</texture>
+					<visible>Control.HasFocus(1308)</visible>
+				</control>
+				<control type="button" id="1308">
+					<onleft>1307</onleft>
+					<left>28</left><top>0</top><width>220</width><height>220</height>
+					<texturefocus border="28" colordiffuse="$INFO[Window(Home).Property(korie.p.8.colour)]">korie/r28.png</texturefocus>
+					<texturenofocus border="28" colordiffuse="$INFO[Window(Home).Property(korie.p.8.colour)]">korie/r28.png</texturenofocus>
+					<label />
+					<onclick>RunPlugin(plugin://plugin.video.korie/?a=signin&amp;n=8)</onclick>
+				</control>
+				<control type="label">
+					<left>28</left><top>0</top><width>220</width><height>220</height>
+					<align>center</align><aligny>center</aligny>
+					<font>korie_heading110</font><textcolor>korie_ground</textcolor>
+					<label>$INFO[Window(Home).Property(korie.p.8.letter)]</label>
+				</control>
+				<control type="group">
+					<left>192</left><top>164</top>
+					<visible>!String.IsEmpty(Window(Home).Property(korie.p.8.pin))</visible>
+					<control type="image">
+						<width>44</width><height>44</height>
+						<texture colordiffuse="korie_shade90">korie/pill.png</texture>
+					</control>
+					<control type="image">
+						<left>10</left><top>10</top><width>24</width><height>24</height>
+						<texture colordiffuse="korie_ink">korie/icon-lock.png</texture>
+					</control>
+				</control>
+				<control type="label">
+					<left>0</left><top>240</top><width>276</width><height>50</height>
+					<align>center</align>
+					<font>korie_body36</font>
+					<textcolor>korie_soft</textcolor>
+					<label>$INFO[Window(Home).Property(korie.p.8.name)]</label>
+					<visible>!Control.HasFocus(1308)</visible>
+				</control>
+				<control type="label">
+					<left>0</left><top>240</top><width>276</width><height>50</height>
+					<align>center</align>
+					<font>korie_body36</font>
+					<textcolor>korie_ink</textcolor>
+					<label>$INFO[Window(Home).Property(korie.p.8.name)]</label>
+					<visible>Control.HasFocus(1308)</visible>
+				</control>
+			</control>
+			<!-- nobody to show (no server yet, or it didn't answer) -->
+			<control type="button" id="1400">
+				<width>360</width><height>84</height>
+				<align>center</align><aligny>center</aligny>
+				<font>korie_body28</font>
+				<textcolor>korie_ink</textcolor>
+				<focusedcolor>korie_onaccent</focusedcolor>
+				<texturefocus border="42,0,42,0" colordiffuse="korie_accent">korie/pill84.png</texturefocus>
+				<texturenofocus border="42,0,42,0" colordiffuse="korie_panel">korie/pill84.png</texturenofocus>
+				<label>Try again</label>
+				<onclick>RunPlugin(plugin://plugin.video.korie/?a=people)</onclick>
+				<visible>String.IsEmpty(Window(Home).Property(korie.p.1.name))</visible>
+			</control>
+		</control>
+		<control type="label">
+			<left>0</left><top>990</top><width>1920</width><height>40</height>
+			<align>center</align>
+			<font>korie_body22</font><textcolor>korie_dim</textcolor>
+			<label>People, PINs and what each may watch are set on the Korie server.</label>
+		</control>
+	</controls>
+</window>

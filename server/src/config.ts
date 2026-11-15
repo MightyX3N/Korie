@@ -3,12 +3,17 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 
-export const VERSION = "0.6.0";
+// from package.json, which the release build sets from the version tag
+export const VERSION: string = JSON.parse(
+  fs.readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+).version;
 
 export const DATA = path.resolve(process.env.KORIE_DATA ?? "./data");
 export const PORT = Number(process.env.KORIE_PORT ?? 8100);
 export const DISCOVERY_PORT = 7361; // Jellyfin uses 7359: Korie stays clear of it
 export const CLIENT_DIR = path.resolve(process.env.KORIE_CLIENT ?? path.join(import.meta.dirname, "../../client/dist"));
+/** The Kodi add-ons (repository, Korie add-on, skin) the server hands out as a Kodi repository. */
+export const KODI_DIR = path.resolve(process.env.KORIE_KODI ?? path.join(import.meta.dirname, "../../kodi"));
 export const STORE_URL = (process.env.KORIE_STORE ?? "https://raw.githubusercontent.com/MightyX3N/korie-store/main/").replace(/\/?$/, "/");
 export const FFMPEG = process.env.KORIE_FFMPEG ?? "ffmpeg";
 export const FFPROBE = process.env.KORIE_FFPROBE ?? "ffprobe";
