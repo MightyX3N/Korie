@@ -7,7 +7,7 @@ import xbmc
 import xbmcgui
 import xbmcplugin
 
-from resources.lib import korie, ui
+from resources.lib import korie, screens, ui
 from resources.lib.korie import KorieError, log
 
 BASE = sys.argv[0]
@@ -67,6 +67,7 @@ def info_tag(li, kind, c, server_pic=lambda u: u):
         tag.setResumePoint(pos, total)
         li.setProperty("korie.left", duration_text(total - pos) + " left")
         li.setProperty("korie.resumeat", clock(pos))
+        li.setProperty("korie.pos", str(int(pos)))
 
 
 def duration_text(seconds):
@@ -97,13 +98,13 @@ def card_item(server, c, context=True):
     })
     info_tag(li, kind, c, server.absolute)
     li.setProperty("korie.kind", kind)
+    li.setProperty("korie.id", c.get("id", ""))
     li.setProperty("korie.source", c.get("source", ""))
     li.setProperty("korie.subtitle", c.get("subtitle", ""))
-    if context:
-        menu = [("Mark as unwatched" if c.get("watched") else "Mark as watched",
-                 "RunPlugin(%s)" % url(a="watched", id=c["id"], on="0" if c.get("watched") else "1")),
-                ("Switch profile", "RunPlugin(%s)" % url(a="profile"))]
-        li.addContextMenuItems(menu)
+    # for Korie's options menu (the Menu button): what it can offer for this thing
+    li.setProperty("korie.watched", "1" if c.get("watched") else "")
+    li.setProperty("korie.fav", "1" if c.get("favourite") else "")
+    li.setProperty("korie.fixable", "1" if c.get("local") and kind in ("film", "series") else "")
     if kind in FOLDER_KINDS:
         return url(a="page" if kind == "page" else "item", id=c["id"]), li, True
     if kind == "live":
@@ -271,8 +272,9 @@ def widget_row(server, n):
 
 # --- playing ----------------------------------------------------------------------------------
 
-def play(server, id_, direct=False):
-    """direct: started with RunPlugin (channels), so play it here instead of handing it back to Kodi."""
+def play(server, id_, direct=False, start=0):
+    """direct: started with RunPlugin (channels), so play it here instead of handing it back to Kodi.
+    start: where to begin, in seconds (Resume in Korie's options menu)."""
     def give_up():
         if not direct:
             xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
@@ -288,6 +290,17 @@ def play(server, id_, direct=False):
         return
     target = server.absolute(plan.get("url"))
     li = xbmcgui.ListItem(plan.get("title", ""), path=target, offscreen=True)
+    # what the player shows at the top: the title, or the series, season and episode
+    tag = li.getVideoInfoTag()
+    tag.setTitle(plan.get("title", ""))
+    ep = plan.get("episode")
+    if ep:
+        tag.setMediaType("episode")
+        tag.setTvShowTitle(ep.get("show", ""))
+        tag.setSeason(int(ep.get("season") or 0))
+        tag.setEpisode(int(ep.get("episode") or 0))
+    elif not plan.get("live"):
+        tag.setMediaType("movie")
     if plan.get("mode") != "kodi":
         # the server converts it (a disc folder, say): it arrives as MP4
         li.setMimeType("video/mp4")
@@ -298,7 +311,7 @@ def play(server, id_, direct=False):
         li.setProperty("inputstream", "inputstream.adaptive") if xbmc.getCondVisibility("System.HasAddon(inputstream.adaptive)") else None
         li.setMimeType("application/vnd.apple.mpegurl")
         li.setContentLookup(False)
-    tracker = Tracker(server, id_, 0, bool(plan.get("live")))
+    tracker = Tracker(server, id_, start, bool(plan.get("live")))
     if direct:
         tracker.play(target, li)
     else:
@@ -480,6 +493,127 @@ def addon_row(server, aid, n):
     show([card_item(server, c) for c in r["items"]], content_of(r["items"]), title=r["title"])
 
 
+# --- Korie's options menu (the remote's Menu button, holding OK, right-click) --------------------
+
+def refresh():
+    """After a change: the list you're on, and Home's rows."""
+    xbmc.executebuiltin("Container.Refresh")
+    xbmc.executebuiltin("NotifyAll(plugin.video.korie,home)")
+
+
+def options(server):
+    get = xbmc.getInfoLabel
+    id_ = get("ListItem.Property(korie.id)")
+    if not id_:
+        return
+    kind = get("ListItem.Property(korie.kind)")
+    title = get("ListItem.Title") or get("ListItem.Label")
+    pos = float(get("ListItem.Property(korie.pos)") or 0)
+    watched = bool(get("ListItem.Property(korie.watched)"))
+    fav = bool(get("ListItem.Property(korie.fav)"))
+    choices = []  # (option, what it does)
+
+    def add(option, fn):
+        choices.append((option, fn))
+
+    if kind in ("film", "episode", "track", "game", "video", ""):
+        if pos > 0:
+            add({"label": "Resume · %s" % get("ListItem.Property(korie.left)"), "icon": "play"},
+                lambda: xbmc.executebuiltin("PlayMedia(%s)" % url(a="play", id=id_, **{"from": str(int(pos))})))
+        add({"label": "Play from the start", "icon": "" if pos > 0 else "play"},
+            lambda: xbmc.executebuiltin("PlayMedia(%s)" % url(a="play", id=id_)))
+    elif kind == "live":
+        add({"label": "Watch", "icon": "play"}, lambda: xbmc.executebuiltin("RunPlugin(%s)" % url(a="watch", id=id_)))
+    else:
+        add({"label": "Open"}, lambda: xbmc.executebuiltin("Action(Select)"))
+    if kind in ("film", "episode", "series"):
+        add({"label": "Information"}, lambda: information(server, id_))
+    if kind in ("film", "episode", "series"):
+        def mark():
+            server.call("/api/watched", {"id": id_, "watched": not watched})
+            refresh()
+        add({"label": "Mark as not watched" if watched else "Mark as watched"}, mark)
+
+    def favourite():
+        on = server.call("/api/favourite", {"id": id_}).get("favourite")
+        xbmcgui.Dialog().notification("Korie", "Added to your favourites." if on else "Removed from your favourites.",
+                                      xbmcgui.NOTIFICATION_INFO, 2500)
+        refresh()
+    add({"label": "Remove from favourites" if fav else "Add to favourites"}, favourite)
+
+    if get("ListItem.Property(korie.fixable)") and server.call("/api/me")["person"].get("canSettings"):
+        add({"label": "Fix details (wrong %s?)" % ("film" if kind == "film" else "series"), "gap": True},
+            lambda: fix_details(server, id_, title))
+
+    i = screens.menu(title, [o for o, _ in choices])
+    if i >= 0:
+        choices[i][1]()
+
+
+def information(server, id_):
+    """A film's page. Kodi opens it for its lists (Videos); Home's rows aren't one of those, so
+    there it's opened with the card from Home."""
+    if xbmc.getCondVisibility("Window.IsActive(videos)"):
+        xbmc.executebuiltin("Action(Info)")
+        return
+    for r in server.call("/api/home").get("rows", []):
+        for c in r.get("items", []):
+            if c.get("id") == id_:
+                target, li, is_folder = card_item(server, c)
+                li.setPath(target)
+                if is_folder:
+                    xbmc.executebuiltin("ActivateWindow(Videos,%s,return)" % target)
+                else:
+                    xbmcgui.Dialog().info(li)
+                return
+
+
+def fix_details(server, id_, title):
+    """The film or series picked the wrong TMDb match: choose the right one."""
+    q = title
+    while True:
+        found = server.get("/api/match", id=id_, q=q)
+        results = found.get("results", [])
+        opts = [{"label": "%s%s" % (r["title"], " (%s)" % r["year"] if r.get("year") else ""),
+                 "note": r.get("original") if r.get("original") and r["original"] != r["title"] else "",
+                 "thumb": server.absolute(r.get("poster"))} for r in results]
+        opts.append({"label": "Search for another title…", "icon": "search", "gap": bool(results)})
+        i = screens.menu("Which is it?" if results else "Nothing found for “%s”" % q, opts)
+        if i < 0:
+            return
+        if i == len(results):
+            q = xbmcgui.Dialog().input("Title to look for", q)
+            if not q:
+                return
+            continue
+        server.call("/api/match", {"id": id_, "tmdb": results[i]["id"]})
+        xbmcgui.Dialog().notification("Korie", "Changed to %s." % results[i]["title"], xbmcgui.NOTIFICATION_INFO, 3000)
+        refresh()
+        return
+
+
+# --- search ------------------------------------------------------------------------------------
+
+def find(server):
+    """Korie's search screen: the letters on the left, what's found on the right as you type."""
+    def build(c):
+        return card_item(server, c)
+
+    def open_item(c, target, is_folder, li):
+        kind = c.get("kind", "")
+        if kind == "live":
+            xbmc.executebuiltin("RunPlugin(%s)" % target)
+        elif is_folder:
+            xbmc.executebuiltin("ActivateWindow(Videos,%s,return)" % target)
+        elif kind in ("film", "episode"):
+            xbmcgui.Dialog().info(li)
+        else:
+            xbmc.executebuiltin("PlayMedia(%s)" % target)
+
+    if not screens.search(server, build, open_item):
+        xbmc.executebuiltin("ActivateWindow(Videos,%s,return)" % url(a="search"))
+
+
 # --- the router -------------------------------------------------------------------------------
 
 def run():
@@ -495,6 +629,8 @@ def run():
             return
         if a == "theme":
             return ui.choose_theme()
+        if a == "streams":
+            return screens.streams()
         if a == "profile":
             korie.connect(force_profile=True)
             xbmc.executebuiltin("Container.Refresh")
@@ -533,6 +669,10 @@ def run():
             item_page(server, ARGS["id"])
         elif a == "search":
             search(server)
+        elif a == "find":
+            find(server)
+        elif a == "options":
+            options(server)
         elif a == "addons":
             addons_page(server)
         elif a == "addon":
@@ -540,7 +680,7 @@ def run():
         elif a == "addonrow":
             addon_row(server, ARGS["id"], int(ARGS.get("n", "0")))
         elif a == "play":
-            play(server, ARGS["id"])
+            play(server, ARGS["id"], start=float(ARGS.get("from") or 0))
         elif a == "watch":
             play(server, ARGS["id"], direct=True)
         elif a == "watched":

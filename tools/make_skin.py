@@ -66,7 +66,13 @@ shutil.copy(ROOT / "kodi" / "repository.korie" / "icon.png", OUT / "resources" /
 shutil.copy(ROOT / "kodi" / "plugin.video.korie" / "fanart.jpg", OUT / "resources" / "fanart.jpg")
 
 # --- Korie's own screens and pictures ---------------------------------------------------------
+import xml.dom.minidom  # noqa: E402
+
 for f in (OWN / "xml").glob("*.xml"):
+    try:
+        xml.dom.minidom.parse(str(f))  # Kodi silently refuses a screen that isn't well-formed
+    except Exception as e:  # noqa: BLE001
+        sys.exit("%s isn't valid XML: %s" % (f.name, e))
     shutil.copy(f, OUT / "xml" / f.name)
 shutil.copytree(OWN / "media", OUT / "media", dirs_exist_ok=True)
 
@@ -77,6 +83,34 @@ def includes(s):
 
 
 edit("xml/Includes.xml", includes)
+
+
+
+# none of Home's row lists (5<row><1 wide, 2 poster, 3 square>) is loading
+ROWS_IDLE = " + ".join("!Container(5%d%d).IsUpdating" % (n, k) for n in range(1, 9) for k in (1, 2, 3))
+
+
+def timers(s):
+    # Kodi's chapter list fills after its open actions run, so focusing it there is too early;
+    # this timer starts once it has chapters and nothing is focused, and puts the focus on it
+    return s.replace("</timers>", """    <timer>
+        <name>korie_chapters_focus</name>
+        <description>Korie: focus the chapter list once Kodi has filled it</description>
+        <start reset="true">Window.IsActive(videobookmarks) + !Control.HasFocus(11) + Integer.IsGreater(Container(11).NumItems,0)</start>
+        <stop>Integer.IsGreaterOrEqual(Skin.TimerElapsedSecs(korie_chapters_focus),0)</stop>
+        <onstop>SetFocus(11)</onstop>
+    </timer>
+    <timer>
+        <name>korie_rows_steady</name>
+        <description>Korie: after switching person, Home's rows hide while they load; once none is loading, they show while refreshing again</description>
+        <start reset="true">Window.IsActive(home) + String.IsEmpty(Window(Home).Property(korie.steady))</start>
+        <stop>Integer.IsGreaterOrEqual(Skin.TimerElapsedSecs(korie_rows_steady),2) + %s</stop>
+        <onstop>SetProperty(korie.steady,1,home)</onstop>
+    </timer>
+</timers>""" % ROWS_IDLE, 1)
+
+
+edit("xml/Timers.xml", timers)
 
 # --- fonts and colours: one font set and one colour file per theme ----------------------------
 for f in FONTS.glob("*"):

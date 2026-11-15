@@ -1,6 +1,6 @@
 {
   "name": "korie-server",
-  "version": "0.7.6",
+  "version": "0.8.5",
   "description": "",
   "scripts": {
     "start": "node --disable-warning=ExperimentalWarning src/main.ts",

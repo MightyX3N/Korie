@@ -144,7 +144,9 @@
 				<onclick>ClearProperty(korie.here.settings,home)</onclick>
 				<onclick>SetProperty(korie.here.$PARAM[id],1,home)</onclick>
 				<onclick>SetProperty(korie.here.n,$PARAM[n],home)</onclick>
-				<onclick>$PARAM[action]</onclick>
+				<onclick condition="String.IsEmpty(Window.Property(korie.python))">$PARAM[action]</onclick>
+				<!-- on a screen the Korie add-on runs (search), the add-on closes it first and goes there -->
+				<onclick condition="!String.IsEmpty(Window.Property(korie.python))">SetProperty(korie.go,$PARAM[id],home)</onclick>
 			</item>
 		</definition>
 	</include>
@@ -264,7 +266,7 @@
 						<include content="KorieRailItem"><param name="id">addons</param><param name="n">4</param><param name="label">Add-ons</param><param name="icon">addons</param>
 							<param name="action">ReplaceWindow(Videos,plugin://plugin.video.korie/?a=addons,return)</param></include>
 						<include content="KorieRailItem"><param name="id">search</param><param name="n">5</param><param name="label">Search</param><param name="icon">search</param>
-							<param name="action">ReplaceWindow(Videos,plugin://plugin.video.korie/?a=search,return)</param></include>
+							<param name="action">RunPlugin(plugin://plugin.video.korie/?a=find)</param></include>
 						<include content="KorieRailItem"><param name="id">settings</param><param name="n">6</param><param name="label">Settings</param><param name="icon">settings</param>
 							<param name="action">ReplaceWindow(1191)</param></include>
 					</content>
@@ -277,7 +279,8 @@
 					<texturefocus border="14" colordiffuse="korie_accent">korie/r12.png</texturefocus>
 					<texturenofocus />
 					<label />
-					<onclick>ActivateWindow(1190)</onclick>
+					<onclick condition="String.IsEmpty(Window.Property(korie.python))">ActivateWindow(1190)</onclick>
+					<onclick condition="!String.IsEmpty(Window.Property(korie.python))">SetProperty(korie.go,person,home)</onclick>
 				</control>
 				<control type="image">
 					<left>46</left><top>974</top><width>52</width><height>52</height>
@@ -487,6 +490,8 @@
 				<focusposition>0</focusposition>
 				<movement>2</movement>
 				<visible>String.IsEqual(Window(Home).Property(korie.row.$PARAM[n].kind),wide)</visible>
+				<!-- just after switching person: hidden until its new things are in (not the old person's) -->
+				<visible>!Container(5$PARAM[n]1).IsUpdating | !String.IsEmpty(Window(Home).Property(korie.steady))</visible>
 				<itemlayout width="448" height="330"><include content="KorieCardWide"/></itemlayout>
 				<focusedlayout width="448" height="330"><include content="KorieCardWide"><param name="focus">Control.HasFocus(5$PARAM[n]1)</param></include></focusedlayout>
 				<content target="videos">plugin://plugin.video.korie/?a=row&amp;n=$PARAM[n]&amp;v=$INFO[Window(Home).Property(korie.stamp)]</content>
@@ -498,6 +503,7 @@
 				<scrolltime tween="cubic" easing="out">220</scrolltime>
 				<movement>4</movement>
 				<visible>String.IsEqual(Window(Home).Property(korie.row.$PARAM[n].kind),poster)</visible>
+				<visible>!Container(5$PARAM[n]2).IsUpdating | !String.IsEmpty(Window(Home).Property(korie.steady))</visible>
 				<itemlayout width="194" height="290"><include content="KorieCardPoster"/></itemlayout>
 				<focusedlayout width="194" height="290"><include content="KorieCardPoster"><param name="focus">Control.HasFocus(5$PARAM[n]2)</param></include></focusedlayout>
 				<content target="videos">plugin://plugin.video.korie/?a=row&amp;n=$PARAM[n]&amp;v=$INFO[Window(Home).Property(korie.stamp)]</content>
@@ -509,6 +515,7 @@
 				<scrolltime tween="cubic" easing="out">220</scrolltime>
 				<movement>3</movement>
 				<visible>String.IsEqual(Window(Home).Property(korie.row.$PARAM[n].kind),square)</visible>
+				<visible>!Container(5$PARAM[n]3).IsUpdating | !String.IsEmpty(Window(Home).Property(korie.steady))</visible>
 				<itemlayout width="244" height="290"><include content="KorieCardSquare"/></itemlayout>
 				<focusedlayout width="244" height="290"><include content="KorieCardSquare"><param name="focus">Control.HasFocus(5$PARAM[n]3)</param></include></focusedlayout>
 				<content target="videos">plugin://plugin.video.korie/?a=row&amp;n=$PARAM[n]&amp;v=$INFO[Window(Home).Property(korie.stamp)]</content>
@@ -703,5 +710,264 @@
 				<visible>$PARAM[focus]</visible>
 			</control>
 		</definition>
+	</include>
+	<!-- One line of a Korie menu (options, themes, audio and subtitles). Item properties: "on" puts a
+	     tick before it, "gap" a line above it, "danger" makes it the warning colour; an icon or a
+	     thumb (a small poster) goes before the text. -->
+	<include name="KorieMenuRow">
+		<param name="focus">false</param>
+		<param name="width">556</param>
+		<param name="bar">59</param>
+		<definition>
+			<control type="image">
+				<left>18</left><top>0</top><width>520</width><height>1</height>
+				<texture colordiffuse="korie_ink15">colors/white.png</texture>
+				<visible>!String.IsEmpty(ListItem.Property(gap))</visible>
+			</control>
+			<control type="image">
+				<left>0</left><top>2</top><width>$PARAM[width]</width><height>$PARAM[bar]</height>
+				<texture border="14" colordiffuse="korie_accent">korie/r12.png</texture>
+				<visible>$PARAM[focus]</visible>
+			</control>
+			<!-- light: on the panel; dark: on the accent colour -->
+			<control type="group">
+				<visible>!$PARAM[focus]</visible>
+				<control type="image">
+					<left>24</left><top>18</top><width>26</width><height>26</height>
+					<texture colordiffuse="korie_accent">$VAR[KorieMenuIcon]</texture>
+				</control>
+				<control type="image">
+					<left>18</left><top>6</top><width>34</width><height>51</height>
+					<aspectratio>scale</aspectratio>
+					<texture diffuse="korie/mask-poster.png" background="true">$INFO[ListItem.Art(thumb)]</texture>
+				</control>
+				<control type="label">
+					<left>66</left><top>2</top><width>470</width><height>59</height>
+					<aligny>center</aligny>
+					<font>korie_body28</font>
+					<textcolor>korie_ink</textcolor>
+					<label>$INFO[ListItem.Label]$INFO[ListItem.Label2,[COLOR korie_dim]  ,[/COLOR]]</label>
+					<visible>String.IsEmpty(ListItem.Property(danger))</visible>
+				</control>
+				<control type="label">
+					<left>66</left><top>2</top><width>470</width><height>59</height>
+					<aligny>center</aligny>
+					<font>korie_body28</font>
+					<textcolor>korie_warm</textcolor>
+					<label>$INFO[ListItem.Label]</label>
+					<visible>!String.IsEmpty(ListItem.Property(danger))</visible>
+				</control>
+			</control>
+			<control type="group">
+				<visible>$PARAM[focus]</visible>
+				<control type="image">
+					<left>24</left><top>18</top><width>26</width><height>26</height>
+					<texture colordiffuse="korie_onaccent">$VAR[KorieMenuIcon]</texture>
+				</control>
+				<control type="image">
+					<left>18</left><top>6</top><width>34</width><height>51</height>
+					<aspectratio>scale</aspectratio>
+					<texture diffuse="korie/mask-poster.png" background="true">$INFO[ListItem.Art(thumb)]</texture>
+				</control>
+				<control type="label">
+					<left>66</left><top>2</top><width>470</width><height>59</height>
+					<aligny>center</aligny>
+					<font>korie_body28</font>
+					<textcolor>korie_onaccent</textcolor>
+					<scroll>true</scroll>
+					<label>$INFO[ListItem.Label]$INFO[ListItem.Label2,  ,]</label>
+				</control>
+			</control>
+		</definition>
+	</include>
+	<variable name="KorieMenuIcon">
+		<value condition="!String.IsEmpty(ListItem.Property(on))">korie/icon-check.png</value>
+		<value>$INFO[ListItem.Art(icon)]</value>
+	</variable>
+	<!-- the player: what's playing, and the line under it -->
+	<variable name="KoriePlayerTitle">
+		<value condition="!String.IsEmpty(VideoPlayer.TVShowTitle)">$INFO[VideoPlayer.TVShowTitle]</value>
+		<value condition="!String.IsEmpty(VideoPlayer.Title)">$INFO[VideoPlayer.Title]</value>
+		<value>$INFO[Player.Title]</value>
+	</variable>
+	<variable name="KoriePlayerNote">
+		<value condition="!String.IsEmpty(VideoPlayer.TVShowTitle) + !String.IsEmpty(Player.Duration)">$INFO[VideoPlayer.Season,Season , · ]$INFO[VideoPlayer.Episode,Episode , · ]$INFO[VideoPlayer.Title,, · ]Ends at $INFO[Player.FinishTime]</value>
+		<value condition="Integer.IsGreater(Player.ChapterCount,1) + !String.IsEmpty(Player.ChapterName)">$INFO[Player.ChapterName] · Ends at $INFO[Player.FinishTime]</value>
+		<value condition="Integer.IsGreater(Player.ChapterCount,1)">Chapter $INFO[Player.Chapter] · Ends at $INFO[Player.FinishTime]</value>
+		<value condition="!String.IsEmpty(Player.Duration)">Ends at $INFO[Player.FinishTime]</value>
+		<value>Live</value>
+	</variable>
+	<variable name="KoriePlayerTime">
+		<value condition="Player.Seeking | Player.HasPerformedSeek(3) | !String.IsEmpty(Player.SeekNumeric)">$INFO[Player.SeekTime]</value>
+		<value>$INFO[Player.Time]</value>
+	</variable>
+	<variable name="KoriePlayPauseIcon">
+		<value condition="Player.Paused | Player.Forwarding | Player.Rewinding">korie/icon-play.png</value>
+		<value>korie/icon-pause.png</value>
+	</variable>
+	<!-- a chapter in the player's chapter list: its picture, name and time -->
+	<include name="KorieChapterRow">
+		<param name="focus">false</param>
+		<definition>
+			<control type="image">
+				<left>0</left><top>2</top><width>492</width><height>74</height>
+				<texture border="14" colordiffuse="korie_accent">korie/r12.png</texture>
+				<visible>$PARAM[focus]</visible>
+			</control>
+			<control type="image">
+				<left>12</left><top>9</top><width>107</width><height>60</height>
+				<texture border="10" colordiffuse="korie_panel">korie/r10.png</texture>
+			</control>
+			<control type="image">
+				<left>48</left><top>22</top><width>34</width><height>34</height>
+				<texture colordiffuse="korie_dim">korie/icon-chapters.png</texture>
+			</control>
+			<control type="image">
+				<left>12</left><top>9</top><width>107</width><height>60</height>
+				<aspectratio>scale</aspectratio>
+				<texture diffuse="korie/mask-wide.png" background="true">$INFO[ListItem.Art(thumb)]</texture>
+			</control>
+			<control type="label">
+				<left>136</left><top>8</top><width>340</width><height>36</height>
+				<font>korie_body26</font>
+				<textcolor>korie_ink</textcolor>
+				<label>$INFO[ListItem.Label]</label>
+				<visible>!$PARAM[focus]</visible>
+			</control>
+			<control type="label">
+				<left>136</left><top>40</top><width>340</width><height>30</height>
+				<font>korie_body22</font>
+				<textcolor>korie_dim</textcolor>
+				<label>$INFO[ListItem.Label2]</label>
+				<visible>!$PARAM[focus]</visible>
+			</control>
+			<control type="label">
+				<left>136</left><top>8</top><width>340</width><height>36</height>
+				<font>korie_body26</font>
+				<textcolor>korie_onaccent</textcolor>
+				<label>$INFO[ListItem.Label]</label>
+				<visible>$PARAM[focus]</visible>
+			</control>
+			<control type="label">
+				<left>136</left><top>40</top><width>340</width><height>30</height>
+				<font>korie_body22</font>
+				<textcolor>korie_onaccent</textcolor>
+				<label>$INFO[ListItem.Label2]</label>
+				<visible>$PARAM[focus]</visible>
+			</control>
+		</definition>
+	</include>
+	<!-- search: a key under the letters -->
+	<include name="KorieKeyButton">
+		<align>center</align><aligny>center</aligny>
+		<font>korie_body28</font>
+		<textcolor>korie_ink</textcolor>
+		<focusedcolor>korie_onaccent</focusedcolor>
+		<texturefocus border="12" colordiffuse="korie_accent">korie/r12.png</texturefocus>
+		<texturenofocus border="12" colordiffuse="korie_panel">korie/r12.png</texturenofocus>
+	</include>
+
+	<!-- search: a kind to narrow it to ("on" is the chosen one, "none" has nothing found) -->
+	<include name="KorieChip">
+		<param name="focus">false</param>
+		<definition>
+			<control type="image">
+				<width>162</width><height>52</height>
+				<texture border="26,0,26,0" colordiffuse="korie_accent">korie/pill72.png</texture>
+				<visible>$PARAM[focus]</visible>
+			</control>
+			<control type="image">
+				<width>162</width><height>52</height>
+				<texture border="26,0,26,0" colordiffuse="korie_ink">korie/pill72.png</texture>
+				<visible>!$PARAM[focus] + !String.IsEmpty(ListItem.Property(on))</visible>
+			</control>
+			<control type="image">
+				<width>162</width><height>52</height>
+				<texture border="26,0,26,0" colordiffuse="korie_panel">korie/pill72.png</texture>
+				<visible>!$PARAM[focus] + String.IsEmpty(ListItem.Property(on))</visible>
+			</control>
+			<control type="label">
+				<width>162</width><height>52</height>
+				<align>center</align><aligny>center</aligny>
+				<font>korie_heading26</font>
+				<textcolor>korie_ground</textcolor>
+				<label>$INFO[ListItem.Label]</label>
+				<visible>!$PARAM[focus] + !String.IsEmpty(ListItem.Property(on))</visible>
+			</control>
+			<control type="label">
+				<width>162</width><height>52</height>
+				<align>center</align><aligny>center</aligny>
+				<font>korie_heading26</font>
+				<textcolor>korie_dim</textcolor>
+				<label>$INFO[ListItem.Label]</label>
+				<visible>!$PARAM[focus] + String.IsEmpty(ListItem.Property(on)) + !String.IsEmpty(ListItem.Property(none))</visible>
+			</control>
+			<control type="label">
+				<width>162</width><height>52</height>
+				<align>center</align><aligny>center</aligny>
+				<font>korie_heading26</font>
+				<textcolor>korie_ink</textcolor>
+				<label>$INFO[ListItem.Label]</label>
+				<visible>!$PARAM[focus] + String.IsEmpty(ListItem.Property(on)) + String.IsEmpty(ListItem.Property(none))</visible>
+			</control>
+			<control type="label">
+				<width>162</width><height>52</height>
+				<align>center</align><aligny>center</aligny>
+				<font>korie_heading26</font>
+				<textcolor>korie_onaccent</textcolor>
+				<label>$INFO[ListItem.Label]</label>
+				<visible>$PARAM[focus]</visible>
+			</control>
+		</definition>
+	</include>
+
+	<!-- search: one thing found -->
+	<include name="KorieResultCard">
+		<param name="focus">false</param>
+		<definition>
+			<control type="image">
+				<left>-5</left><top>-5</top><width>456</width><height>184</height>
+				<texture border="28" colordiffuse="korie_accent">korie/ring28.png</texture>
+				<visible>$PARAM[focus]</visible>
+			</control>
+			<control type="image">
+				<width>446</width><height>174</height>
+				<texture border="16" colordiffuse="korie_panel2">korie/r16.png</texture>
+			</control>
+			<control type="image">
+				<left>12</left><top>12</top><width>100</width><height>150</height>
+				<texture border="10" colordiffuse="korie_panel">korie/r10.png</texture>
+			</control>
+			<control type="image">
+				<left>12</left><top>12</top><width>100</width><height>150</height>
+				<aspectratio>scale</aspectratio>
+				<texture diffuse="korie/mask-poster.png" background="true">$VAR[KoriePoster]</texture>
+			</control>
+			<control type="textbox">
+				<left>130</left><top>28</top><width>300</width><height>84</height>
+				<font>korie_heading30</font>
+				<textcolor>korie_ink</textcolor>
+				<label>$INFO[ListItem.Label]</label>
+			</control>
+			<control type="label">
+				<left>130</left><top>116</top><width>300</width><height>34</height>
+				<font>korie_body22</font>
+				<textcolor>korie_dim</textcolor>
+				<label>$INFO[ListItem.Property(korie.group)]$INFO[ListItem.Year, · ]$VAR[KorieResultNote]</label>
+			</control>
+		</definition>
+	</include>
+	<variable name="KorieResultNote">
+		<value condition="!String.IsEmpty(ListItem.Property(korie.subtitle)) + !String.IsEqual(ListItem.Property(korie.subtitle),ListItem.Year)">$INFO[ListItem.Property(korie.subtitle), · ]</value>
+		<value>$INFO[ListItem.Genre, · ]</value>
+	</variable>
+	<!-- a button in a question box -->
+	<include name="KorieDialogButton">
+		<align>center</align><aligny>center</aligny>
+		<font>korie_body28</font>
+		<textcolor>korie_ink</textcolor>
+		<focusedcolor>korie_onaccent</focusedcolor>
+		<texturefocus border="42,0,42,0" colordiffuse="korie_accent">korie/pill84.png</texturefocus>
+		<texturenofocus border="42,0,42,0" colordiffuse="korie_panel2">korie/pill84.png</texturenofocus>
 	</include>
 </includes>

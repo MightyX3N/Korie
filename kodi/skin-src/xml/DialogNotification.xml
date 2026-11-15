@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Korie: a short note in the top right corner (Kodi's notifications: 400 picture, 401 heading,
+     402 the note). -->
+<window>
+	<zorder>3</zorder>
+	<controls>
+		<control type="group">
+			<depth>DepthMax</depth>
+			<right>64</right><top>140</top><width>640</width>
+			<animation effect="fade" start="0" end="100" time="200">WindowOpen</animation>
+			<animation effect="slide" start="60,0" end="0,0" time="250" tween="cubic" easing="out">WindowOpen</animation>
+			<animation effect="fade" start="100" end="0" time="200">WindowClose</animation>
+			<control type="image">
+				<left>0</left><top>0</top><width>640</width><height>132</height>
+				<texture border="22" colordiffuse="korie_panel">korie/r28.png</texture>
+			</control>
+			<control type="image">
+				<left>0</left><top>22</top><width>6</width><height>88</height>
+				<texture colordiffuse="korie_accent">colors/white.png</texture>
+			</control>
+			<control type="image" id="400">
+				<left>30</left><top>38</top><width>56</width><height>56</height>
+				<aspectratio>keep</aspectratio>
+			</control>
+			<control type="label" id="401">
+				<left>108</left><top>20</top><width>500</width><height>34</height>
+				<aligny>center</aligny>
+				<font>korie_body22</font><textcolor>korie_dim</textcolor>
+			</control>
+			<control type="label" id="402">
+				<left>108</left><top>52</top><width>500</width><height>66</height>
+				<aligny>top</aligny>
+				<wrapmultiline>true</wrapmultiline>
+				<font>korie_body26</font><textcolor>korie_ink</textcolor>
+			</control>
+		</control>
+	</controls>
+</window>

@@ -274,6 +274,7 @@ app.post("/api/play", async (req: Req) => {
   let extra: { url: string; title: string; language: string; default: boolean }[] = [];
   let title = row?.title ?? "";
   let subtitle = "";
+  let episode: { show: string; season: number; episode: number } | null = null;
   let next: string | null = null;
   if (row) {
     if (!row.file) throw new HttpError(400, "There's no file to play.");
@@ -283,6 +284,7 @@ app.post("/api/play", async (req: Req) => {
     if (row.kind === "episode") {
       const s = lib.getRow(row.parent ?? "");
       subtitle = `${s?.title ?? ""} · S${d.season}E${d.episode}`;
+      episode = { show: s?.title ?? "", season: Number(d.season) || 0, episode: Number(d.episode) || 0 };
       const eps = lib.rows("episode", row.parent ?? "");
       next = eps[eps.findIndex((e) => e.id === id) + 1]?.id ?? null;
     }
@@ -321,7 +323,7 @@ app.post("/api/play", async (req: Req) => {
         ...subFiles.map((f) => `http://${req.headers.host}/api/raw/${playback.token({ file: f })}/${encodeURIComponent(path.basename(f))}`),
         ...extra.map((x) => x.url),
       ];
-      return { mode: "kodi", url: k, subs, id, title, subtitle, resume, next, live: !!src.live };
+      return { mode: "kodi", url: k, subs, id, title, subtitle, episode, resume, next, live: !!src.live };
     }
   }
   let pl: playback.Plan;
@@ -331,7 +333,7 @@ app.post("/api/play", async (req: Req) => {
     throw new HttpError(422, e instanceof Error ? e.message : String(e));
   }
   const prog = views.progressOf(p.id, id);
-  return { ...pl, id, title, subtitle, resume: prog && !prog.watched ? prog.position : 0, next };
+  return { ...pl, id, title, subtitle, episode, resume: prog && !prog.watched ? prog.position : 0, next };
 });
 
 /** The address Kodi should open for a source, or null when the server has to convert it (disc folders). */

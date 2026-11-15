@@ -13,6 +13,8 @@ export interface Card {
   // what a film's page needs, so a client can show it without asking again (Kodi's info screen reads only the card)
   overview?: string; genres?: string[]; rating?: number; runtime?: number; director?: string;
   cast?: { name: string; role: string; photo: string }[]; position?: number; duration?: number;
+  // for a client's options menu: in this person's favourites; in the library (so its details can be fixed)
+  favourite?: boolean; local?: boolean;
 }
 
 interface Prog { position: number; duration: number; watched: number; updated: number; snapshot: string | null }
@@ -54,7 +56,7 @@ export function rowCard(person: Person, r: lib.Row): Card {
     id: r.id, kind: r.kind, title: r.title, subtitle, year: r.year, poster: pics.poster, thumb: pics.thumb, backdrop: pics.backdrop, progress: frac(p), watched, source: "",
     overview: d.overview ?? d.nfo?.plot ?? "", genres: d.genres ?? d.nfo?.genres ?? [], rating: d.rating ?? d.nfo?.rating ?? 0,
     runtime: d.runtime ?? 0, director: d.director ?? d.nfo?.director ?? "", cast: castView(d.cast).slice(0, 10),
-    position: p && !p.watched ? p.position : 0, duration: p?.duration ?? 0,
+    position: p && !p.watched ? p.position : 0, duration: p?.duration ?? 0, favourite: isFavourite(person, r.id), local: true,
   };
 }
 
@@ -65,7 +67,7 @@ export function addonCard(person: Person, a: browse.AItem): Card {
     backdrop: img(a.backdrop), progress: frac(p), watched: !!p?.watched, source: addons.manifests.get(a.source)?.name ?? a.source,
     overview: a.overview ?? "", genres: a.genres ?? [], rating: a.rating ?? 0, runtime: a.runtime ?? 0, director: a.director ?? "",
     cast: (a.cast ?? []).slice(0, 10).map((c) => ({ name: c.name, role: c.role, photo: img(c.photo) })),
-    position: p && !p.watched ? p.position : 0, duration: p?.duration ?? 0,
+    position: p && !p.watched ? p.position : 0, duration: p?.duration ?? 0, favourite: isFavourite(person, a.id), local: false,
   };
 }
 

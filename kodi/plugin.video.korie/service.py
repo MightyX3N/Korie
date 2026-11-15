@@ -12,7 +12,7 @@ from resources.lib.korie import KorieError, log
 
 ADDON = xbmcaddon.Addon()
 SKIN = "skin.korie"
-SETUP = 2  # raise when ui.KODI_SETTINGS changes, so existing installs get the new settings
+SETUP = 3  # raise when ui.KODI_SETTINGS or ui.KEYMAP changes, so existing installs get the new settings
 REFRESH = 300  # seconds
 RETRY = 30
 

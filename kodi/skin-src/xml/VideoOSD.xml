@@ -1,0 +1,201 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Korie: the player's controls (OK while a film plays). Back 10 seconds, play or pause, on 10
+     seconds; audio and subtitles, chapters, and Kodi's picture settings. Up goes to the progress
+     bar, where left and right skip. The title and the bar itself are in DialogSeekBar.xml. -->
+<window>
+	<defaultcontrol always="true">601</defaultcontrol>
+	<depth>DepthOSD</depth>
+	<animation effect="fade" start="0" end="100" time="200">WindowOpen</animation>
+	<animation effect="fade" start="100" end="0" time="200">WindowClose</animation>
+	<controls>
+		<!-- anywhere else on the screen (a mouse, a touch screen): close the controls -->
+		<control type="button">
+			<left>0</left><top>0</top><width>1920</width><height>820</height>
+			<texturefocus /><texturenofocus />
+			<label />
+			<onclick>Action(close)</onclick>
+		</control>
+
+		<!-- the progress bar: up from the buttons, then left and right skip -->
+		<control type="button" id="87">
+			<left>96</left><top>830</top><width>1728</width><height>50</height>
+			<texturefocus /><texturenofocus />
+			<label />
+			<ondown>601</ondown>
+			<onup>noop</onup>
+			<onleft>StepBack</onleft>
+			<onright>StepForward</onright>
+			<visible>Player.SeekEnabled + !String.IsEmpty(Player.Duration)</visible>
+		</control>
+		<control type="slider">
+			<left>76</left><top>835</top><width>1768</width><height>40</height>
+			<texturesliderbar>korie/clear40.png</texturesliderbar>
+			<textureslidernib colordiffuse="korie_accent">korie/nub-big.png</textureslidernib>
+			<textureslidernibfocus colordiffuse="korie_accent">korie/nub-big.png</textureslidernibfocus>
+			<info>Player.Progress</info>
+			<visible>Control.HasFocus(87)</visible>
+		</control>
+		<control type="label">
+			<left>660</left><top>874</top><width>600</width><height>40</height>
+			<align>center</align><aligny>center</aligny>
+			<font>korie_body24</font><textcolor>korie_soft</textcolor>
+			<label>Left and right skip · Down for the buttons</label>
+			<visible>Control.HasFocus(87)</visible>
+		</control>
+
+		<control type="button" id="600">
+			<left>96</left><top>934</top><width>72</width><height>72</height>
+			<onup>87</onup><onright>601</onright><onleft>noop</onleft>
+			<texturefocus colordiffuse="korie_accent">korie/mask-circle.png</texturefocus>
+			<texturenofocus colordiffuse="korie_panel">korie/mask-circle.png</texturenofocus>
+			<label />
+			<onclick>Seek(-10)</onclick>
+		</control>
+		<control type="image">
+			<left>116</left><top>954</top><width>32</width><height>32</height>
+			<texture colordiffuse="korie_onaccent">korie/icon-back10.png</texture>
+			<visible>Control.HasFocus(600)</visible>
+		</control>
+		<control type="image">
+			<left>116</left><top>954</top><width>32</width><height>32</height>
+			<texture colordiffuse="korie_ink">korie/icon-back10.png</texture>
+			<visible>!Control.HasFocus(600)</visible>
+		</control>
+		<control type="button" id="601">
+			<left>186</left><top>924</top><width>92</width><height>92</height>
+			<onup>87</onup><onleft>600</onleft><onright>602</onright>
+			<texturefocus colordiffuse="korie_accent">korie/mask-circle.png</texturefocus>
+			<texturenofocus colordiffuse="korie_ink">korie/mask-circle.png</texturenofocus>
+			<label />
+			<onclick>PlayerControl(Play)</onclick>
+		</control>
+		<control type="image">
+			<left>210</left><top>948</top><width>44</width><height>44</height>
+			<texture colordiffuse="korie_onaccent">$VAR[KoriePlayPauseIcon]</texture>
+			<visible>Control.HasFocus(601)</visible>
+		</control>
+		<control type="image">
+			<left>210</left><top>948</top><width>44</width><height>44</height>
+			<texture colordiffuse="korie_ground">$VAR[KoriePlayPauseIcon]</texture>
+			<visible>!Control.HasFocus(601)</visible>
+		</control>
+		<control type="button" id="602">
+			<left>296</left><top>934</top><width>72</width><height>72</height>
+			<onup>87</onup><onleft>601</onleft><onright>610</onright>
+			<texturefocus colordiffuse="korie_accent">korie/mask-circle.png</texturefocus>
+			<texturenofocus colordiffuse="korie_panel">korie/mask-circle.png</texturenofocus>
+			<label />
+			<onclick>Seek(10)</onclick>
+		</control>
+		<control type="image">
+			<left>316</left><top>954</top><width>32</width><height>32</height>
+			<texture colordiffuse="korie_onaccent">korie/icon-forward10.png</texture>
+			<visible>Control.HasFocus(602)</visible>
+		</control>
+		<control type="image">
+			<left>316</left><top>954</top><width>32</width><height>32</height>
+			<texture colordiffuse="korie_ink">korie/icon-forward10.png</texture>
+			<visible>!Control.HasFocus(602)</visible>
+		</control>
+		<control type="group">
+			
+			<animation effect="slide" start="0,0" end="228,0" time="0" condition="!Integer.IsGreater(Player.ChapterCount,1)">Conditional</animation>
+			<control type="button" id="610">
+				<left>1166</left><top>934</top><width>340</width><height>72</height>
+				<onup>87</onup><onleft>602</onleft><onright condition="Integer.IsGreater(Player.ChapterCount,1)">611</onright><onright condition="!Integer.IsGreater(Player.ChapterCount,1)">612</onright>
+				<texturefocus border="36,0,36,0" colordiffuse="korie_accent">korie/pill72.png</texturefocus>
+				<texturenofocus border="36,0,36,0" colordiffuse="korie_panel">korie/pill72.png</texturenofocus>
+				<label />
+				<onclick>RunPlugin(plugin://plugin.video.korie/?a=streams)</onclick>
+			</control>
+			<control type="image">
+				<left>1166</left><top>934</top><width>340</width><height>72</height>
+				<texture border="36,0,36,0" colordiffuse="korie_accent">korie/pill72.png</texture>
+				<visible>!Control.HasFocus(610) + Window.IsVisible(Korie_Streams.xml)</visible>
+			</control>
+			<control type="image">
+				<left>1192</left><top>954</top><width>32</width><height>32</height>
+				<texture colordiffuse="korie_onaccent">korie/icon-subtitles.png</texture>
+				<visible>Control.HasFocus(610) | Window.IsVisible(Korie_Streams.xml)</visible>
+			</control>
+			<control type="image">
+				<left>1192</left><top>954</top><width>32</width><height>32</height>
+				<texture colordiffuse="korie_ink">korie/icon-subtitles.png</texture>
+				<visible>![Control.HasFocus(610) | Window.IsVisible(Korie_Streams.xml)]</visible>
+			</control>
+			<control type="label">
+				<left>1236</left><top>934</top><width>250</width><height>72</height>
+				<aligny>center</aligny>
+				<font>korie_heading30</font><textcolor>korie_onaccent</textcolor>
+				<label>Audio and subtitles</label>
+				<visible>Control.HasFocus(610) | Window.IsVisible(Korie_Streams.xml)</visible>
+			</control>
+			<control type="label">
+				<left>1236</left><top>934</top><width>250</width><height>72</height>
+				<aligny>center</aligny>
+				<font>korie_heading30</font><textcolor>korie_ink</textcolor>
+				<label>Audio and subtitles</label>
+				<visible>![Control.HasFocus(610) | Window.IsVisible(Korie_Streams.xml)]</visible>
+			</control>
+		</control>
+		<control type="group">
+			<visible>Integer.IsGreater(Player.ChapterCount,1)</visible>
+			
+			<control type="button" id="611">
+				<left>1524</left><top>934</top><width>210</width><height>72</height>
+				<onup>87</onup><onleft>610</onleft><onright>612</onright>
+				<texturefocus border="36,0,36,0" colordiffuse="korie_accent">korie/pill72.png</texturefocus>
+				<texturenofocus border="36,0,36,0" colordiffuse="korie_panel">korie/pill72.png</texturenofocus>
+				<label />
+				<onclick>ActivateWindow(videobookmarks)</onclick>
+			</control>
+			<control type="image">
+				<left>1524</left><top>934</top><width>210</width><height>72</height>
+				<texture border="36,0,36,0" colordiffuse="korie_accent">korie/pill72.png</texture>
+				<visible>!Control.HasFocus(611) + false</visible>
+			</control>
+			<control type="image">
+				<left>1550</left><top>954</top><width>32</width><height>32</height>
+				<texture colordiffuse="korie_onaccent">korie/icon-chapters.png</texture>
+				<visible>Control.HasFocus(611) | false</visible>
+			</control>
+			<control type="image">
+				<left>1550</left><top>954</top><width>32</width><height>32</height>
+				<texture colordiffuse="korie_ink">korie/icon-chapters.png</texture>
+				<visible>![Control.HasFocus(611) | false]</visible>
+			</control>
+			<control type="label">
+				<left>1594</left><top>934</top><width>120</width><height>72</height>
+				<aligny>center</aligny>
+				<font>korie_heading30</font><textcolor>korie_onaccent</textcolor>
+				<label>Chapters</label>
+				<visible>Control.HasFocus(611) | false</visible>
+			</control>
+			<control type="label">
+				<left>1594</left><top>934</top><width>120</width><height>72</height>
+				<aligny>center</aligny>
+				<font>korie_heading30</font><textcolor>korie_ink</textcolor>
+				<label>Chapters</label>
+				<visible>![Control.HasFocus(611) | false]</visible>
+			</control>
+		</control>
+		<control type="button" id="612">
+			<left>1752</left><top>934</top><width>72</width><height>72</height>
+			<onup>87</onup><onleft condition="Integer.IsGreater(Player.ChapterCount,1)">611</onleft><onleft condition="!Integer.IsGreater(Player.ChapterCount,1)">610</onleft><onright>noop</onright>
+			<texturefocus colordiffuse="korie_accent">korie/mask-circle.png</texturefocus>
+			<texturenofocus colordiffuse="korie_panel">korie/mask-circle.png</texturenofocus>
+			<label />
+			<onclick>ActivateWindow(osdvideosettings)</onclick>
+		</control>
+		<control type="image">
+			<left>1771</left><top>953</top><width>34</width><height>34</height>
+			<texture colordiffuse="korie_onaccent">korie/icon-tune.png</texture>
+			<visible>Control.HasFocus(612)</visible>
+		</control>
+		<control type="image">
+			<left>1771</left><top>953</top><width>34</width><height>34</height>
+			<texture colordiffuse="korie_ink">korie/icon-tune.png</texture>
+			<visible>!Control.HasFocus(612)</visible>
+		</control>
+	</controls>
+</window>

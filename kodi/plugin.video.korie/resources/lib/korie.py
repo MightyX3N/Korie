@@ -233,26 +233,42 @@ def server_only(force=False):
 def sign_in(server, person):
     """Signs in as a person, asking for their PIN (or password) when they have one."""
     body = {"person": person["id"], "device": "Kodi on " + (xbmc.getInfoLabel("System.FriendlyName") or "this device")}
-    if person.get("hasPin"):
-        pin = xbmcgui.Dialog().numeric(0, "PIN for %s" % person["name"], "", True)
-        if not pin:
-            return False
-        body["pin"] = pin
-    while True:
+    got = {}
+
+    def attempt(pin=None):
+        """None when signed in (or the server wants a password next); else what to tell the person."""
+        if pin:
+            body["pin"] = pin
         try:
-            r = server.call("/api/login", body)
-            break
+            got["r"] = server.call("/api/login", body)
+            return None
         except KorieError as e:
             if e.status == 401 and "password" in str(e).lower():
-                pw = xbmcgui.Dialog().input(str(e), option=xbmcgui.ALPHANUM_HIDE_INPUT)
-                if not pw:
-                    return False
-                body["password"] = pw
-                continue
-            if e.status in (401, 403) and person.get("hasPin"):
-                xbmcgui.Dialog().notification("Korie", str(e), xbmcgui.NOTIFICATION_WARNING, 4000)
-                return False
+                got["password"] = str(e)
+                return None
+            if e.status in (401, 403):
+                return str(e)
             raise
+
+    if person.get("hasPin"):
+        from resources.lib import screens
+        if not screens.pin(person, attempt):
+            return False
+    else:
+        error = attempt()
+        if error:
+            xbmcgui.Dialog().notification("Korie", error, xbmcgui.NOTIFICATION_WARNING, 4000)
+            return False
+    while "r" not in got:
+        pw = xbmcgui.Dialog().input(got.get("password", "Password"), option=xbmcgui.ALPHANUM_HIDE_INPUT)
+        if not pw:
+            return False
+        body["password"] = pw
+        got.pop("password", None)
+        error = attempt()
+        if error:
+            xbmcgui.Dialog().notification("Korie", error, xbmcgui.NOTIFICATION_WARNING, 4000)
+    r = got["r"]
     server.token = r["token"]
     state = load_state()
     state.update({"server": server.url, "token": r["token"], "person": person["id"], "name": person["name"], "color": person.get("color", "")})

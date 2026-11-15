@@ -37,6 +37,13 @@ ICONS = {
     "play": (FILLED, '<path d="M7 4.5v15l13-7.5z"/>'),
     "audio": (STROKE, '<path d="M4 9v6h4l5 4V5L8 9z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/>'),
     "subtitles": (STROKE, '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 15h4M13 15h4M7 11h10"/>'),
+    "pause": (FILLED, '<rect x="6" y="4.5" width="4" height="15" rx="1"/><rect x="14" y="4.5" width="4" height="15" rx="1"/>'),
+    "back10": (STROKE, '<path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/>'),
+    "forward10": (STROKE, '<path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v5h-5"/>'),
+    "chapters": (STROKE, '<path d="M9 6h12M9 12h12M9 18h12"/><path d="M4 6h.01M4 12h.01M4 18h.01"/>'),
+    "tune": (STROKE, '<path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/>'),
+    "erase": (STROKE, '<path d="M21 5H9l-7 7 7 7h12a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1z"/><path d="M17 9l-6 6M11 9l6 6"/>'),
+    "stop": (FILLED, '<rect x="5" y="5" width="14" height="14" rx="2"/>'),
 }
 
 for name, (frame, body) in ICONS.items():
@@ -66,7 +73,9 @@ rounded("r18.png", 64, 64, 18)
 rounded("r28.png", 96, 96, 28)
 rounded("pill.png", 128, 128, 64)
 rounded("pill84.png", 200, 84, 42)  # buttons 84 high: stretch only the middle (border="42,0,42,0")
+rounded("pill72.png", 200, 72, 36)  # the player's buttons: border="36,0,36,0"
 rounded("ring28.png", 96, 96, 28, outline=3)
+rounded("ring-circle.png", 64, 64, 32, outline=4)
 # Masks for pictures (a diffuse texture is stretched to the picture, so one per shape of picture)
 rounded("mask-poster.png", 180, 270, 10)
 rounded("mask-wide.png", 420, 236, 12)
@@ -84,3 +93,13 @@ for name, horizontal in (("fade-left.png", True), ("fade-up.png", False)):
     img.save(OUT / name)
 
 print("made", OUT)
+
+# The player's progress bar: a round marker (drawn by Kodi's slider at its own size, so the
+# slider's bar is a clear picture just as tall), and a chapter mark.
+rounded("nub.png", 30, 30, 15)
+rounded("nub-big.png", 40, 40, 20)
+Image.new("RGBA", (8, 30), (255, 255, 255, 0)).save(OUT / "clear30.png")
+Image.new("RGBA", (8, 40), (255, 255, 255, 0)).save(OUT / "clear40.png")
+Image.new("RGBA", (3, 18), (255, 255, 255, 255)).save(OUT / "tick.png")
+Image.new("RGBA", (8, 18), (255, 255, 255, 0)).save(OUT / "clear18.png")  # the chapter marks' bar: Kodi sizes marks by its height
+print("made player pictures")

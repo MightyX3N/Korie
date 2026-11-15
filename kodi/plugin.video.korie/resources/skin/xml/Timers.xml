@@ -15,4 +15,18 @@
         <reset>Player.Seeking | Player.Forwarding | Player.Rewinding | Player.HasPerformedSeek(1)</reset>
         <stop>Integer.IsGreaterOrEqual(Skin.TimerElapsedSecs(1109_topbaroverlay),5) | Player.Playing</stop>
     </timer>
+    <timer>
+        <name>korie_chapters_focus</name>
+        <description>Korie: focus the chapter list once Kodi has filled it</description>
+        <start reset="true">Window.IsActive(videobookmarks) + !Control.HasFocus(11) + Integer.IsGreater(Container(11).NumItems,0)</start>
+        <stop>Integer.IsGreaterOrEqual(Skin.TimerElapsedSecs(korie_chapters_focus),0)</stop>
+        <onstop>SetFocus(11)</onstop>
+    </timer>
+    <timer>
+        <name>korie_rows_steady</name>
+        <description>Korie: after switching person, Home's rows hide while they load; once none is loading, they show while refreshing again</description>
+        <start reset="true">Window.IsActive(home) + String.IsEmpty(Window(Home).Property(korie.steady))</start>
+        <stop>Integer.IsGreaterOrEqual(Skin.TimerElapsedSecs(korie_rows_steady),2) + !Container(511).IsUpdating + !Container(512).IsUpdating + !Container(513).IsUpdating + !Container(521).IsUpdating + !Container(522).IsUpdating + !Container(523).IsUpdating + !Container(531).IsUpdating + !Container(532).IsUpdating + !Container(533).IsUpdating + !Container(541).IsUpdating + !Container(542).IsUpdating + !Container(543).IsUpdating + !Container(551).IsUpdating + !Container(552).IsUpdating + !Container(553).IsUpdating + !Container(561).IsUpdating + !Container(562).IsUpdating + !Container(563).IsUpdating + !Container(571).IsUpdating + !Container(572).IsUpdating + !Container(573).IsUpdating + !Container(581).IsUpdating + !Container(582).IsUpdating + !Container(583).IsUpdating</stop>
+        <onstop>SetProperty(korie.steady,1,home)</onstop>
+    </timer>
 </timers>

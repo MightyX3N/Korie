@@ -1,311 +1,201 @@
-<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Korie: the player's controls (OK while a film plays). Back 10 seconds, play or pause, on 10
+     seconds; audio and subtitles, chapters, and Kodi's picture settings. Up goes to the progress
+     bar, where left and right skip. The title and the bar itself are in DialogSeekBar.xml. -->
 <window>
-	<onload condition="!Player.PauseEnabled">SetFocus(603)</onload>
-	<defaultcontrol always="true">602</defaultcontrol>
+	<defaultcontrol always="true">601</defaultcontrol>
 	<depth>DepthOSD</depth>
+	<animation effect="fade" start="0" end="100" time="200">WindowOpen</animation>
+	<animation effect="fade" start="100" end="0" time="200">WindowClose</animation>
 	<controls>
+		<!-- anywhere else on the screen (a mouse, a touch screen): close the controls -->
 		<control type="button">
-			<description>background close area</description>
-			<left>0</left>
-			<top>0</top>
-			<width>100%</width>
-			<bottom>280</bottom>
-			<texturefocus />
-			<texturenofocus />
+			<left>0</left><top>0</top><width>1920</width><height>820</height>
+			<texturefocus /><texturenofocus />
+			<label />
 			<onclick>Action(close)</onclick>
 		</control>
-		<include condition="Skin.HasSetting(touchmode)">TouchBackOSDButton</include>
+
+		<!-- the progress bar: up from the buttons, then left and right skip -->
+		<control type="button" id="87">
+			<left>96</left><top>830</top><width>1728</width><height>50</height>
+			<texturefocus /><texturenofocus />
+			<label />
+			<ondown>601</ondown>
+			<onup>noop</onup>
+			<onleft>StepBack</onleft>
+			<onright>StepForward</onright>
+			<visible>Player.SeekEnabled + !String.IsEmpty(Player.Duration)</visible>
+		</control>
+		<control type="slider">
+			<left>76</left><top>835</top><width>1768</width><height>40</height>
+			<texturesliderbar>korie/clear40.png</texturesliderbar>
+			<textureslidernib colordiffuse="korie_accent">korie/nub-big.png</textureslidernib>
+			<textureslidernibfocus colordiffuse="korie_accent">korie/nub-big.png</textureslidernibfocus>
+			<info>Player.Progress</info>
+			<visible>Control.HasFocus(87)</visible>
+		</control>
+		<control type="label">
+			<left>660</left><top>874</top><width>600</width><height>40</height>
+			<align>center</align><aligny>center</aligny>
+			<font>korie_body24</font><textcolor>korie_soft</textcolor>
+			<label>Left and right skip · Down for the buttons</label>
+			<visible>Control.HasFocus(87)</visible>
+		</control>
+
+		<control type="button" id="600">
+			<left>96</left><top>934</top><width>72</width><height>72</height>
+			<onup>87</onup><onright>601</onright><onleft>noop</onleft>
+			<texturefocus colordiffuse="korie_accent">korie/mask-circle.png</texturefocus>
+			<texturenofocus colordiffuse="korie_panel">korie/mask-circle.png</texturenofocus>
+			<label />
+			<onclick>Seek(-10)</onclick>
+		</control>
+		<control type="image">
+			<left>116</left><top>954</top><width>32</width><height>32</height>
+			<texture colordiffuse="korie_onaccent">korie/icon-back10.png</texture>
+			<visible>Control.HasFocus(600)</visible>
+		</control>
+		<control type="image">
+			<left>116</left><top>954</top><width>32</width><height>32</height>
+			<texture colordiffuse="korie_ink">korie/icon-back10.png</texture>
+			<visible>!Control.HasFocus(600)</visible>
+		</control>
+		<control type="button" id="601">
+			<left>186</left><top>924</top><width>92</width><height>92</height>
+			<onup>87</onup><onleft>600</onleft><onright>602</onright>
+			<texturefocus colordiffuse="korie_accent">korie/mask-circle.png</texturefocus>
+			<texturenofocus colordiffuse="korie_ink">korie/mask-circle.png</texturenofocus>
+			<label />
+			<onclick>PlayerControl(Play)</onclick>
+		</control>
+		<control type="image">
+			<left>210</left><top>948</top><width>44</width><height>44</height>
+			<texture colordiffuse="korie_onaccent">$VAR[KoriePlayPauseIcon]</texture>
+			<visible>Control.HasFocus(601)</visible>
+		</control>
+		<control type="image">
+			<left>210</left><top>948</top><width>44</width><height>44</height>
+			<texture colordiffuse="korie_ground">$VAR[KoriePlayPauseIcon]</texture>
+			<visible>!Control.HasFocus(601)</visible>
+		</control>
+		<control type="button" id="602">
+			<left>296</left><top>934</top><width>72</width><height>72</height>
+			<onup>87</onup><onleft>601</onleft><onright>610</onright>
+			<texturefocus colordiffuse="korie_accent">korie/mask-circle.png</texturefocus>
+			<texturenofocus colordiffuse="korie_panel">korie/mask-circle.png</texturenofocus>
+			<label />
+			<onclick>Seek(10)</onclick>
+		</control>
+		<control type="image">
+			<left>316</left><top>954</top><width>32</width><height>32</height>
+			<texture colordiffuse="korie_onaccent">korie/icon-forward10.png</texture>
+			<visible>Control.HasFocus(602)</visible>
+		</control>
+		<control type="image">
+			<left>316</left><top>954</top><width>32</width><height>32</height>
+			<texture colordiffuse="korie_ink">korie/icon-forward10.png</texture>
+			<visible>!Control.HasFocus(602)</visible>
+		</control>
 		<control type="group">
-			<include>Animation_BottomSlide</include>
-			<bottom>0</bottom>
-			<height>180</height>
-			<visible>![Window.IsVisible(SliderDialog) | Window.IsVisible(1110) | Window.IsVisible(osdaudiosettings) | Window.IsVisible(osdvideosettings) | Window.IsVisible(VideoBookmarks) | Window.IsVisible(playerprocessinfo) | Window.IsVisible(osdcmssettings) | Window.IsVisible(PVROSDChannels) | Window.IsVisible(pvrchannelguide)]</visible>
-			<animation effect="fade" time="200">VisibleChange</animation>
+			
+			<animation effect="slide" start="0,0" end="228,0" time="0" condition="!Integer.IsGreater(Player.ChapterCount,1)">Conditional</animation>
+			<control type="button" id="610">
+				<left>1166</left><top>934</top><width>340</width><height>72</height>
+				<onup>87</onup><onleft>602</onleft><onright condition="Integer.IsGreater(Player.ChapterCount,1)">611</onright><onright condition="!Integer.IsGreater(Player.ChapterCount,1)">612</onright>
+				<texturefocus border="36,0,36,0" colordiffuse="korie_accent">korie/pill72.png</texturefocus>
+				<texturenofocus border="36,0,36,0" colordiffuse="korie_panel">korie/pill72.png</texturenofocus>
+				<label />
+				<onclick>RunPlugin(plugin://plugin.video.korie/?a=streams)</onclick>
+			</control>
+			<control type="image">
+				<left>1166</left><top>934</top><width>340</width><height>72</height>
+				<texture border="36,0,36,0" colordiffuse="korie_accent">korie/pill72.png</texture>
+				<visible>!Control.HasFocus(610) + Window.IsVisible(Korie_Streams.xml)</visible>
+			</control>
+			<control type="image">
+				<left>1192</left><top>954</top><width>32</width><height>32</height>
+				<texture colordiffuse="korie_onaccent">korie/icon-subtitles.png</texture>
+				<visible>Control.HasFocus(610) | Window.IsVisible(Korie_Streams.xml)</visible>
+			</control>
+			<control type="image">
+				<left>1192</left><top>954</top><width>32</width><height>32</height>
+				<texture colordiffuse="korie_ink">korie/icon-subtitles.png</texture>
+				<visible>![Control.HasFocus(610) | Window.IsVisible(Korie_Streams.xml)]</visible>
+			</control>
 			<control type="label">
-				<animation effect="slide" end="0,-20" time="150" condition="VideoPlayer.Content(LiveTV)">conditional</animation>
-				<right>20</right>
-				<top>0</top>
-				<align>right</align>
+				<left>1236</left><top>934</top><width>250</width><height>72</height>
 				<aligny>center</aligny>
-				<width>1000</width>
-				<height>50</height>
-				<label>$VAR[OSDHelpTextVar]</label>
-				<shadowcolor>black</shadowcolor>
+				<font>korie_heading30</font><textcolor>korie_onaccent</textcolor>
+				<label>Audio and subtitles</label>
+				<visible>Control.HasFocus(610) | Window.IsVisible(Korie_Streams.xml)</visible>
 			</control>
-			<control type="group" id="200">
-				<include>Animation_BottomSlide</include>
-				<control type="grouplist" id="201">
-					<left>20</left>
-					<top>90</top>
-					<width>100%</width>
-					<height>135</height>
-					<itemgap>10</itemgap>
-					<scrolltime tween="sine">200</scrolltime>
-					<orientation>horizontal</orientation>
-					<onup>87</onup>
-					<ondown>noop</ondown>
-					<onleft>70048</onleft>
-					<onright>804</onright>
-					<control type="radiobutton" id="600">
-						<include content="OSDButton">
-							<param name="texture" value="osd/fullscreen/buttons/previous.png"/>
-						</include>
-						<onclick>PlayerControl(Previous)</onclick>
-						<visible>Player.HasSceneMarkers | Player.ChapterCount | Integer.IsGreater(Playlist.Length(video),1) | [Player.SeekEnabled + VideoPlayer.Content(livetv)]</visible>
-					</control>
-					<control type="radiobutton" id="601">
-						<include content="OSDButton">
-							<param name="texture" value="osd/fullscreen/buttons/rewind.png"/>
-						</include>
-						<onclick condition="Player.Paused">PlayerControl(Play)</onclick>
-						<onclick condition="!Player.Paused">PlayerControl(Rewind)</onclick>
-						<visible>Player.SeekEnabled + !VideoPlayer.Content(livetv)</visible>
-					</control>
-					<control type="group" id="698">
-						<width>76</width>
-						<height>76</height>
-						<visible>Player.PauseEnabled</visible>
-						<control type="button" id="602">
-							<left>0</left>
-							<top>0</top>
-							<width>74</width>
-							<height>74</height>
-							<label></label>
-							<font></font>
-							<texturefocus colordiffuse="button_focus">osd/fullscreen/buttons/button-fo.png</texturefocus>
-							<texturenofocus />
-							<onleft>601</onleft>
-							<onright>603</onright>
-							<onup>87</onup>
-							<ondown>noop</ondown>
-							<onclick>PlayerControl(Play)</onclick>
-						</control>
-						<control type="image">
-							<left>0</left>
-							<top>0</top>
-							<width>74</width>
-							<height>74</height>
-							<animation center="38,38" effect="zoom" end="100" reversible="false" start="95" time="480" tween="back" condition="Control.HasFocus(602)">Conditional</animation>
-							<texture colordiffuse="white">$VAR[PlayerControlsPlayImageVar]</texture>
-						</control>
-					</control>
-					<control type="radiobutton" id="603">
-						<include content="OSDButton">
-							<param name="texture" value="osd/fullscreen/buttons/stop.png"/>
-						</include>
-						<onclick>PlayerControl(Stop)</onclick>
-					</control>
-					<control type="radiobutton" id="606">
-						<include content="OSDButton">
-							<param name="texture" value="osd/fullscreen/buttons/forward.png"/>
-						</include>
-						<onclick condition="Player.Paused">PlayerControl(Play)</onclick>
-						<onclick condition="!Player.Paused">PlayerControl(Forward)</onclick>
-						<visible>Player.SeekEnabled + !VideoPlayer.Content(livetv)</visible>
-					</control>
-					<control type="radiobutton" id="607">
-						<include content="OSDButton">
-							<param name="texture" value="osd/fullscreen/buttons/next.png"/>
-						</include>
-						<onclick>PlayerControl(Next)</onclick>
-						<visible>Player.HasSceneMarkers | Player.ChapterCount | Integer.IsGreater(Playlist.Length(video),1) | PVR.IsTimeShift</visible>
-					</control>
-					<control type="radiobutton" id="608">
-						<textureradioonfocus colordiffuse="white">osd/fullscreen/buttons/record-white.png</textureradioonfocus>
-						<textureradioonnofocus>osd/fullscreen/buttons/record-white.png</textureradioonnofocus>
-						<textureradioofffocus colordiffuse="white">osd/fullscreen/buttons/record.png</textureradioofffocus>
-						<textureradiooffnofocus>osd/fullscreen/buttons/record.png</textureradiooffnofocus>
-						<texturefocus colordiffuse="button_focus">osd/fullscreen/buttons/button-fo.png</texturefocus>
-						<width>76</width>
-						<animation center="38,38" effect="zoom" end="100" reversible="false" start="95" time="480" tween="back">Focus</animation>
-						<height>76</height>
-						<radiowidth>74</radiowidth>
-						<radioheight>74</radioheight>
-						<font></font>
-						<texturenofocus />
-						<radioposx>1</radioposx>
-						<radioposy>0</radioposy>
-						<selected>!PVR.IsRecordingPlayingChannel</selected>
-						<onclick>PVR.ToggleRecordPlayingChannel</onclick>
-						<visible>PVR.CanRecordPlayingChannel</visible>
-						<visible>VideoPlayer.Content(livetv)</visible>
-					</control>
-				</control>
-				<control type="grouplist" id="202">
-					<right>20</right>
-					<top>90</top>
-					<width>1800</width>
-					<height>135</height>
-					<align>right</align>
-					<itemgap>10</itemgap>
-					<scrolltime tween="sine">200</scrolltime>
-					<orientation>horizontal</orientation>
-					<onup>87</onup>
-					<ondown condition="Control.HasFocus(70043)">11104</ondown>
-					<ondown condition="Control.HasFocus(704)">12104</ondown>
-					<ondown condition="Control.HasFocus(255)">13103</ondown>
-					<onleft>608</onleft>
-					<onright>600</onright>
-					<control type="radiobutton" id="804">
-						<include content="OSDButton">
-							<param name="texture" value="osd/fullscreen/buttons/home.png"/>
-						</include>
-						<onclick>PlayerControl(ShowVideoMenu)</onclick>
-						<visible>VideoPlayer.HasMenu</visible>
-					</control>
-					<control type="radiobutton" id="70040">
-						<include content="OSDButton">
-							<param name="texture" value="osd/fullscreen/buttons/channels.png"/>
-						</include>
-						<onclick>Dialog.Close(VideoOSD)</onclick>
-						<onclick>ActivateWindow(PVROSDChannels)</onclick>
-						<visible>VideoPlayer.Content(livetv)</visible>
-					</control>
-					<control type="radiobutton" id="70041">
-						<include content="OSDButton">
-							<param name="texture" value="osd/fullscreen/buttons/guide.png"/>
-						</include>
-						<onclick>Dialog.Close(VideoOSD)</onclick>
-						<onclick>ActivateWindow(pvrchannelguide)</onclick>
-						<visible>VideoPlayer.Content(livetv) + VideoPlayer.HasEPG</visible>
-					</control>
-					<control type="radiobutton" id="70042">
-						<include content="OSDButton">
-							<param name="texture" value="osd/fullscreen/buttons/playlist.png"/>
-						</include>
-						<onclick>Dialog.Close(all, true)</onclick>
-						<onclick>ActivateWindow(videoplaylist)</onclick>
-						<visible>Integer.IsGreater(Playlist.Length(video),1)</visible>
-					</control>
-					<control type="radiobutton" id="70043">
-						<include content="OSDButton">
-							<param name="texture" value="osd/fullscreen/buttons/information.png"/>
-						</include>
-						<onclick>Info</onclick>
-					</control>
-					<control type="radiobutton" id="70044">
-						<include content="OSDButton">
-							<param name="texture" value="osd/fullscreen/buttons/bookmarks.png"/>
-						</include>
-						<onclick>ActivateWindow(videobookmarks)</onclick>
-						<visible>!VideoPlayer.Content(livetv)</visible>
-					</control>
-					<control type="radiobutton" id="70045">
-						<include content="OSDButton">
-							<param name="texture" value="osd/fullscreen/buttons/teletext.png"/>
-						</include>
-						<onclick>Dialog.Close(VideoOSD)</onclick>
-						<onclick>ActivateWindow(Teletext)</onclick>
-						<visible>VideoPlayer.HasTeletext</visible>
-					</control>
-					<control type="radiobutton" id="70046">
-						<include content="OSDButton">
-							<param name="texture" value="osd/fullscreen/buttons/settings-subtitle.png"/>
-						</include>
-						<onclick>ActivateWindow(osdsubtitlesettings)</onclick>
-						<visible>!VideoPlayer.Content(LiveTV) | VideoPlayer.HasSubtitles</visible>
-					</control>
-					<control type="radiobutton" id="70047">
-						<include content="OSDButton">
-							<param name="texture" value="osd/fullscreen/buttons/stereoscopic.png"/>
-						</include>
-						<visible>VideoPlayer.IsStereoscopic</visible>
-						<onclick>SetProperty(settingslist_content,3d,home)</onclick>
-						<onclick>SetProperty(settingslist_header,$LOCALIZE[36501],home)</onclick>
-						<onclick>ActivateWindow(1101)</onclick>
-					</control>
-					<control type="radiobutton" id="70048">
-						<include content="OSDButton">
-							<param name="texture" value="osd/fullscreen/buttons/settings.png"/>
-						</include>
-						<onclick>SetProperty(settingslist_content,osd,home)</onclick>
-						<onclick>SetProperty(settingslist_header,$LOCALIZE[5],home)</onclick>
-						<onclick>ActivateWindow(1101)</onclick>
-					</control>
-				</control>
+			<control type="label">
+				<left>1236</left><top>934</top><width>250</width><height>72</height>
+				<aligny>center</aligny>
+				<font>korie_heading30</font><textcolor>korie_ink</textcolor>
+				<label>Audio and subtitles</label>
+				<visible>![Control.HasFocus(610) | Window.IsVisible(Korie_Streams.xml)]</visible>
 			</control>
-			<control type="group" id="6000">
-				<top>60</top>
-				<animation type="WindowOpen" condition="!Window.IsVisible(fullscreeninfo)" reversible="False">
-					<effect type="fade" start="0" end="100" time="300"/>
-					<effect type="slide" start="0,200" end="0,0" time="300" tween="cubic" easing="out" />
-				</animation>
-				<animation type="WindowClose" condition="!Window.IsVisible(fullscreeninfo)" reversible="False">
-					<effect type="fade" start="100" end="0" time="300"/>
-					<effect type="slide" start="0,0" end="0,200" time="300" tween="cubic" easing="out" />
-				</animation>
-				<animation type="WindowOpen" condition="Window.IsVisible(fullscreeninfo)" reversible="False">
-					<effect type="fade" start="0" end="100" time="300"/>
-				</animation>
-				<animation type="WindowClose" condition="Window.IsVisible(fullscreeninfo)" reversible="False">
-					<effect type="fade" start="100" end="0" time="300"/>
-				</animation>
-				<visible>Player.SeekEnabled</visible>
-				<control type="button" id="87">
-					<include>HiddenObject</include>
-					<onup>200</onup>
-					<ondown>200</ondown>
-					<onleft>StepBack</onleft>
-					<onright condition="!Player.Paused">StepForward</onright>
-					<onright condition="Player.Paused">PlayerControl(FrameAdvance(1))</onright>
-				</control>
-				<control type="slider">
-					<top>-5</top>
-					<left>0</left>
-					<width>100%</width>
-					<height>26</height>
-					<texturesliderbar colordiffuse="00FFFFFF">osd/progress/nub_leftright.png</texturesliderbar>
-					<textureslidernib>osd/progress/nub_leftright.png</textureslidernib>
-					<textureslidernibfocus colordiffuse="button_focus">osd/progress/nub_leftright.png</textureslidernibfocus>
-					<info>Player.Progress</info>
-					<onup>200</onup>
-					<ondown>200</ondown>
-					<action>seek</action>
-					<visible>!Control.HasFocus(87) + !VideoPlayer.Content(LiveTV)</visible>
-				</control>
-				<control type="slider">
-					<top>-5</top>
-					<left>0</left>
-					<width>100%</width>
-					<height>26</height>
-					<texturesliderbar colordiffuse="00FFFFFF">osd/progress/nub_leftright.png</texturesliderbar>
-					<textureslidernib colordiffuse="button_focus">osd/progress/nub_leftright.png</textureslidernib>
-					<textureslidernibfocus colordiffuse="button_focus">osd/progress/nub_leftright.png</textureslidernibfocus>
-					<info>Player.Progress</info>
-					<onup>200</onup>
-					<ondown>200</ondown>
-					<action>seek</action>
-					<visible>Control.HasFocus(87) + !VideoPlayer.Content(LiveTV)</visible>
-				</control>
-				<control type="slider">
-					<top>-5</top>
-					<left>0</left>
-					<width>100%</width>
-					<height>26</height>
-					<texturesliderbar colordiffuse="00FFFFFF">osd/progress/nub_leftright.png</texturesliderbar>
-					<textureslidernib>osd/progress/nub_leftright.png</textureslidernib>
-					<textureslidernibfocus colordiffuse="button_focus">osd/progress/nub_leftright.png</textureslidernibfocus>
-					<info>PVR.TimeshiftProgressPlayPos</info>
-					<onup>200</onup>
-					<ondown>200</ondown>
-					<action>pvr.seek</action>
-					<visible>!Control.HasFocus(87) + VideoPlayer.Content(LiveTV)</visible>
-				</control>
-				<control type="slider">
-					<top>-5</top>
-					<left>0</left>
-					<width>100%</width>
-					<height>26</height>
-					<texturesliderbar colordiffuse="00FFFFFF">osd/progress/nub_leftright.png</texturesliderbar>
-					<textureslidernib colordiffuse="button_focus">osd/progress/nub_leftright.png</textureslidernib>
-					<textureslidernibfocus colordiffuse="button_focus">osd/progress/nub_leftright.png</textureslidernibfocus>
-					<info>PVR.TimeshiftProgressPlayPos</info>
-					<onup>200</onup>
-					<ondown>200</ondown>
-					<action>pvr.seek</action>
-					<visible>Control.HasFocus(87) + VideoPlayer.Content(LiveTV)</visible>
-				</control>
+		</control>
+		<control type="group">
+			<visible>Integer.IsGreater(Player.ChapterCount,1)</visible>
+			
+			<control type="button" id="611">
+				<left>1524</left><top>934</top><width>210</width><height>72</height>
+				<onup>87</onup><onleft>610</onleft><onright>612</onright>
+				<texturefocus border="36,0,36,0" colordiffuse="korie_accent">korie/pill72.png</texturefocus>
+				<texturenofocus border="36,0,36,0" colordiffuse="korie_panel">korie/pill72.png</texturenofocus>
+				<label />
+				<onclick>ActivateWindow(videobookmarks)</onclick>
 			</control>
+			<control type="image">
+				<left>1524</left><top>934</top><width>210</width><height>72</height>
+				<texture border="36,0,36,0" colordiffuse="korie_accent">korie/pill72.png</texture>
+				<visible>!Control.HasFocus(611) + false</visible>
+			</control>
+			<control type="image">
+				<left>1550</left><top>954</top><width>32</width><height>32</height>
+				<texture colordiffuse="korie_onaccent">korie/icon-chapters.png</texture>
+				<visible>Control.HasFocus(611) | false</visible>
+			</control>
+			<control type="image">
+				<left>1550</left><top>954</top><width>32</width><height>32</height>
+				<texture colordiffuse="korie_ink">korie/icon-chapters.png</texture>
+				<visible>![Control.HasFocus(611) | false]</visible>
+			</control>
+			<control type="label">
+				<left>1594</left><top>934</top><width>120</width><height>72</height>
+				<aligny>center</aligny>
+				<font>korie_heading30</font><textcolor>korie_onaccent</textcolor>
+				<label>Chapters</label>
+				<visible>Control.HasFocus(611) | false</visible>
+			</control>
+			<control type="label">
+				<left>1594</left><top>934</top><width>120</width><height>72</height>
+				<aligny>center</aligny>
+				<font>korie_heading30</font><textcolor>korie_ink</textcolor>
+				<label>Chapters</label>
+				<visible>![Control.HasFocus(611) | false]</visible>
+			</control>
+		</control>
+		<control type="button" id="612">
+			<left>1752</left><top>934</top><width>72</width><height>72</height>
+			<onup>87</onup><onleft condition="Integer.IsGreater(Player.ChapterCount,1)">611</onleft><onleft condition="!Integer.IsGreater(Player.ChapterCount,1)">610</onleft><onright>noop</onright>
+			<texturefocus colordiffuse="korie_accent">korie/mask-circle.png</texturefocus>
+			<texturenofocus colordiffuse="korie_panel">korie/mask-circle.png</texturenofocus>
+			<label />
+			<onclick>ActivateWindow(osdvideosettings)</onclick>
+		</control>
+		<control type="image">
+			<left>1771</left><top>953</top><width>34</width><height>34</height>
+			<texture colordiffuse="korie_onaccent">korie/icon-tune.png</texture>
+			<visible>Control.HasFocus(612)</visible>
+		</control>
+		<control type="image">
+			<left>1771</left><top>953</top><width>34</width><height>34</height>
+			<texture colordiffuse="korie_ink">korie/icon-tune.png</texture>
+			<visible>!Control.HasFocus(612)</visible>
 		</control>
 	</controls>
 </window>

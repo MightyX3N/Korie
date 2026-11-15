@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Korie: the chapters (and any bookmarks), beside the film while it plays. Kodi fills list 11;
+     its bookmark buttons (2, 3, 4) are kept, out of sight. -->
+<window>
+	<defaultcontrol always="true">11</defaultcontrol>
+	<depth>DepthDialog</depth>
+	<controls>
+		<control type="group">
+			<left>1336</left><top>170</top>
+			<animation effect="fade" start="0" end="100" time="150">WindowOpen</animation>
+			<animation effect="slide" start="40,0" end="0,0" time="200" tween="cubic" easing="out">WindowOpen</animation>
+			<animation effect="fade" start="100" end="0" time="120">WindowClose</animation>
+			<!-- the panel fits the list: up to 3, 6, or 8 lines -->
+			<control type="image">
+				<left>0</left><top>0</top><width>520</width><height>334</height>
+				<texture border="22" colordiffuse="korie_panel2">korie/r28.png</texture>
+				<visible>Integer.IsLessOrEqual(Container(11).NumItems,3)</visible>
+			</control>
+			<control type="image">
+				<left>0</left><top>0</top><width>520</width><height>568</height>
+				<texture border="22" colordiffuse="korie_panel2">korie/r28.png</texture>
+				<visible>Integer.IsGreater(Container(11).NumItems,3) + Integer.IsLessOrEqual(Container(11).NumItems,6)</visible>
+			</control>
+			<control type="image">
+				<left>0</left><top>0</top><width>520</width><height>724</height>
+				<texture border="22" colordiffuse="korie_panel2">korie/r28.png</texture>
+				<visible>Integer.IsGreater(Container(11).NumItems,6)</visible>
+			</control>
+			<control type="label">
+				<left>30</left><top>28</top><width>460</width><height>40</height>
+				<aligny>center</aligny>
+				<font>korie_heading30</font><textcolor>korie_dim</textcolor>
+				<label>Chapters</label>
+			</control>
+			<control type="label">
+				<left>30</left><top>90</top><width>460</width><height>40</height>
+				<font>korie_body26</font><textcolor>korie_soft</textcolor>
+				<label>This has no chapters.</label>
+				<visible>Integer.IsEqual(Container(11).NumItems,0)</visible>
+			</control>
+			<control type="list" id="11">
+				<left>14</left><top>76</top><width>492</width><height>624</height>
+				<orientation>vertical</orientation>
+				<onleft>noop</onleft><onright>noop</onright>
+				<scrolltime tween="cubic" easing="out">150</scrolltime>
+				<itemlayout width="492" height="78">
+					<include content="KorieChapterRow"><param name="focus">false</param></include>
+				</itemlayout>
+				<focusedlayout width="492" height="78">
+					<include content="KorieChapterRow"><param name="focus">Control.HasFocus(11)</param></include>
+				</focusedlayout>
+			</control>
+		</control>
+		<control type="group">
+			<visible>false</visible>
+			<control type="button" id="2"><label /></control>
+			<control type="button" id="3"><label /></control>
+			<control type="button" id="4"><label /></control>
+		</control>
+	</controls>
+</window>

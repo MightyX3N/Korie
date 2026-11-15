@@ -28,6 +28,7 @@ def colour(c):
 
 
 def set_person(person):
+    HOME.clearProperty("korie.steady")  # Home's rows hide while they load the new person's things
     name = (person or {}).get("name", "")
     HOME.setProperty("korie.person.name", name)
     HOME.setProperty("korie.person.letter", name[:1].upper())
@@ -119,9 +120,10 @@ def choose_theme():
     themes = theme.installed(skin_dir())
     if not themes:
         return
+    from resources.lib import screens
     tid = current_theme()
-    names = [t["name"] + ("  (in use)" if t["id"] == tid else "") for t in themes]
-    i = xbmcgui.Dialog().select("Theme", names)
+    now = next((n for n, t in enumerate(themes) if t["id"] == tid), 0)
+    i = screens.menu("Theme", [{"label": t["name"], "on": t["id"] == tid} for t in themes], start=now)
     if i >= 0 and themes[i]["id"] != tid:
         apply_theme(themes[i]["id"])
 
@@ -136,8 +138,52 @@ KODI_SETTINGS = {
 }
 
 
+OPTIONS = "RunPlugin(plugin://plugin.video.korie/?a=options)"
+MENU_KEYS = """
+    <keyboard>
+      <menu>{o}</menu>
+      <c>{o}</c>
+      <return mod="longpress">{o}</return>
+      <enter mod="longpress">{o}</enter>
+    </keyboard>
+    <remote>
+      <menu>{o}</menu>
+      <title>{o}</title>
+    </remote>
+    <mouse>
+      <rightclick>{o}</rightclick>
+    </mouse>
+""".format(o=OPTIONS)
+
+# The Menu button (and holding OK, and right-click) opens Korie's options instead of Kodi's;
+# Back while a film plays stops it and goes back, like the other Korie screens (Kodi's own
+# keeps it playing hidden behind the menus).
+KEYMAP = """<?xml version="1.0" encoding="UTF-8"?>
+<!-- Made by the Korie add-on. -->
+<keymap>
+  <home>{menu}</home>
+  <videos>{menu}</videos>
+  <FullscreenVideo>
+    <keyboard>
+      <backspace>Stop</backspace>
+      <browser_back>Stop</browser_back>
+      <escape>Stop</escape>
+    </keyboard>
+    <remote>
+      <back>Stop</back>
+    </remote>
+  </FullscreenVideo>
+</keymap>
+""".format(menu=MENU_KEYS)
+
+
 def setup_kodi():
     for k, v in KODI_SETTINGS.items():
         r = rpc("Settings.SetSettingValue", setting=k, value=v)
         if "error" in r:
             log("couldn't set %s: %s" % (k, r["error"]))
+    folder = xbmcvfs.translatePath("special://profile/keymaps/")
+    os.makedirs(folder, exist_ok=True)
+    with open(os.path.join(folder, "korie.xml"), "w", encoding="utf-8") as f:
+        f.write(KEYMAP)
+    xbmc.executebuiltin("Action(reloadkeymaps)")

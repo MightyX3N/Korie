@@ -1,0 +1,161 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Korie: search. Letters for the remote on the left (200, with 210 space, 211 delete, 212 clear),
+     what you've typed at the top, kinds to narrow it to (300), and what's found on the right (500),
+     updated as you type. The Korie add-on runs it; a keyboard types here too. -->
+<window>
+	<defaultcontrol always="true">200</defaultcontrol>
+	<menucontrol>9000</menucontrol>
+	<include content="KorieHere"><param name="id">search</param><param name="n">5</param></include>
+	<controls>
+		<include>KorieBackground</include>
+		<include content="KorieRail"><param name="right">200</param></include>
+
+		<!-- what you've typed -->
+		<control type="image">
+			<left>444</left><top>48</top><width>1160</width><height>92</height>
+			<texture border="16" colordiffuse="korie_panel">korie/r16.png</texture>
+		</control>
+		<control type="image">
+			<left>476</left><top>78</top><width>32</width><height>32</height>
+			<texture colordiffuse="korie_soft">korie/icon-search.png</texture>
+		</control>
+		<!-- what you've typed; OK here opens a text entry (a keyboard, or a phone's remote app, types
+		     there). Not an edit control: Kodi 21 for Android crashes freeing an add-on's edit control. -->
+		<control type="button" id="101">
+			<left>444</left><top>48</top><width>1160</width><height>92</height>
+			<texturefocus border="28" colordiffuse="korie_accent">korie/ring28.png</texturefocus>
+			<texturenofocus />
+			<label />
+			<ondown>300</ondown>
+			<onleft>$VAR[KorieToMenu]</onleft>
+			<onright>noop</onright>
+			<onup>noop</onup>
+		</control>
+		<control type="label">
+			<left>530</left><top>48</top><width>1040</width><height>92</height>
+			<aligny>center</aligny>
+			<font>korie_body36</font><textcolor>korie_ink</textcolor>
+			<label>$INFO[Window.Property(korie.text)][COLOR korie_accent]|[/COLOR]</label>
+			<visible>!String.IsEmpty(Window.Property(korie.text))</visible>
+		</control>
+		<control type="label">
+			<left>530</left><top>48</top><width>1040</width><height>92</height>
+			<aligny>center</aligny>
+			<font>korie_body36</font><textcolor>korie_dim</textcolor>
+			<label>Films, series, music, add-ons</label>
+			<visible>String.IsEmpty(Window.Property(korie.text))</visible>
+		</control>
+		<include content="KorieClock"/>
+
+		<!-- what to look in -->
+		<control type="list" id="300">
+			<left>444</left><top>166</top><width>1412</width><height>56</height>
+			<orientation>horizontal</orientation>
+			<onleft>$VAR[KorieToMenu]</onleft>
+			<ondown>200</ondown>
+			<onup>101</onup>
+			<scrolltime>0</scrolltime>
+			<itemlayout width="176" height="56">
+				<include content="KorieChip"><param name="focus">false</param></include>
+			</itemlayout>
+			<focusedlayout width="176" height="56">
+				<include content="KorieChip"><param name="focus">Control.HasFocus(300)</param></include>
+			</focusedlayout>
+		</control>
+
+		<!-- letters for the remote -->
+		<control type="panel" id="200">
+			<left>444</left><top>246</top><width>468</width><height>432</height>
+			<orientation>vertical</orientation>
+			<onleft>$VAR[KorieToMenu]</onleft>
+			<onright>500</onright>
+			<onup>300</onup>
+			<ondown>210</ondown>
+			<scrolltime>0</scrolltime>
+			<itemlayout width="78" height="72">
+				<control type="image">
+					<width>70</width><height>64</height>
+					<texture border="12" colordiffuse="korie_panel">korie/r12.png</texture>
+				</control>
+				<control type="label">
+					<width>70</width><height>64</height>
+					<align>center</align><aligny>center</aligny>
+					<font>korie_body32</font><textcolor>korie_ink</textcolor>
+					<label>$INFO[ListItem.Label]</label>
+				</control>
+			</itemlayout>
+			<focusedlayout width="78" height="72">
+				<control type="image">
+					<width>70</width><height>64</height>
+					<texture border="12" colordiffuse="korie_accent">korie/r12.png</texture>
+					<visible>Control.HasFocus(200)</visible>
+				</control>
+				<control type="image">
+					<width>70</width><height>64</height>
+					<texture border="12" colordiffuse="korie_panel">korie/r12.png</texture>
+					<visible>!Control.HasFocus(200)</visible>
+				</control>
+				<control type="label">
+					<width>70</width><height>64</height>
+					<align>center</align><aligny>center</aligny>
+					<font>korie_body32</font><textcolor>korie_onaccent</textcolor>
+					<label>$INFO[ListItem.Label]</label>
+					<visible>Control.HasFocus(200)</visible>
+				</control>
+				<control type="label">
+					<width>70</width><height>64</height>
+					<align>center</align><aligny>center</aligny>
+					<font>korie_body32</font><textcolor>korie_ink</textcolor>
+					<label>$INFO[ListItem.Label]</label>
+					<visible>!Control.HasFocus(200)</visible>
+				</control>
+			</focusedlayout>
+		</control>
+		<control type="button" id="210">
+			<left>444</left><top>678</top><width>148</width><height>64</height>
+			<onup>200</onup><onright>211</onright><onleft>$VAR[KorieToMenu]</onleft><ondown>noop</ondown>
+			<include>KorieKeyButton</include>
+			<label>Space</label>
+		</control>
+		<control type="button" id="211">
+			<left>600</left><top>678</top><width>148</width><height>64</height>
+			<onup>200</onup><onleft>210</onleft><onright>212</onright><ondown>noop</ondown>
+			<include>KorieKeyButton</include>
+			<label>Delete</label>
+		</control>
+		<control type="button" id="212">
+			<left>756</left><top>678</top><width>148</width><height>64</height>
+			<onup>200</onup><onleft>211</onleft><onright>500</onright><ondown>noop</ondown>
+			<include>KorieKeyButton</include>
+			<label>Clear</label>
+		</control>
+		<control type="label">
+			<left>444</left><top>762</top><width>460</width><height>90</height>
+			<font>korie_body22</font><textcolor>korie_dim</textcolor>
+			<wrapmultiline>true</wrapmultiline>
+			<label>For the remote. To type on a keyboard or a phone, choose the search box.</label>
+		</control>
+
+		<!-- what's found -->
+		<control type="label">
+			<left>948</left><top>240</top><width>908</width><height>44</height>
+			<aligny>center</aligny>
+			<font>korie_heading30</font><textcolor>korie_soft</textcolor>
+			<label>$INFO[Window.Property(korie.note)]</label>
+		</control>
+		<control type="panel" id="500">
+			<left>948</left><top>292</top><width>920</width><height>760</height>
+			<orientation>vertical</orientation>
+			<onleft>200</onleft>
+			<onup>300</onup>
+			<onright>noop</onright>
+			<scrolltime tween="cubic" easing="out">200</scrolltime>
+			<itemlayout width="460" height="186">
+				<include content="KorieResultCard"><param name="focus">false</param></include>
+			</itemlayout>
+			<focusedlayout width="460" height="186">
+				<include content="KorieResultCard"><param name="focus">Control.HasFocus(500)</param></include>
+			</focusedlayout>
+		</control>
+	</controls>
+</window>

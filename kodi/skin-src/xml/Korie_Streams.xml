@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Korie: audio and subtitles, beside the film while it plays. The Korie add-on fills the lists
+     (200 audio, 300 subtitles) and places them in the panel. -->
+<window>
+	<defaultcontrol always="true">200</defaultcontrol>
+	<depth>DepthDialog</depth>
+	<controls>
+		<control type="group">
+			<left>1336</left><top>170</top>
+			<animation effect="fade" start="0" end="100" time="150">WindowOpen</animation>
+			<animation effect="slide" start="40,0" end="0,0" time="200" tween="cubic" easing="out">WindowOpen</animation>
+			<animation effect="fade" start="100" end="0" time="120">WindowClose</animation>
+			<control type="image" id="90">
+				<left>0</left><top>0</top><width>520</width><height>500</height>
+				<texture border="22" colordiffuse="korie_panel2">korie/r28.png</texture>
+			</control>
+			<control type="label" id="199">
+				<left>30</left><top>28</top><width>460</width><height>40</height>
+				<aligny>center</aligny>
+				<font>korie_heading30</font><textcolor>korie_dim</textcolor>
+				<label>Audio</label>
+			</control>
+			<control type="list" id="200">
+				<left>14</left><top>74</top><width>492</width><height>118</height>
+				<orientation>vertical</orientation>
+				<ondown>300</ondown>
+				<onleft>noop</onleft><onright>noop</onright>
+				<itemlayout width="492" height="59">
+					<include content="KorieMenuRow"><param name="focus">false</param><param name="width">492</param><param name="bar">55</param></include>
+				</itemlayout>
+				<focusedlayout width="492" height="59">
+					<include content="KorieMenuRow"><param name="focus">Control.HasFocus(200)</param><param name="width">492</param><param name="bar">55</param></include>
+				</focusedlayout>
+			</control>
+			<control type="label" id="299">
+				<left>30</left><top>212</top><width>460</width><height>40</height>
+				<aligny>center</aligny>
+				<font>korie_heading30</font><textcolor>korie_dim</textcolor>
+				<label>Subtitles</label>
+			</control>
+			<control type="list" id="300">
+				<left>14</left><top>258</top><width>492</width><height>236</height>
+				<orientation>vertical</orientation>
+				<onup>200</onup>
+				<onleft>noop</onleft><onright>noop</onright>
+				<itemlayout width="492" height="59">
+					<include content="KorieMenuRow"><param name="focus">false</param><param name="width">492</param><param name="bar">55</param></include>
+				</itemlayout>
+				<focusedlayout width="492" height="59">
+					<include content="KorieMenuRow"><param name="focus">Control.HasFocus(300)</param><param name="width">492</param><param name="bar">55</param></include>
+				</focusedlayout>
+			</control>
+		</control>
+	</controls>
+</window>
