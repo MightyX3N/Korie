@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Korie</title>
+<meta name="description" content="Korie is a small, fast media server for the household that Jellyfin's own apps play from.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+/* Layout: a living-room TV set at night. One wide column; the hero is a race between two
+   progress bars (the thesis: ready in seconds), then plain sections that read like a manual. */
+:root {
+  --bg: #eef0f4;
+  --surface: #ffffff;
+  --ink: #161a22;
+  --muted: #5a6273;
+  --line: #d5d9e2;
+  --amber: #b86f0e;          /* Korie's own amber, darkened for light backgrounds */
+  --amber-soft: #f6e3c4;
+  --slow: #7c8494;
+  --good: #1f7a4d;
+  --warn: #9a5b00;
+  --bad: #a3332b;
+  --display: "Big Shoulders Display", "Arial Narrow", "Roboto Condensed", sans-serif;
+  --body: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0d1017; --surface: #161b25; --ink: #eceef3; --muted: #9aa3b5; --line: #262d3b;
+    --amber: #e8a33d; --amber-soft: #3a2a10; --slow: #6f7890; --good: #5fc48f; --warn: #e8a33d; --bad: #ef7d73;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0d1017; --surface: #161b25; --ink: #eceef3; --muted: #9aa3b5; --line: #262d3b;
+  --amber: #e8a33d; --amber-soft: #3a2a10; --slow: #6f7890; --good: #5fc48f; --warn: #e8a33d; --bad: #ef7d73;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--ink); font: 18px/1.6 var(--body); -webkit-font-smoothing: antialiased; }
+a { color: var(--amber); text-underline-offset: 3px; }
+a:focus-visible, button:focus-visible, summary:focus-visible { outline: 3px solid var(--amber); outline-offset: 3px; border-radius: 4px; }
+.wrap { max-width: 1040px; margin: 0 auto; padding: 0 24px; }
+h1, h2, h3 { font-family: var(--display); font-weight: 800; letter-spacing: .01em; line-height: 1.02; text-wrap: balance; margin: 0; }
+h2 { font-size: clamp(36px, 6vw, 56px); text-transform: uppercase; }
+h3 { font-size: 26px; font-weight: 600; text-transform: uppercase; }
+p { margin: 0; max-width: 65ch; }
+.muted { color: var(--muted); }
+code, pre { font-family: var(--mono); font-size: 15px; }
+
+/* top bar */
+header.top { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 20px 0; }
+.brand { display: flex; align-items: center; gap: 12px; font-family: var(--display); font-weight: 800; font-size: 30px; text-transform: uppercase; letter-spacing: .04em; color: var(--ink); text-decoration: none; }
+.brand svg { width: 34px; height: 34px; }
+nav.links { display: flex; flex-wrap: wrap; gap: 6px 20px; font-size: 16px; }
+nav.links a { color: var(--muted); text-decoration: none; }
+nav.links a:hover { color: var(--ink); }
+
+/* hero */
+.hero { padding: 40px 0 64px; display: grid; gap: 40px; }
+.hero h1 { font-size: clamp(56px, 11vw, 132px); text-transform: uppercase; }
+.hero h1 em { font-style: normal; color: var(--amber); }
+.lede { font-size: 22px; max-width: 46ch; }
+.race { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 28px; display: grid; gap: 22px; }
+.race-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 24px; align-items: baseline; }
+.race-head h3 { font-size: 22px; }
+.lane { display: grid; grid-template-columns: 120px 1fr auto; gap: 16px; align-items: center; }
+.lane .who { font-family: var(--display); font-weight: 800; font-size: 26px; text-transform: uppercase; }
+.track { height: 22px; border-radius: 11px; background: var(--bg); border: 1px solid var(--line); overflow: hidden; }
+.fill { height: 100%; border-radius: 11px; }
+.fill.korie { width: 1.2%; min-width: 22px; background: var(--amber); }
+.fill.jelly { width: 100%; background: repeating-linear-gradient(135deg, var(--slow) 0 10px, color-mix(in srgb, var(--slow) 75%, transparent) 10px 20px); }
+.time { font-family: var(--mono); font-weight: 600; font-variant-numeric: tabular-nums; font-size: 22px; min-width: 7.5ch; text-align: right; }
+.time.korie { color: var(--amber); }
+.race small { color: var(--muted); font-size: 15px; }
+@media (prefers-reduced-motion: no-preference) {
+  .fill.jelly { animation: crawl 1.4s ease-out both; }
+  @keyframes crawl { from { transform: translateX(-12%); } to { transform: none; } }
+}
+
+section { padding: 64px 0; border-top: 1px solid var(--line); }
+.section-head { display: grid; gap: 14px; margin-bottom: 32px; }
+
+/* how it fits together */
+.flow { display: grid; grid-template-columns: 1fr auto 1.3fr auto 1fr; gap: 14px; align-items: stretch; }
+.box { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 20px; display: grid; gap: 8px; align-content: start; }
+.box.core { border: 2px solid var(--amber); }
+.box h3 { font-size: 22px; }
+.box ul { margin: 0; padding-left: 18px; color: var(--muted); font-size: 16px; }
+.arrow { align-self: center; color: var(--muted); font-family: var(--mono); font-size: 22px; }
+
+/* features */
+.features { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+.feature { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 20px; display: grid; gap: 8px; align-content: start; }
+.feature p { font-size: 16px; color: var(--muted); }
+.pill { justify-self: start; font-family: var(--mono); font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; padding: 3px 9px; border-radius: 999px; border: 1px solid currentColor; }
+.pill.now { color: var(--good); }
+.pill.soon { color: var(--warn); }
+
+/* comparison */
+.table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+table { width: 100%; border-collapse: collapse; min-width: 720px; font-size: 16px; }
+th, td { text-align: left; vertical-align: top; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+thead th { font-family: var(--display); font-weight: 800; font-size: 20px; text-transform: uppercase; letter-spacing: .03em; background: var(--bg); }
+tbody tr:last-child td { border-bottom: 0; }
+td:first-child { font-weight: 700; width: 22%; }
+.mark { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; white-space: nowrap; }
+.mark::before { content: ""; width: 10px; height: 10px; border-radius: 50%; background: currentColor; flex: none; }
+.mark.k { color: var(--good); }
+.mark.j { color: var(--bad); }
+.mark.e { color: var(--muted); }
+.verdict { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; margin-top: 24px; }
+.verdict .box h3 { font-size: 24px; }
+.verdict .box ul { color: var(--ink); font-size: 17px; display: grid; gap: 6px; }
+
+/* proof */
+.proof { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
+.stat { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 20px; display: grid; gap: 6px; align-content: start; }
+.stat b { font-family: var(--display); font-size: 48px; line-height: 1; font-variant-numeric: tabular-nums; }
+.stat span { color: var(--muted); font-size: 15px; }
+
+/* start */
+.steps { display: grid; gap: 18px; counter-reset: s; padding: 0; margin: 0 0 24px; list-style: none; }
+.steps li { counter-increment: s; display: grid; grid-template-columns: 44px 1fr; gap: 14px; align-items: start; }
+.steps li::before { content: counter(s); font-family: var(--display); font-weight: 800; font-size: 28px; width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; background: var(--amber-soft); color: var(--amber); }
+.code { position: relative; }
+pre { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 20px; overflow-x: auto; margin: 0; line-height: 1.5; }
+.copy { position: absolute; top: 10px; right: 10px; font: 600 14px var(--body); padding: 6px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); cursor: pointer; }
+.copy:hover { border-color: var(--amber); }
+
+footer { padding: 40px 0 56px; border-top: 1px solid var(--line); color: var(--muted); font-size: 15px; display: grid; gap: 8px; }
+
+@media (max-width: 820px) {
+  .flow { grid-template-columns: 1fr; }
+  .arrow { justify-self: center; transform: rotate(90deg); }
+}
+@media (max-width: 520px) {
+  body { font-size: 17px; }
+  .wrap { padding: 0 16px; }
+  .lane { grid-template-columns: 1fr auto; }
+  .lane .track { grid-column: 1 / -1; grid-row: 2; }
+  .race { padding: 20px; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <a class="brand" href="#top" aria-label="Korie">
+      <svg viewBox="0 0 34 34" aria-hidden="true"><rect x="2" y="5" width="30" height="20" rx="4" fill="none" stroke="currentColor" stroke-width="2.4"/><path d="M14 11l7 4-7 4z" fill="#e8a33d"/><path d="M11 30h12" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>
+      Korie
+    </a>
+    <nav class="links" aria-label="Sections">
+      <a href="#what">What it is</a>
+      <a href="#does">What it does</a>
+      <a href="#versus">Korie or Jellyfin</a>
+      <a href="#proof">How it was tested</a>
+      <a href="#start">Get started</a>
+      <a href="https://github.com/MightyX3N/Korie">GitHub</a>
+    </nav>
+  </header>
+
+  <div class="hero" id="top">
+    <h1>Your films.<br>Every screen.<br><em>Ready in seconds.</em></h1>
+    <p class="lede">Korie is a small media server for the household. It runs on your NAS, and the Jellyfin apps you already have play from it: same apps, same remote, a library that's there the moment you add a folder.</p>
+    <div class="race" role="img" aria-label="Adding 1,000 films and 50 series: Korie lists them all in 0.2 seconds, Jellyfin 12.4 in 4 minutes 29 seconds.">
+      <div class="race-head">
+        <h3>Add 1,000 films and 50 series. Until all of them show up:</h3>
+        <small>Same machine, same 2,000 files, 16 Nov 2026</small>
+      </div>
+      <div class="lane"><span class="who">Korie</span><div class="track"><div class="fill korie"></div></div><span class="time korie">0.2 s</span></div>
+      <div class="lane"><span class="who">Jellyfin</span><div class="track"><div class="fill jelly"></div></div><span class="time">4 m 29 s</span></div>
+      <small>Short test files on a fast disk. With real films on a NAS, Jellyfin looks into every file and fetches its details before anything is ready, and the wait grows to hours. Korie lists things from their names first and fills in the details afterwards.</small>
+    </div>
+  </div>
+</div>
+
+<section id="what">
+  <div class="wrap">
+    <div class="section-head">
+      <h2>What it is</h2>
+      <p>Jellyfin is two things: a server that keeps your library, and apps that show it on the TV, phone and browser. The apps are good. The server is slow to get going. Korie replaces only the server.</p>
+    </div>
+    <div class="flow">
+      <div class="box">
+        <h3>Your folders</h3>
+        <ul><li>Films, series, music on the NAS</li><li>Files stay where they are</li><li>Your own .nfo files and posters count</li></ul>
+      </div>
+      <div class="arrow" aria-hidden="true">→</div>
+      <div class="box core">
+        <h3>Korie server</h3>
+        <ul><li>The library, ready at once</li><li>People with PINs and age limits</li><li>Lua add-ons and a Store</li><li>Plays files as they are, converts when a device can't</li><li>Speaks Jellyfin's language</li></ul>
+      </div>
+      <div class="arrow" aria-hidden="true">→</div>
+      <div class="box">
+        <h3>Jellyfin's apps</h3>
+        <ul><li>Android TV and Google TV</li><li>Phones and tablets</li><li>Jellyfin's web app in any browser</li><li>Their remote control and screen sizes, unchanged</li></ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="does">
+  <div class="wrap">
+    <div class="section-head">
+      <h2>What it does</h2>
+      <p>What works today, and what's being built. Nothing below is marked as working unless it was checked with the real apps.</p>
+    </div>
+    <div class="features">
+      <div class="feature"><span class="pill now">Works</span><h3>Ready when you add a folder</h3><p>Films and series are listed from their file and folder names straight away. Posters and descriptions from TMDb follow in the background, and a file is only looked into when someone presses play.</p></div>
+      <div class="feature"><span class="pill now">Works</span><h3>Who's watching?</h3><p>Everyone in the house is a person in Korie. The Jellyfin apps show them on the sign-in screen; a PIN keeps a profile to its owner.</p></div>
+      <div class="feature"><span class="pill now">Works</span><h3>Watching on the TV</h3><p>Home rows, Films, Series, seasons and episodes, playing, subtitles, resume where you stopped, watched, favourites and search, in the Jellyfin Android TV app.</p></div>
+      <div class="feature"><span class="pill now">Works</span><h3>Plays what the device can</h3><p>A file the TV plays itself is sent as it is. Anything else is converted with FFmpeg while it plays, subtitles included.</p></div>
+      <div class="feature"><span class="pill now">Works</span><h3>Found by itself</h3><p>Jellyfin's apps find Korie on the home network and list it under Discovered servers. (If a Jellyfin server runs on the same NAS, it keeps that to itself: type Korie's address once.)</p></div>
+      <div class="feature"><span class="pill now">Works</span><h3>Age limits per person</h3><p>A child's profile only lists what's rated for their age. The limit is applied on the server, so every app gets the same filtered list.</p></div>
+      <div class="feature"><span class="pill soon">Being built</span><h3>Add-ons in Films and Series</h3><p>Add-ons such as DR TV and Stremio put their programmes right into Films, Series and Live TV, with no .strm files and no waiting for a scan. Add-ons are a few lines of Lua and install from the Store without a restart.</p></div>
+      <div class="feature"><span class="pill soon">Being built</span><h3>Skip intro, everywhere</h3><p>Korie already finds the intros of episodes. Next: the Skip intro button showing in every Jellyfin app, moved out into an add-on for those who want it.</p></div>
+      <div class="feature"><span class="pill soon">Being built</span><h3>Music and Live TV</h3><p>Korie reads music folders, but Jellyfin's apps don't get music or Live TV from it yet. They show those parts empty for now.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="versus">
+  <div class="wrap">
+    <div class="section-head">
+      <h2>Korie or Jellyfin?</h2>
+      <p>An honest comparison. Korie is new and small, and Jellyfin has years of work behind it. Where Jellyfin is better, it says so.</p>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Topic</th><th>Korie</th><th>Jellyfin</th><th>Better</th></tr></thead>
+        <tbody>
+          <tr><td>Adding a library</td><td>Listed in seconds; details fill in afterwards</td><td>Every file is inspected and looked up first. Big libraries take hours before they're usable</td><td><span class="mark k">Korie</span></td></tr>
+          <tr><td>Apps</td><td>Jellyfin's own apps</td><td>Jellyfin's own apps</td><td><span class="mark e">Same</span></td></tr>
+          <tr><td>Apps checked so far</td><td>Android TV app and the web app. Phone apps, Infuse and Swiftfin should work but haven't been checked yet</td><td>Every Jellyfin app</td><td><span class="mark j">Jellyfin</span></td></tr>
+          <tr><td>Adding sources (DR TV, Stremio ...)</td><td>Lua add-ons from a Store, no restart, content directly in Films and Series (being built)</td><td>C# plugins, a restart for each, and usually .strm files plus a scan</td><td><span class="mark k">Korie</span></td></tr>
+          <tr><td>Profiles</td><td>People with PINs, chosen on the TV</td><td>Users with passwords</td><td><span class="mark e">Taste</span></td></tr>
+          <tr><td>Parental control</td><td>Age limit per person</td><td>Rating limits, tags, schedules</td><td><span class="mark j">Jellyfin</span></td></tr>
+          <tr><td>Converting video</td><td>FFmpeg on the processor; sent as one stream</td><td>Hardware acceleration (Intel, Nvidia, AMD), HLS streaming, tone mapping</td><td><span class="mark j">Jellyfin</span></td></tr>
+          <tr><td>Music, Live TV, recordings</td><td>Not in the apps yet</td><td>Full support</td><td><span class="mark j">Jellyfin</span></td></tr>
+          <tr><td>Watching together, DLNA, casting</td><td>Not yet</td><td>SyncPlay, DLNA, Chromecast</td><td><span class="mark j">Jellyfin</span></td></tr>
+          <tr><td>Details and posters</td><td>TMDb, plus your own .nfo files and pictures</td><td>TMDb, OMDb, MusicBrainz, and plugins such as TVDb</td><td><span class="mark j">Jellyfin</span></td></tr>
+          <tr><td>Size</td><td>One small Node.js server</td><td>A large .NET server</td><td><span class="mark k">Korie</span></td></tr>
+          <tr><td>Maturity</td><td>New, one developer</td><td>Years old, large community, documentation</td><td><span class="mark j">Jellyfin</span></td></tr>
+          <tr><td>Running both</td><td colspan="2">They can run side by side on the same NAS (Korie on port 8100) and share the same media folders</td><td><span class="mark e">Either</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="verdict">
+      <div class="box core">
+        <h3>Pick Korie if</h3>
+        <ul><li>You want a library that's ready the moment you add it</li><li>You want TV sources like DR TV or Stremio inside Films and Series</li><li>Your house watches films and series on Android TV and in the browser</li></ul>
+      </div>
+      <div class="box">
+        <h3>Stay with Jellyfin if</h3>
+        <ul><li>You need music, Live TV or recordings today</li><li>You rely on hardware transcoding for many viewers at once</li><li>You use apps or features Korie hasn't been checked with yet</li></ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="proof">
+  <div class="wrap">
+    <div class="section-head">
+      <h2>How it was tested</h2>
+      <p>Every check uses the real apps' own code, and the results are numbers and logs, not screenshots someone looked at. The checks are in the repository under <code>tools/jellyfin-check</code>, so anyone can run them again.</p>
+    </div>
+    <div class="proof">
+      <div class="stat"><b>38 / 38</b><span>steps of the Android TV app's path (sign in to search) read without error by the real Jellyfin SDK the app is built on</span></div>
+      <div class="stat"><b>0</b><span>failed requests or script errors in Jellyfin's own web app: sign in, films, a film playing, series, seasons</span></div>
+      <div class="stat"><b>0.2 s</b><span>for Korie to list 1,000 films and 50 series. Jellyfin 12.4 took 4 min 29 s on the same files</span></div>
+      <div class="stat"><b>81 ms</b><span>to open a film to play right after adding it, file looked into included</span></div>
+    </div>
+    <p class="muted" style="margin-top:24px">The real Jellyfin Android TV app (0.20.0) was also driven with remote keys only in an Android TV emulator, with the focused element written down after every press. Up from a row goes to the row above first, then to the menu bar, and every item in the menu bar is reached in order.</p>
+  </div>
+</section>
+
+<section id="start">
+  <div class="wrap">
+    <div class="section-head">
+      <h2>Get started</h2>
+    </div>
+    <ol class="steps">
+      <li><p>On the NAS, paste this into the Docker app as a project. Change <code>/volume1/Media</code> to your media folder and <code>/volume1/docker/korie</code> to where Korie keeps its data.</p></li>
+      <li><p>Open <code>http://&lt;nas&gt;:8100</code> and add your folders under Settings, Libraries. Add the people in the house under Settings, People.</p></li>
+      <li><p>On the TV, install <b>Jellyfin for Android TV</b> from the Play Store. Pick Korie under Discovered servers, then pick who's watching.</p></li>
+    </ol>
+    <div class="code">
+      <button class="copy" id="copy-compose" type="button">Copy</button>
+<pre id="compose"><code>services:
+  korie:
+    image: ghcr.io/mightyx3n/korie:latest
+    container_name: korie
+    restart: unless-stopped
+    network_mode: host        # lets the TVs find Korie by themselves
+    environment:
+      - TZ=Europe/Copenhagen
+    volumes:
+      - /volume1/docker/korie:/data
+      - /volume1/Media:/media:ro</code></pre>
+    </div>
+  </div>
+</section>
+
+<div class="wrap">
+  <footer>
+    <p>Korie is open source: <a href="https://github.com/MightyX3N/Korie">github.com/MightyX3N/Korie</a>.</p>
+    <p>Korie talks to Jellyfin's apps through Jellyfin's published API and contains no Jellyfin code. Its Docker image includes Jellyfin's web app unchanged (GPL-2.0). Korie is not made by or connected to the Jellyfin project.</p>
+  </footer>
+</div>
+
+<script>
+document.getElementById("copy-compose").addEventListener("click", async (e) => {
+  const b = e.currentTarget;
+  try {
+    await navigator.clipboard.writeText(document.getElementById("compose").innerText);
+    b.textContent = "Copied";
+  } catch {
+    b.textContent = "Select and copy";
+  }
+  setTimeout(() => { b.textContent = "Copy"; }, 2000);
+});
+</script>
+</body>
+</html>

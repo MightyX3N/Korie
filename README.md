@@ -3,8 +3,8 @@
 A small, fast media server for the whole household, that **Jellyfin's own apps** play from.
 
 Korie is a server (in Docker, on a NAS). It speaks Jellyfin's language, so the Jellyfin apps
-people already use (Android TV, Google TV, Android, iPhone, the web app, Infuse and others) work
-with it as they are: their remote control, scrolling and screen sizes are theirs, already proven.
+people already use work with it as they are (checked so far: the Android TV app and the web app;
+phone apps, Infuse and Swiftfin should work but haven't been checked yet): their remote control, scrolling and screen sizes are theirs, already proven.
 Behind that, the library is Korie's: adding a folder takes seconds, not hours, and Korie adds what
 Jellyfin doesn't have: people with PINs like Netflix, age limits per person, add-ons written in a
 few lines of Lua, and a Store for them.
@@ -12,6 +12,7 @@ few lines of Lua, and a Store for them.
 | Part | What it is |
 | --- | --- |
 | `server/` | Node.js 22. The library (folders, names from the files at once, details from TMDb afterwards), people with PINs and age limits, watched status, the Lua add-ons and the Store, and Jellyfin's API (`src/jellyfin.ts`). Plays files as they are when a device can, and converts them with FFmpeg as they play when it can't. |
+| `docs/index.html` | Korie's website: what it is, what it does, and how it compares with Jellyfin. |
 | `client/` | Korie's own web pages: settings (folders, people, add-ons, the Store) and watching in a browser. |
 | `tools/jellyfin-check/` | The checks that prove Jellyfin's apps work with Korie: the real Jellyfin SDK reading Korie's answers, Jellyfin's web app in Chrome, the real Android TV app driven by remote keys, and a speed test against Jellyfin. |
 
@@ -19,7 +20,7 @@ few lines of Lua, and a Store for them.
 
 - **TV (Android TV / Google TV):** install *Jellyfin for Android TV* from the Play Store. Korie shows
   up under *Discovered servers* (or type `http://<nas>:8100`). Pick who's watching.
-- **Phone, tablet, iPhone:** the Jellyfin app (or Infuse, Swiftfin, Findroid ...).
+- **Phone, tablet, iPhone:** the Jellyfin app (or Infuse, Swiftfin, Findroid ...). Not checked yet.
 - **Browser:** `http://<nas>:8100/web` is Jellyfin's own web app; `http://<nas>:8100` is Korie's
   pages, where an admin adds folders, people and add-ons.
 
