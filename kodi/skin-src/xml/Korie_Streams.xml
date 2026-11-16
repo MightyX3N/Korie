@@ -26,10 +26,10 @@
 				<ondown>300</ondown>
 				<onleft>noop</onleft><onright>noop</onright>
 				<itemlayout width="492" height="59">
-					<include content="KorieMenuRow"><param name="focus">false</param><param name="width">492</param><param name="bar">55</param></include>
+					<include content="KorieMenuRow"><param name="focus">false</param><param name="width">492</param><param name="bar">55</param><param name="text">400</param></include>
 				</itemlayout>
 				<focusedlayout width="492" height="59">
-					<include content="KorieMenuRow"><param name="focus">Control.HasFocus(200)</param><param name="width">492</param><param name="bar">55</param></include>
+					<include content="KorieMenuRow"><param name="focus">Control.HasFocus(200)</param><param name="width">492</param><param name="bar">55</param><param name="text">400</param></include>
 				</focusedlayout>
 			</control>
 			<control type="label" id="299">
@@ -44,10 +44,10 @@
 				<onup>200</onup>
 				<onleft>noop</onleft><onright>noop</onright>
 				<itemlayout width="492" height="59">
-					<include content="KorieMenuRow"><param name="focus">false</param><param name="width">492</param><param name="bar">55</param></include>
+					<include content="KorieMenuRow"><param name="focus">false</param><param name="width">492</param><param name="bar">55</param><param name="text">400</param></include>
 				</itemlayout>
 				<focusedlayout width="492" height="59">
-					<include content="KorieMenuRow"><param name="focus">Control.HasFocus(300)</param><param name="width">492</param><param name="bar">55</param></include>
+					<include content="KorieMenuRow"><param name="focus">Control.HasFocus(300)</param><param name="width">492</param><param name="bar">55</param><param name="text">400</param></include>
 				</focusedlayout>
 			</control>
 		</control>

@@ -55,6 +55,25 @@ CREATE TABLE IF NOT EXISTS addons (
   settings TEXT NOT NULL DEFAULT '{}', changed INTEGER NOT NULL DEFAULT 0);
 `);
 
+// added after the first release: older databases get the column here
+try {
+  raw.exec("ALTER TABLE people ADD COLUMN perms TEXT NOT NULL DEFAULT '{}'");
+} catch {
+  /* it's there already */
+}
+// each person's playlists (song ids, in order)
+raw.exec(`CREATE TABLE IF NOT EXISTS playlists(id TEXT PRIMARY KEY, person TEXT NOT NULL, name TEXT NOT NULL,
+  items TEXT NOT NULL DEFAULT '[]', created INTEGER NOT NULL, updated INTEGER NOT NULL)`);
+// the devices that have signed in (so one can sign in as someone by itself: People)
+raw.exec("CREATE TABLE IF NOT EXISTS devices(id TEXT PRIMARY KEY, name TEXT NOT NULL, seen INTEGER NOT NULL)");
+// the Android apps the TVs have (so an admin can choose which ones each person may open)
+raw.exec("CREATE TABLE IF NOT EXISTS android_apps(pkg TEXT PRIMARY KEY, label TEXT NOT NULL, seen INTEGER NOT NULL)");
+try {
+  raw.exec("ALTER TABLE people ADD COLUMN playback TEXT NOT NULL DEFAULT '{}'");
+} catch {
+  /* it's there already */
+}
+
 export function now(): number {
   return Math.floor(Date.now() / 1000);
 }

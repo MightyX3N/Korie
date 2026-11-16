@@ -15,3 +15,7 @@ msgstr ""
 msgctxt "#30002"
 msgid "Profile"
 msgstr ""
+
+msgctxt "#30003"
+msgid "Start DVDs with the disc's menu"
+msgstr ""

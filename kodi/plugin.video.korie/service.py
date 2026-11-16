@@ -7,12 +7,12 @@ import xbmc
 import xbmcaddon
 import xbmcvfs
 
-from resources.lib import korie, ui
+from resources.lib import korie, theme, ui
 from resources.lib.korie import KorieError, log
 
 ADDON = xbmcaddon.Addon()
 SKIN = "skin.korie"
-SETUP = 3  # raise when ui.KODI_SETTINGS or ui.KEYMAP changes, so existing installs get the new settings
+SETUP = 5  # raise when ui.KODI_SETTINGS or ui.KEYMAP changes, so existing installs get the new settings
 REFRESH = 300  # seconds
 RETRY = 30
 
@@ -65,7 +65,6 @@ def apply_skin(monitor):
 def update_screens(monitor):
     """Korie's screens come inside this add-on (resources/skin): when they're newer than the ones in
     the skin, copy them in and reload the skin (see tools/make_skin.py for why not a skin update)."""
-    import shutil
     src = os.path.join(xbmcvfs.translatePath(ADDON.getAddonInfo("path")), "resources", "skin")
     dst = ui.skin_dir()
     try:
@@ -82,13 +81,17 @@ def update_screens(monitor):
     if want == have or not os.path.isdir(dst):
         return
     log("new screens %s (had %s)" % (want, have or "none"))
+    changed = 0
     for root, _dirs, files in os.walk(src):
         rel = os.path.relpath(root, src)
         os.makedirs(os.path.join(dst, rel), exist_ok=True)
         for name in files:
             if rel == "." and name == "VERSION":
                 continue
-            shutil.copyfile(os.path.join(root, name), os.path.join(dst, rel, name))
+            # only what changed, each as a new file (fonts in use must not be written into)
+            if theme.put_file(os.path.join(root, name), os.path.join(dst, rel, name)):
+                changed += 1
+    log("%d files of the screens changed" % changed)
     ui.reinstall_themes()
     with open(marker, "w", encoding="utf-8") as f:
         f.write(want)
@@ -101,10 +104,22 @@ def update_screens(monitor):
     xbmc.executebuiltin("ReloadSkin()")
 
 
+class NowPlaying(xbmc.Player):
+    """An album Korie started (korie.music.show set): Now playing once the music really plays
+    (asking Kodi before that does nothing)."""
+
+    def onAVStarted(self):
+        if ui.HOME.getProperty("korie.music.show") and self.isPlayingAudio():
+            ui.HOME.clearProperty("korie.music.show")
+            if not xbmc.getCondVisibility("Window.IsActive(visualisation)"):
+                xbmc.executebuiltin("ActivateWindow(visualisation)")
+
+
 class Service(xbmc.Monitor):
     def __init__(self):
         super().__init__()
         self.want_home = False
+        self.player = NowPlaying()
 
     def onNotification(self, sender, method, data):
         if sender == "plugin.video.korie" and method.endswith("home"):
@@ -128,6 +143,9 @@ class Service(xbmc.Monitor):
             return False
 
     def first_start(self):
+        # Kodi's settings Korie needs: checked every start (one that didn't take, or was changed in
+        # Kodi's own settings, is put right)
+        ui.check_kodi_settings()
         state = korie.load_state()
         if state.get("skin_applied") and state.get("kodi_setup") == SETUP:
             return

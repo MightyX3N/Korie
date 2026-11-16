@@ -1,7 +1,7 @@
 // Talking to the Korie server: the same server that served this page.
 // The device keeps one sign-in per server in localStorage.
 
-export interface Person { id: string; name: string; color: string; hasPin: boolean; admin?: boolean; canSettings?: boolean; addons?: "all" | string[] }
+export interface Person { id: string; name: string; color: string; hasPin: boolean; admin?: boolean; maxAge?: number | null; autoDevice?: string | null; canSettings?: boolean; addons?: "all" | string[]; audio?: string; subs?: string; music?: boolean; canInstall?: boolean; canDelete?: boolean; apps?: "all" | string[] }
 export interface Card { id: string; kind: string; title: string; subtitle: string; year: string; poster: string; thumb: string; backdrop: string; progress: number; watched: boolean; source: string }
 export interface Row { id: string; title: string; kind: string; items: Card[]; source?: string }
 
@@ -17,6 +17,19 @@ function store(): Storage | null {
 
 export function token(): string {
   return store()?.getItem(KEY) ?? "";
+}
+
+/** This browser's or TV's own id, so it can sign in as someone by itself (Settings, People). */
+export function deviceId(): string {
+  const st = store();
+  let id = st?.getItem("korie.device") ?? "";
+  if (!/^[A-Za-z0-9_-]{8,64}$/.test(id)) {
+    const b = new Uint8Array(16);
+    crypto.getRandomValues(b);
+    id = Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
+    st?.setItem("korie.device", id);
+  }
+  return id;
 }
 
 export function setToken(t: string): void {
@@ -97,11 +110,10 @@ export function connectEvents(): void {
 
 export function deviceName(): string {
   const ua = navigator.userAgent;
-  if (/Android/.test(ua)) return /TV|AFT|BRAVIA|SHIELD|Chromecast/i.test(ua) ? "Android TV" : "Android";
-  if (/Windows/.test(ua)) return "Windows";
-  if (/Mac OS/.test(ua)) return "Mac";
-  if (/Linux/.test(ua)) return "Linux";
-  return "Browser";
+  if (window.KorieAndroid) return /TV|AFT|BRAVIA|SHIELD|Chromecast/i.test(ua) ? "Android TV" : "Korie on Android";
+  const os = /Android/.test(ua) ? "Android" : /iPhone|iPad/.test(ua) ? "iOS" : /Windows/.test(ua) ? "Windows" : /Mac OS/.test(ua) ? "Mac" : /Linux/.test(ua) ? "Linux" : "";
+  const browser = /Edg\//.test(ua) ? "Edge" : /Firefox\//.test(ua) ? "Firefox" : /Chrome\//.test(ua) ? "Chrome" : /Safari\//.test(ua) ? "Safari" : "Browser";
+  return os ? `${browser} on ${os}` : browser;
 }
 
 /** What this device's browser can play, for the server to decide what to convert. */

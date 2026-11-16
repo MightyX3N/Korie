@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Korie: Settings (the Settings artboard). Categories on the left (310), the chosen one's
+     settings on the right (300), and a search across all of them (101). The Korie add-on runs
+     it (resources/lib/settings.py) and fills both lists. -->
+<window>
+	<defaultcontrol always="true">310</defaultcontrol>
+	<menucontrol>9000</menucontrol>
+	<include content="KorieHere"><param name="id">settings</param><param name="n">7</param></include>
+	<controls>
+		<include>KorieBackground</include>
+		<include content="KorieRail"><param name="right">310</param></include>
+		<control type="label">
+			<left>444</left><top>48</top><width>300</width><height>64</height>
+			<aligny>center</aligny><font>korie_heading46</font><textcolor>korie_ink</textcolor>
+			<label>Settings</label>
+		</control>
+		<include content="KorieClock" />
+
+		<!-- search settings: OK opens a text entry -->
+		<control type="image">
+			<left>624</left><top>52</top><width>570</width><height>64</height>
+			<texture border="12" colordiffuse="korie_panel2">korie/r12.png</texture>
+		</control>
+		<control type="image">
+			<left>646</left><top>72</top><width>24</width><height>24</height>
+			<texture colordiffuse="korie_soft">korie/icon-search.png</texture>
+		</control>
+		<control type="label">
+			<left>688</left><top>52</top><width>490</width><height>64</height>
+			<aligny>center</aligny><font>korie_body24</font><textcolor>korie_dim</textcolor>
+			<label>Search settings</label>
+			<visible>String.IsEmpty(Window.Property(korie.query))</visible>
+		</control>
+		<control type="label">
+			<left>688</left><top>52</top><width>490</width><height>64</height>
+			<aligny>center</aligny><font>korie_body24</font><textcolor>korie_ink</textcolor>
+			<label>$INFO[Window.Property(korie.query)]</label>
+		</control>
+		<control type="button" id="101">
+			<left>624</left><top>52</top><width>570</width><height>64</height>
+			<texturefocus border="28" colordiffuse="korie_accent">korie/ring28.png</texturefocus>
+			<texturenofocus />
+			<label />
+			<onleft>$VAR[KorieToMenu]</onleft>
+			<ondown condition="String.IsEmpty(Window.Property(korie.query))">310</ondown>
+			<ondown condition="!String.IsEmpty(Window.Property(korie.query))">300</ondown>
+			<onup>noop</onup>
+			<onright>noop</onright>
+		</control>
+
+		<!-- categories -->
+		<control type="list" id="310">
+			<left>444</left><top>146</top><width>300</width><height>560</height>
+			<orientation>vertical</orientation>
+			<onleft>$VAR[KorieToMenu]</onleft>
+			<onright>300</onright>
+			<onup>101</onup>
+			<ondown>noop</ondown>
+			<scrolltime>0</scrolltime>
+			<itemlayout width="300" height="69">
+				<include content="KorieSCat" />
+			</itemlayout>
+			<focusedlayout width="300" height="69">
+				<include content="KorieSCat"><param name="focus">Control.HasFocus(310)</param></include>
+			</focusedlayout>
+			<visible>String.IsEmpty(Window.Property(korie.query))</visible>
+		</control>
+
+		<!-- the settings: each row is the add-on's; OK does what it says -->
+		<control type="list" id="300">
+			<left>792</left><top>146</top><width>1064</width><height>920</height>
+			<orientation>vertical</orientation>
+			<onleft condition="String.IsEmpty(Window.Property(korie.query))">310</onleft>
+			<onleft condition="!String.IsEmpty(Window.Property(korie.query))">$VAR[KorieToMenu]</onleft>
+			<onup>101</onup>
+			<onright>noop</onright>
+			<scrolltime tween="quadratic">200</scrolltime>
+			<animation effect="slide" start="0,0" end="-348,0" time="0" condition="!String.IsEmpty(Window.Property(korie.query))">Conditional</animation>
+			<itemlayout width="1064" height="109">
+				<include content="KorieSRow" />
+			</itemlayout>
+			<focusedlayout width="1064" height="109">
+				<include content="KorieSRow"><param name="focus">Control.HasFocus(300)</param></include>
+			</focusedlayout>
+		</control>
+		<control type="label">
+			<left>792</left><top>146</top><width>1064</width><height>100</height>
+			<aligny>center</aligny><font>korie_body26</font><textcolor>korie_dim</textcolor>
+			<label>$INFO[Window.Property(korie.empty)]</label>
+			<animation effect="slide" start="0,0" end="-348,0" time="0" condition="!String.IsEmpty(Window.Property(korie.query))">Conditional</animation>
+		</control>
+	</controls>
+</window>

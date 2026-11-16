@@ -2,9 +2,18 @@
 import { androidApps } from "../host.ts";
 import { F, G } from "../focus.tsx";
 import { Status, Top } from "./common.tsx";
+import type { Me } from "../App.tsx";
+import { useEffect } from "react";
+import { api } from "../api.ts";
 
-export function Apps() {
-  const apps = androidApps();
+export function Apps({ me }: { me: Me }) {
+  const allowed = me.person.apps ?? "all";
+  const every = androidApps();
+  const apps = every.filter((a) => allowed === "all" || allowed.includes(a.pkg));
+  // the server learns which apps this TV has, so an admin can choose who may open which
+  useEffect(() => {
+    if (every.length) api("/api/apps", { apps: every.map((a) => ({ pkg: a.pkg, label: a.label })) }).catch(() => {});
+  }, [every.length]);
   return (
     <div className="page">
       <Top title="Apps" />

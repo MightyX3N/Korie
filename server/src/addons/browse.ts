@@ -9,6 +9,7 @@
 // Everything an add-on returns is checked here before anyone sees it: things
 // with the wrong shape are dropped (and noted in the add-on's log), so one
 // broken add-on can't break a screen.
+import * as ages from "../ages.ts";
 import fs from "node:fs";
 import path from "node:path";
 import { DATA, log } from "../config.ts";
@@ -26,6 +27,8 @@ export interface AItem {
   runtime: number; overview: string; poster: string; backdrop: string; thumb: string; genres: string[];
   rating: number; director: string; cast: { name: string; role: string; photo: string }[]; data: unknown;
   seasons?: ASeason[]; series?: string;
+  /** its age rating, when the add-on gives one ("DK 11", "PG-13", or just an age) */
+  cert?: string; age?: number | null;
 }
 export interface ASeason { n: number; title: string; episodes: AItem[] }
 export interface ARow { id: string; title: string; items: AItem[] }
@@ -70,6 +73,12 @@ export function item(aid: string, raw: unknown): AItem | null {
     cast: list(r.cast).map((c: any) => Array.isArray(c) ? { name: s(c[0], 100), role: s(c[1], 100), photo: "" } : { name: s(c?.name, 100), role: s(c?.role, 100), photo: url(c?.photo) }).filter((c) => c.name).slice(0, 12),
     data: r.data ?? null,
   };
+  const cert = s(r.cert, 40) || s(r.certification, 40);
+  const age = typeof r.age === "number" && r.age >= 0 && r.age <= 18 ? Math.round(r.age) : ages.ageOf(cert);
+  if (age !== null) {
+    it.age = age;
+    it.cert = cert || ages.label(age);
+  }
   if (kind === "episode" && r.series) it.series = `${aid}/${s(r.series, 500)}`;
   const old = items.get(it.id);
   if (old?.seasons && !it.seasons) it.seasons = old.seasons; // keep what's known already
@@ -113,7 +122,9 @@ export function load(): void {
   for (const aid of addons.enabledIds()) {
     try {
       const saved = JSON.parse(fs.readFileSync(file(aid), "utf8"));
-      sections.set(aid, { at: saved.at ?? 0, loading: false, error: "", rows: sectionsFrom(aid, saved.res) });
+      // rows kept by an older version of the add-on are fetched again at once
+      const same = saved.version === addons.manifests.get(aid)?.version;
+      sections.set(aid, { at: same ? saved.at ?? 0 : 0, loading: false, error: "", rows: sectionsFrom(aid, saved.res) });
     } catch {
       /* first time */
     }
@@ -141,7 +152,7 @@ export function refresh(aid: string, force = false): void {
         st.rows = sectionsFrom(aid, res);
         st.at = Date.now();
         st.error = "";
-        fs.writeFileSync(file(aid), JSON.stringify({ at: st.at, res }));
+        fs.writeFileSync(file(aid), JSON.stringify({ at: st.at, version: addons.manifests.get(aid)?.version, res }));
         log("browse", `${aid}: fresh rows in ${Date.now() - t0} ms`);
       } else {
         st.error = s(res?.error) || "nothing came back";

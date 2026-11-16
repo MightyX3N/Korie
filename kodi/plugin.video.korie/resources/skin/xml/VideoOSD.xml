@@ -4,6 +4,8 @@
      bar, where left and right skip. The title and the bar itself are in DialogSeekBar.xml. -->
 <window>
 	<defaultcontrol always="true">601</defaultcontrol>
+	<!-- in a DVD's own menu the play buttons do little: start on the disc buttons -->
+	<onload condition="$EXP[KorieInDiscMenu]">SetFocus(621)</onload>
 	<depth>DepthOSD</depth>
 	<animation effect="fade" start="0" end="100" time="200">WindowOpen</animation>
 	<animation effect="fade" start="100" end="0" time="200">WindowClose</animation>
@@ -22,7 +24,7 @@
 			<texturefocus /><texturenofocus />
 			<label />
 			<ondown>601</ondown>
-			<onup>noop</onup>
+			<onup condition="VideoPlayer.HasMenu">620</onup>
 			<onleft>StepBack</onleft>
 			<onright>StepForward</onright>
 			<visible>Player.SeekEnabled + !String.IsEmpty(Player.Duration)</visible>
@@ -45,7 +47,7 @@
 
 		<control type="button" id="600">
 			<left>96</left><top>934</top><width>72</width><height>72</height>
-			<onup>87</onup><onright>601</onright><onleft>noop</onleft>
+			<onup condition="Control.IsVisible(87)">87</onup><onup condition="!Control.IsVisible(87) + VideoPlayer.HasMenu">620</onup><onright>601</onright><onleft>noop</onleft>
 			<texturefocus colordiffuse="korie_accent">korie/mask-circle.png</texturefocus>
 			<texturenofocus colordiffuse="korie_panel">korie/mask-circle.png</texturenofocus>
 			<label />
@@ -63,7 +65,7 @@
 		</control>
 		<control type="button" id="601">
 			<left>186</left><top>924</top><width>92</width><height>92</height>
-			<onup>87</onup><onleft>600</onleft><onright>602</onright>
+			<onup condition="Control.IsVisible(87)">87</onup><onup condition="!Control.IsVisible(87) + VideoPlayer.HasMenu">620</onup><onleft>600</onleft><onright>602</onright>
 			<texturefocus colordiffuse="korie_accent">korie/mask-circle.png</texturefocus>
 			<texturenofocus colordiffuse="korie_ink">korie/mask-circle.png</texturenofocus>
 			<label />
@@ -81,7 +83,7 @@
 		</control>
 		<control type="button" id="602">
 			<left>296</left><top>934</top><width>72</width><height>72</height>
-			<onup>87</onup><onleft>601</onleft><onright>610</onright>
+			<onup condition="Control.IsVisible(87)">87</onup><onup condition="!Control.IsVisible(87) + VideoPlayer.HasMenu">620</onup><onleft>601</onleft><onright>610</onright>
 			<texturefocus colordiffuse="korie_accent">korie/mask-circle.png</texturefocus>
 			<texturenofocus colordiffuse="korie_panel">korie/mask-circle.png</texturenofocus>
 			<label />
@@ -102,7 +104,7 @@
 			<animation effect="slide" start="0,0" end="228,0" time="0" condition="!Integer.IsGreater(Player.ChapterCount,1)">Conditional</animation>
 			<control type="button" id="610">
 				<left>1166</left><top>934</top><width>340</width><height>72</height>
-				<onup>87</onup><onleft>602</onleft><onright condition="Integer.IsGreater(Player.ChapterCount,1)">611</onright><onright condition="!Integer.IsGreater(Player.ChapterCount,1)">612</onright>
+				<onup condition="Control.IsVisible(87)">87</onup><onup condition="!Control.IsVisible(87) + VideoPlayer.HasMenu">620</onup><onleft>602</onleft><onright condition="Integer.IsGreater(Player.ChapterCount,1)">611</onright><onright condition="!Integer.IsGreater(Player.ChapterCount,1)">612</onright>
 				<texturefocus border="36,0,36,0" colordiffuse="korie_accent">korie/pill72.png</texturefocus>
 				<texturenofocus border="36,0,36,0" colordiffuse="korie_panel">korie/pill72.png</texturenofocus>
 				<label />
@@ -143,7 +145,7 @@
 			
 			<control type="button" id="611">
 				<left>1524</left><top>934</top><width>210</width><height>72</height>
-				<onup>87</onup><onleft>610</onleft><onright>612</onright>
+				<onup condition="Control.IsVisible(87)">87</onup><onup condition="!Control.IsVisible(87) + VideoPlayer.HasMenu">620</onup><onleft>610</onleft><onright>612</onright>
 				<texturefocus border="36,0,36,0" colordiffuse="korie_accent">korie/pill72.png</texturefocus>
 				<texturenofocus border="36,0,36,0" colordiffuse="korie_panel">korie/pill72.png</texturenofocus>
 				<label />
@@ -181,7 +183,7 @@
 		</control>
 		<control type="button" id="612">
 			<left>1752</left><top>934</top><width>72</width><height>72</height>
-			<onup>87</onup><onleft condition="Integer.IsGreater(Player.ChapterCount,1)">611</onleft><onleft condition="!Integer.IsGreater(Player.ChapterCount,1)">610</onleft><onright>noop</onright>
+			<onup condition="Control.IsVisible(87)">87</onup><onup condition="!Control.IsVisible(87) + VideoPlayer.HasMenu">620</onup><onleft condition="Integer.IsGreater(Player.ChapterCount,1)">611</onleft><onleft condition="!Integer.IsGreater(Player.ChapterCount,1)">610</onleft><onright>noop</onright>
 			<texturefocus colordiffuse="korie_accent">korie/mask-circle.png</texturefocus>
 			<texturenofocus colordiffuse="korie_panel">korie/mask-circle.png</texturenofocus>
 			<label />
@@ -196,6 +198,36 @@
 			<left>1771</left><top>953</top><width>34</width><height>34</height>
 			<texture colordiffuse="korie_ink">korie/icon-tune.png</texture>
 			<visible>!Control.HasFocus(612)</visible>
+		</control>
+
+		<!-- a DVD with its own menu: back to the disc's menu, or out of it straight into the film -->
+		<control type="grouplist" id="620">
+			<right>96</right><top>136</top><width>1100</width><height>64</height>
+			<orientation>horizontal</orientation><align>right</align><itemgap>16</itemgap>
+			<ondown condition="Control.IsVisible(87)">87</ondown><ondown condition="!Control.IsVisible(87)">601</ondown>
+			<onup>noop</onup><onleft>noop</onleft><onright>noop</onright>
+			<visible>VideoPlayer.HasMenu</visible>
+			<control type="button" id="621">
+				<width min="120">auto</width><height>64</height><textoffsetx>30</textoffsetx>
+				<font>korie_heading26</font><textcolor>korie_ink</textcolor><focusedcolor>korie_onaccent</focusedcolor>
+				<align>center</align><aligny>center</aligny>
+				<texturefocus border="32,0,32,0" colordiffuse="korie_accent">korie/pill72.png</texturefocus>
+				<texturenofocus border="32,0,32,0" colordiffuse="korie_panel">korie/pill72.png</texturenofocus>
+				<label>Disc menu</label>
+				<onclick>Action(ShowVideoMenu)</onclick>
+				<onclick>Action(close)</onclick>
+			</control>
+			<control type="button" id="622">
+				<width min="120">auto</width><height>64</height><textoffsetx>30</textoffsetx>
+				<font>korie_heading26</font><textcolor>korie_ink</textcolor><focusedcolor>korie_onaccent</focusedcolor>
+				<align>center</align><aligny>center</aligny>
+				<texturefocus border="32,0,32,0" colordiffuse="korie_accent">korie/pill72.png</texturefocus>
+				<texturenofocus border="32,0,32,0" colordiffuse="korie_panel">korie/pill72.png</texturenofocus>
+				<label>Skip the menu, play the film</label>
+				<onclick>Action(close)</onclick>
+				<onclick>RunPlugin(plugin://plugin.video.korie/?a=skipmenu)</onclick>
+				<visible>!String.IsEmpty(Window(Home).Property(korie.disc.id)) + $EXP[KorieInDiscMenu]</visible>
+			</control>
 		</control>
 	</controls>
 </window>

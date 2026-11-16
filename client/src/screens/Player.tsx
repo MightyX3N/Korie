@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Play, Pause, RotateCcw, RotateCw, Subtitles, SkipForward, SkipBack, Check } from "lucide-react";
 import { api, caps, pic } from "../api.ts";
+import * as music from "../music.ts";
 import { F, G, setFocus, getCurrentFocusKey } from "../focus.tsx";
 import { useBackHandler, useNav } from "../nav.tsx";
 import { useUI } from "../ui.tsx";
@@ -53,6 +54,8 @@ export function Player({ id: firstId, mode, album, index, shuffle }: { id: strin
   const [queue, setQueue] = useState<string[]>([]);
   const [pos, setPos] = useState(index ?? 0);
   const [pendingSeek, setPendingSeek] = useState<number | null>(null);
+  // a film or a channel stops the music that was playing
+  useEffect(() => music.stop(), []);
   const idle = useRef(0);
   const lastSave = useRef(0);
   const triedStream = useRef(false);

@@ -7,6 +7,7 @@ import { DATA, log } from "./config.ts";
 import { db, json, now } from "./db.ts";
 import { img } from "./images.ts";
 import * as tmdb from "./tmdb.ts";
+import * as ages from "./ages.ts";
 import { scanFilms, scanMusic, scanSeries, type FoundAlbum, type FoundFilm, type FoundSeries, type Nfo } from "./scanner.ts";
 import { emit } from "./events.ts";
 
@@ -85,6 +86,7 @@ function existing(id: string): Record<string, any> | null {
 function fromNfo(n: Nfo): Record<string, any> {
   return defined({
     nfo: n, overview: n.plot, genres: n.genres, rating: n.rating, runtime: n.runtime, director: n.director, nfoPoster: n.poster, nfoBackdrop: n.fanart,
+    cert: ages.ageOf(n.mpaa) !== null ? n.mpaa : undefined, age: ages.ageOf(n.mpaa) ?? undefined,
   });
 }
 
@@ -134,12 +136,12 @@ function saveMusic(f: Folder, found: FoundAlbum[]): void {
   for (const a of found) {
     upsert.run({
       id: a.id, kind: "album", folder: f.id, parent: null, file: null, title: a.title, sort: sortTitle(a.title), year: a.year, added: now(),
-      data: JSON.stringify({ artist: a.artist, cover: a.cover }),
+      data: JSON.stringify({ artist: a.artist, cover: a.cover, genres: a.genres }),
     });
     for (const t of a.tracks) {
       upsert.run({
         id: t.id, kind: "track", folder: f.id, parent: a.id, file: t.file, title: t.title, sort: String(t.disc * 1000 + t.track).padStart(6, "0"), year: "", added: now(),
-        data: JSON.stringify({ artist: t.artist, track: t.track, disc: t.disc, duration: t.duration }),
+        data: JSON.stringify({ artist: t.artist, track: t.track, disc: t.disc, duration: t.duration, genre: t.genre }),
       });
     }
   }
@@ -212,6 +214,7 @@ async function pool<T>(items: T[], n: number, fn: (x: T) => Promise<void>): Prom
 
 export async function enrich(force = false): Promise<void> {
   if (!tmdb.key()) return;
+  await refreshAges();
   const todo = db.prepare(`SELECT id, kind, title, year, data FROM items WHERE kind IN ('film','series')
     ${force ? "" : "AND json_extract(data, '$.checked') IS NULL"}`).all() as Row[];
   if (!todo.length) return;
@@ -239,6 +242,40 @@ const fixing = new Set<string>();
 
 const patch = db.prepare("UPDATE items SET data = json_patch(data, ?) WHERE id = ?");
 
+/** The age rating: one set by hand wins, then the .nfo's, then TMDb's. */
+function rated(id: string, n: Nfo, t: { cert: string; age: number | null }): { cert?: string; age?: number | null } {
+  const d = data(getRow(id)!);
+  if (d.ageByHand) return {};
+  const own = ages.ageOf(n.mpaa);
+  if (own !== null) return { cert: n.mpaa, age: own };
+  return { cert: t.cert, age: t.age };
+}
+
+/** Films and series matched before Korie kept age ratings: fetch just the rating. */
+async function refreshAges(): Promise<void> {
+  const todo = db.prepare(`SELECT id, kind, title, year, data FROM items WHERE kind IN ('film','series')
+    AND json_type(data, '$.age') IS NULL AND json_extract(data, '$.tmdb') IS NOT NULL`).all() as Row[];
+  await pool(todo, 4, async (r) => {
+    const d = json<Record<string, any>>(r.data, {});
+    try {
+      const t = r.kind === "film" ? await tmdb.film(d.tmdb) : await tmdb.series(d.tmdb);
+      if (t) patch.run(JSON.stringify(rated(r.id, d.fixed ? {} : d.nfo ?? {}, t)), r.id);
+    } catch (e) {
+      log("tmdb", `${r.title}: ${e instanceof Error ? e.message : e}`);
+    }
+  });
+  if (todo.length) emit("library");
+}
+
+/** An admin gives a film or series its age rating (null = no rating). */
+export function setAge(id: string, age: number | null): boolean {
+  const r = getRow(id);
+  if (!r || (r.kind !== "film" && r.kind !== "series")) return false;
+  patch.run(JSON.stringify({ age, cert: age === null ? "" : ages.label(age), ageByHand: true }), id);
+  emit("library");
+  return true;
+}
+
 export async function fillFilm(id: string, tmdbId: number | null): Promise<void> {
   if (!tmdbId) {
     patch.run(JSON.stringify({ checked: now(), tmdb: null }), id);
@@ -250,7 +287,7 @@ export async function fillFilm(id: string, tmdbId: number | null): Promise<void>
   const n: Nfo = fixing.has(id) ? {} : (data(getRow(id)!).nfo ?? {});
   patch.run(JSON.stringify({
     checked: now(), tmdb: f.tmdb, tmdbTitle: f.title, overview: n.plot || f.overview, genres: n.genres ?? f.genres, runtime: n.runtime || f.runtime, rating: n.rating || f.rating,
-    director: n.director || f.director, cast: f.cast, poster: f.poster, backdrop: f.backdrop,
+    director: n.director || f.director, cast: f.cast, poster: f.poster, backdrop: f.backdrop, ...rated(id, n, f),
   }), id);
   // TMDb's name and year are tidier than a file name's (unless someone fixed it by hand)
   const title = n.title || f.title;
@@ -268,7 +305,7 @@ export async function fillSeries(id: string, tmdbId: number | null): Promise<voi
   if (n.title) s.title = n.title;
   if (n.year) s.year = n.year;
   patch.run(JSON.stringify({
-    checked: now(), tmdb: s.tmdb, overview: n.plot || s.overview, genres: n.genres ?? s.genres, rating: n.rating || s.rating, cast: s.cast, poster: s.poster, backdrop: s.backdrop,
+    checked: now(), tmdb: s.tmdb, overview: n.plot || s.overview, genres: n.genres ?? s.genres, rating: n.rating || s.rating, cast: s.cast, poster: s.poster, backdrop: s.backdrop, ...rated(id, n, s),
     seasonInfo: Object.fromEntries(Object.entries(s.seasons).map(([n, x]) => [n, { title: x.title, poster: x.poster }])),
   }), id);
   db.prepare("UPDATE items SET title = ?, sort = ?, year = ?, data = json_set(data, '$.titled', 1) WHERE id = ?").run(s.title, sortTitle(s.title), s.year, id);
@@ -307,19 +344,49 @@ export function getRow(id: string): Row | null {
   return (db.prepare("SELECT * FROM items WHERE id = ?").get(id) as Row | undefined) ?? null;
 }
 
+// Removed from the library (hidden): left out everywhere, but kept, so the next look through the
+// folder doesn't bring it back, and it can be brought back from the settings.
+const SHOWN = "NOT coalesce(json_extract(data, '$.hidden'), 0)";
+
 export function rows(kind: Kind, parent?: string): Row[] {
-  if (parent) return db.prepare("SELECT * FROM items WHERE kind = ? AND parent = ? ORDER BY sort").all(kind, parent) as Row[];
-  return db.prepare("SELECT * FROM items WHERE kind = ? ORDER BY sort").all(kind) as Row[];
+  if (parent) return db.prepare(`SELECT * FROM items WHERE kind = ? AND parent = ? AND ${SHOWN} ORDER BY sort`).all(kind, parent) as Row[];
+  return db.prepare(`SELECT * FROM items WHERE kind = ? AND ${SHOWN} ORDER BY sort`).all(kind) as Row[];
 }
 
 export function recent(kind: Kind, limit: number): Row[] {
-  return db.prepare("SELECT * FROM items WHERE kind = ? ORDER BY added DESC, sort LIMIT ?").all(kind, limit) as Row[];
+  return db.prepare(`SELECT * FROM items WHERE kind = ? AND ${SHOWN} ORDER BY added DESC, sort LIMIT ?`).all(kind, limit) as Row[];
 }
 
 export function counts(): Record<string, number> {
   const out: Record<string, number> = { film: 0, series: 0, album: 0 };
-  for (const r of db.prepare("SELECT kind, COUNT(*) AS n FROM items GROUP BY kind").all() as { kind: string; n: number }[]) out[r.kind] = r.n;
+  for (const r of db.prepare(`SELECT kind, COUNT(*) AS n FROM items WHERE ${SHOWN} GROUP BY kind`).all() as { kind: string; n: number }[]) out[r.kind] = r.n;
   return out;
+}
+
+export function isHidden(r: Row): boolean {
+  return !!data(r).hidden;
+}
+
+/** Removes a film, series or album from the library (the files stay); false = not found. */
+export function hide(id: string, hidden = true): boolean {
+  const r = getRow(id);
+  if (!r || !["film", "series", "album"].includes(r.kind)) return false;
+  patch.run(JSON.stringify({ hidden }), id);
+  emit("library");
+  return true;
+}
+
+export function hiddenRows(): Row[] {
+  return db.prepare(`SELECT * FROM items WHERE NOT (${SHOWN}) ORDER BY sort`).all() as Row[];
+}
+
+/** A poster picked by hand: it wins over every other picture (the folder's own included). */
+export function choosePoster(id: string, url: string): boolean {
+  const r = getRow(id);
+  if (!r) return false;
+  patch.run(JSON.stringify({ chosenPoster: url }), id);
+  emit("library");
+  return true;
 }
 
 export function data(r: Row): Record<string, any> {
@@ -330,7 +397,7 @@ export function data(r: Row): Record<string, any> {
 export function pictures(r: Row): { poster: string; backdrop: string; thumb: string } {
   const d = data(r);
   const local = (p: string) => (p ? "file:" + p : "");
-  const poster = local(d.localPoster) || d.poster || d.nfoPoster || (r.kind === "album" ? local(d.cover) : "");
+  const poster = d.chosenPoster || local(d.localPoster) || d.poster || d.nfoPoster || (r.kind === "album" ? local(d.cover) : "");
   const backdrop = local(d.localBackdrop) || d.backdrop || d.nfoBackdrop || "";
   const thumb = local(d.localThumb) || d.still || d.nfoThumb || backdrop || "";
   return { poster: img(poster), backdrop: img(backdrop), thumb: img(thumb) };

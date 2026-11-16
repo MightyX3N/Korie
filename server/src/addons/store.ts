@@ -8,6 +8,7 @@ import { STORE_URL, log } from "../config.ts";
 import { fetchText } from "../net.ts";
 import { emit } from "../events.ts";
 import * as addons from "./manager.ts";
+import * as themes from "../themes.ts";
 
 const FRESH = 5 * 60 * 1000;
 
@@ -82,9 +83,12 @@ export async function install(id: string): Promise<string> {
       fs.mkdirSync(path.dirname(path.join(tmp, name)), { recursive: true });
       fs.writeFileSync(path.join(tmp, name), body);
     }));
-    const dest = path.join(addons.USER_DIR, id);
+    // a theme goes to the themes folder (the TVs fetch it from there); an add-on to the add-ons folder
+    const dest = path.join(e.type === "theme" ? themes.USER_DIR : addons.USER_DIR, id);
+    fs.mkdirSync(path.dirname(dest), { recursive: true });
     fs.rmSync(dest, { recursive: true, force: true });
     fs.renameSync(tmp, dest);
+    if (e.type === "theme") err = themes.installed(id);
   } catch (x) {
     err = x instanceof Error ? x.message : String(x);
   } finally {
@@ -92,7 +96,7 @@ export async function install(id: string): Promise<string> {
     store.busy.delete(id);
   }
   log("store", `${id} ${e.version}: ${err || "installed"}`);
-  addons.scan();
+  if (e.type !== "theme") addons.scan();
   emit("store");
   return err;
 }

@@ -29,7 +29,7 @@
 		</control>
 
 		<control type="grouplist" id="5000">
-			<left>444</left><top>140</top><width>1476</width><height>940</height>
+			<left>432</left><top>128</top><width>1488</width><height>952</height>
 			<orientation>vertical</orientation>
 			<itemgap>14</itemgap>
 			<onleft>$VAR[KorieToMenu]</onleft>

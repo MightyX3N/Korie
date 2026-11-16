@@ -1,9 +1,9 @@
 // The frame: signing in, the menu (rail), and the screen on top of the stack.
 import { useEffect, useState, type ReactNode } from "react";
-import { Home as HomeI, Film, Tv, Radio, Gamepad2, Music as MusicI, Search as SearchI, ShoppingBag, Settings as SettingsI, LayoutGrid, Ellipsis } from "lucide-react";
-import { api, connectEvents, onChange, setToken, token, whenSignedOut, type Person } from "./api.ts";
+import { Home as HomeI, Film, Tv, Radio, Gamepad2, Music as MusicI, Search as SearchI, Puzzle, Settings as SettingsI, LayoutGrid, Ellipsis } from "lucide-react";
+import { api, connectEvents, deviceId, deviceName, onChange, setToken, token, whenSignedOut, type Person } from "./api.ts";
 import { F, G, pointer, setFocus, useFocusOnMount } from "./focus.tsx";
-import { NavProvider, useNav, type Screen } from "./nav.tsx";
+import { NavProvider, useBackHandler, useNav, type Screen } from "./nav.tsx";
 import { UIProvider, useUI } from "./ui.tsx";
 import { android } from "./host.ts";
 import { currentForm, onForm, type Form } from "./size.ts";
@@ -14,15 +14,19 @@ import { Live, Games, AddonPage } from "./screens/Rows.tsx";
 import { Item } from "./screens/Item.tsx";
 import { Search } from "./screens/Search.tsx";
 import { Store, AddonInfo } from "./screens/Store.tsx";
-import { Settings } from "./screens/Settings.tsx";
+import { Settings, People } from "./screens/Settings.tsx";
 import { Apps } from "./screens/Apps.tsx";
 import { Player } from "./screens/Player.tsx";
+import { NowPlaying } from "./screens/NowPlaying.tsx";
+import * as music from "./music.ts";
 
-export interface Me { person: Person; server: { name: string; version: string; id: string }; games: boolean }
+export interface Me { person: Person; server: { name: string; version: string; id: string }; games: boolean; languages?: [string, string][] }
 
 export function App() {
   const [me, setMe] = useState<Me | null>(null);
   const [checked, setChecked] = useState(false);
+  // Manage people from Who's watching: an admin's session only while People is open
+  const [managing, setManaging] = useState<string | null>(null);
 
   const loadMe = () =>
     api<Me>("/api/me")
@@ -36,7 +40,17 @@ export function App() {
   useEffect(() => {
     whenSignedOut(() => setMe(null));
     if (token()) void loadMe();
-    else setChecked(true);
+    else {
+      // a device that signs in as someone by itself (Settings, People) skips Who's watching
+      api<{ token: string | null }>("/api/auto", { device: deviceName(), deviceId: deviceId() })
+        .then((r) => {
+          if (r.token) {
+            setToken(r.token);
+            void loadMe();
+          } else setChecked(true);
+        })
+        .catch(() => setChecked(true));
+    }
     // the mouse: hovering focuses; the keyboard or remote takes over again
     const onMove = (e: MouseEvent) => {
       if (Math.abs(e.movementX) + Math.abs(e.movementY) > 2) {
@@ -68,17 +82,60 @@ export function App() {
     <UIProvider>
       {me ? (
         <Signed me={me} signOut={() => {
+          music.stop();
           void api("/api/logout", {}).catch(() => {});
           setToken("");
           setMe(null);
         }} refresh={loadMe} />
       ) : (
-        <Profiles onSignedIn={(t) => {
-          setToken(t);
-          void loadMe();
-        }} />
+        managing ? (
+          <ManagePeople token={managing} done={() => {
+            void api("/api/logout", {}).catch(() => {});
+            setToken("");
+            setManaging(null);
+          }} />
+        ) : (
+          <Profiles onSignedIn={(t) => {
+            setToken(t);
+            void loadMe();
+          }} onManage={(t) => {
+            setToken(t);
+            setManaging(t);
+          }} />
+        )
       )}
     </UIProvider>
+  );
+}
+
+/** Settings › People on its own, from Who's watching; Back closes it (and signs the admin out). */
+function ManagePeople({ token: _t, done }: { token: string; done: () => void }) {
+  const [me, setMe] = useState<Me | null>(null);
+  useEffect(() => {
+    api<Me>("/api/me").then(setMe).catch(done);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  if (!me) return null;
+  return (
+    <NavProvider home="people">
+      {() => <ManageFrame me={me} done={done} />}
+    </NavProvider>
+  );
+}
+
+function ManageFrame({ me, done }: { me: Me; done: () => void }) {
+  useBackHandler(() => {
+    done();
+    return true;
+  });
+  return (
+    <div className="app">
+      <main className="main">
+        <G fk="content" className="scroll">
+          <People me={me} refresh={() => {}} />
+        </G>
+      </main>
+    </div>
   );
 }
 
@@ -86,12 +143,12 @@ const SECTIONS = [
   { id: "home", label: "Home", icon: <HomeI /> },
   { id: "films", label: "Films", icon: <Film /> },
   { id: "series", label: "Series", icon: <Tv /> },
+  { id: "music", label: "Music", icon: <MusicI /> },
   { id: "live", label: "Live TV", icon: <Radio /> },
   { id: "games", label: "Games", icon: <Gamepad2 /> },
-  { id: "music", label: "Music", icon: <MusicI /> },
+  { id: "store", label: "Add-ons", icon: <Puzzle /> },
   { id: "apps", label: "Apps", icon: <LayoutGrid /> },
   { id: "search", label: "Search", icon: <SearchI /> },
-  { id: "store", label: "Store", icon: <ShoppingBag /> },
   { id: "settings", label: "Settings", icon: <SettingsI /> },
 ];
 const PHONE_TABS = ["home", "films", "series", "search"];
@@ -120,7 +177,7 @@ function Frame({ me, top, signOut, refresh }: { me: Me; top: Screen; signOut: ()
   const ui = useUI();
   const [form, setForm] = useState<Form>(currentForm());
   useEffect(() => onForm(setForm), []);
-  const sections = SECTIONS.filter((s) => (s.id !== "games" || me.games) && (s.id !== "apps" || android));
+  const sections = SECTIONS.filter((s) => (s.id !== "games" || me.games) && (s.id !== "apps" || android) && (s.id !== "music" || me.person.music !== false));
   const section = nav.stack[0].name;
   const fullScreen = top.name === "player";
   // the screen starts with the menu's own entry focused (Home on Home)
@@ -134,7 +191,7 @@ function Frame({ me, top, signOut, refresh }: { me: Me; top: Screen; signOut: ()
   };
 
   const shown = form === "phone" ? sections.filter((s) => PHONE_TABS.includes(s.id)) : sections;
-  const body = screenFor(top, me, refresh);
+  const body = screenFor(top, me, refresh, signOut);
   if (fullScreen) return <>{body}</>;
   return (
     <div className="app">
@@ -165,7 +222,7 @@ function Frame({ me, top, signOut, refresh }: { me: Me; top: Screen; signOut: ()
   );
 }
 
-function screenFor(s: Screen, me: Me, refresh: () => void): ReactNode {
+function screenFor(s: Screen, me: Me, refresh: () => void, signOut: () => void): ReactNode {
   const p = s.params;
   switch (s.name) {
     case "home": return <Home />;
@@ -174,14 +231,16 @@ function screenFor(s: Screen, me: Me, refresh: () => void): ReactNode {
     case "music": return <Music />;
     case "live": return <Live />;
     case "games": return <Games />;
-    case "apps": return <Apps />;
+    case "apps": return <Apps me={me} />;
     case "page": return <AddonPage id={p.id} title={p.title} />;
     case "item": return <Item id={p.id} me={me} />;
     case "search": return <Search />;
     case "store": return <Store me={me} />;
     case "addon": return <AddonInfo id={p.id} me={me} />;
-    case "settings": return <Settings me={me} refresh={refresh} />;
+    case "settings": return <Settings me={me} refresh={refresh} signOut={signOut} />;
+    case "people": return <People me={me} refresh={refresh} />;
     case "player": return <Player {...(p as any)} />;
+    case "nowplaying": return <NowPlaying />;
   }
   return <div className="page"><h1>Not found</h1></div>;
 }

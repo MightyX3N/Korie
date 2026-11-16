@@ -14,9 +14,23 @@ function Picture({ src, width, alt }: { src: string; width: number; alt: string 
   return <img src={pic(src, width)} alt="" loading="lazy" decoding="async" onError={() => setFailed(true)} />;
 }
 
+const CAPTIONS: Record<string, string> = {
+  film: "Film", series: "Series", episode: "Episode", album: "Music", track: "Song", live: "Channel", game: "Game",
+  page: "Add-on", playlist: "Playlist", artist: "Artist", genre: "Genre",
+};
+
 export function CardView({ c, shape, fk, onOpen, onMenu }: { c: Card; shape: string; fk: string; onOpen: (c: Card) => void; onMenu?: (c: Card) => void }) {
   const wide = shape === "wide";
   const text = shape === "text";
+  if (shape === "fav") {
+    // a Favourites tile (the Main artboard): what it is, small, above its name
+    return (
+      <F fk={fk} className="card fav" onEnter={() => onOpen(c)} onLong={onMenu ? () => onMenu(c) : undefined} title={c.title}>
+        <small>{c.source ? `From ${c.source}` : CAPTIONS[c.kind] ?? ""}</small>
+        <b>{c.title}</b>
+      </F>
+    );
+  }
   const src = wide ? c.thumb || c.backdrop || c.poster : c.poster || c.thumb;
   const w = wide ? rem(17) : rem(9.6);
   return (

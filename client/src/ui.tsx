@@ -101,15 +101,22 @@ function Menu({ title, choices, onPick }: { title: string; choices: Choice[]; on
     return true;
   });
   useFocusOnMount(`${fk}-0`);
+  const ticks = choices.some((c) => c.label.startsWith("✓ "));
   return (
     <G fk={fk} className="dialog" stop={["up", "down", "left", "right"]} style={{ width: "min(30rem, 100%)", gap: "0.3rem" }}>
       {title && <h2 style={{ marginBottom: "0.6rem" }}>{title}</h2>}
-      {choices.map((c, i) => (
-        <F key={c.value} fk={`${fk}-${i}`} className="item" onEnter={() => onPick(c.value)}>
-          {c.icon}
-          <div className="grow">{c.label}</div>
-        </F>
-      ))}
+      {choices.map((c, i) => {
+        // a ticked choice ("✓ English") gets a tick in the icon's place; in a list with ticks the
+        // others keep that space empty, so the names line up
+        const ticked = c.label.startsWith("✓ ");
+        const icon = ticked ? <Check /> : c.icon ?? (ticks ? <span className="icon-space" /> : null);
+        return (
+          <F key={c.value} fk={`${fk}-${i}`} className="item" onEnter={() => onPick(c.value)}>
+            {icon}
+            <div className="grow">{ticked ? c.label.slice(2) : c.label}</div>
+          </F>
+        );
+      })}
     </G>
   );
 }

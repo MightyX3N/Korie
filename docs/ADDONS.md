@@ -51,7 +51,10 @@ return A
 
 An item is `{ id, kind = "film" | "series" | "episode" | "live" | "page" | "game", title,
 subtitle, year, runtime, overview, poster, backdrop, thumb, genres, rating, director, cast, data }`.
-`data` comes back unchanged when the item is opened or played. Korie checks everything an
+`data` comes back unchanged when the item is opened or played. Give `cert` (an age rating
+such as `"DK 11"`, `"PG-13"` or `"15"`) or `age` (a number) when you know it: people with an
+age limit then only see what's rated for them. Items without one are shown to everyone who may
+use the add-on. Korie checks everything an
 add-on returns: wrong shapes are left out and noted in the add-on's log (Store → the add-on).
 
 Streams play through the server: it repackages or converts them with FFmpeg when a device

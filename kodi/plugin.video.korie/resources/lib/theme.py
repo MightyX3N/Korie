@@ -49,6 +49,29 @@ class ThemeError(Exception):
     pass
 
 
+def put_file(src, dst):
+    """Copies src to dst without touching dst when it's the same, and otherwise as a new file put in
+    its place: Kodi keeps the skin's fonts mapped in memory, and writing into a mapped file crashes
+    it (a bus error)."""
+    with open(src, "rb") as f:
+        body = f.read()
+    put_bytes(body, dst)
+
+
+def put_bytes(body, dst):
+    try:
+        with open(dst, "rb") as f:
+            if f.read() == body:
+                return False
+    except OSError:
+        pass
+    tmp = dst + ".korie-new"
+    with open(tmp, "wb") as f:
+        f.write(body)
+    os.replace(tmp, dst)
+    return True
+
+
 def argb(value, alpha="FF"):
     v = str(value).strip().lstrip("#")
     if re.fullmatch(r"[0-9a-fA-F]{6}", v):
@@ -126,13 +149,13 @@ def install(theme, skin_dir):
     for role, name in theme["fonts"].items():
         src = os.path.join(theme["folder"], name)
         if os.path.exists(src):
-            shutil.copy(src, os.path.join(skin_dir, "fonts", name))
+            put_file(src, os.path.join(skin_dir, "fonts", name))
         elif not os.path.exists(os.path.join(skin_dir, "fonts", name)):
             raise ThemeError("The theme names %s but doesn't include it" % name)
     if theme["background"]:
         dst = os.path.join(skin_dir, "media", "korie", "themes", theme["id"])
         os.makedirs(dst, exist_ok=True)
-        shutil.copy(os.path.join(theme["folder"], theme["background"]), os.path.join(dst, "background" + os.path.splitext(theme["background"])[1]))
+        put_file(os.path.join(theme["folder"], theme["background"]), os.path.join(dst, "background" + os.path.splitext(theme["background"])[1]))
     font_xml = os.path.join(skin_dir, "xml", "Font.xml")
     with open(font_xml, encoding="utf-8") as f:
         s = f.read()

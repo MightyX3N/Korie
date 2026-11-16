@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { ChevronLeft, Play, RotateCcw, Heart, Eye, EyeOff, Wand2, Shuffle } from "lucide-react";
 import { api, pic } from "../api.ts";
+import * as music from "../music.ts";
 import { F, G, useFocusOnMount } from "../focus.tsx";
 import { useData } from "../data.ts";
 import { useNav } from "../nav.tsx";
@@ -28,7 +29,7 @@ export function Item({ id, me }: { id: string; me: Me }) {
   if (!data) return <div className="page"><F fk="item-back" className="back" onEnter={() => nav.back()}><ChevronLeft />Back</F><Status text={error || "Loading…"} /></div>;
   const d = data;
   const isSeries = d.kind === "series";
-  const isAlbum = d.kind === "album";
+  const isAlbum = d.kind === "album" || d.kind === "playlist";
   const seasons = d.seasons ?? [];
   const cur = seasons.find((s) => s.n === season) ?? seasons.find((s) => s.episodes.some((e) => !e.watched)) ?? seasons[0];
   const nextEp = isSeries ? seasons.flatMap((s) => s.episodes).find((e) => e.progress > 0) ?? seasons.flatMap((s) => s.episodes).find((e) => !e.watched) : undefined;
@@ -64,11 +65,11 @@ export function Item({ id, me }: { id: string; me: Me }) {
                   if (isSeries) {
                     if (nextEp) play("resume", nextEp.id);
                   } else if (isAlbum) {
-                    if (d.tracks?.length) play("start", d.tracks[0].id, { album: d.id, index: 0 });
+                    if (d.tracks?.length) void music.playList(d.id).then(() => nav.push("nowplaying"));
                   } else play("resume");
                 }}><Play />{firstLabel}</F>
                 {!isSeries && !isAlbum && d.position > 30 && <F fk="item-start" className="btn" onEnter={() => play("start")}><RotateCcw />From the start</F>}
-                {isAlbum && <F fk="item-shuffle" className="btn" onEnter={() => d.tracks?.length && play("start", d.tracks[0].id, { album: d.id, index: 0, shuffle: true })}><Shuffle />Shuffle</F>}
+                {isAlbum && <F fk="item-shuffle" className="btn" onEnter={() => d.tracks?.length && void music.playList(d.id, "", true).then(() => nav.push("nowplaying"))}><Shuffle />Shuffle</F>}
                 {d.kind !== "game" && <F fk="item-fav" className="btn icon" onEnter={toggleFav} title="Favourite"><Heart fill={d.favourite ? "currentColor" : "none"} /></F>}
                 {!isAlbum && d.kind !== "game" && <F fk="item-watched" className="btn icon" onEnter={toggleWatched} title={d.watched ? "Mark as not watched" : "Mark as watched"}>{d.watched ? <EyeOff /> : <Eye />}</F>}
                 {canFix && <F fk="item-fix" className="btn icon" onEnter={async () => { await fixMatch(d.id, d.title, ui); reload(); }} title="Fix details"><Wand2 /></F>}
@@ -109,7 +110,7 @@ export function Item({ id, me }: { id: string; me: Me }) {
         {isAlbum && (
           <G fk="item-tracks" className="tracks">
             {d.tracks?.map((t, i) => (
-              <F key={t.id} fk={`track-${t.id}`} className="track" onEnter={() => play("start", t.id, { album: d.id, index: i })}>
+              <F key={t.id} fk={`track-${t.id}`} className="track" onEnter={() => void music.playList(d.id, t.id).then(() => nav.push("nowplaying"))}>
                 <span className="n">{t.n || i + 1}</span>
                 <span className="tt">{t.title}{t.artist && t.artist !== d.artist ? <small style={{ color: "var(--dim)" }}> · {t.artist}</small> : null}</span>
                 <span className="d">{t.duration ? fmtTime(t.duration) : ""}</span>

@@ -3,8 +3,10 @@
 import json
 import os
 import time
+import urllib.parse
 
 import xbmc
+import xbmcaddon
 import xbmcgui
 import xbmcvfs
 
@@ -14,7 +16,7 @@ from resources.lib.korie import KorieError, log
 HOME = xbmcgui.Window(10000)
 HOME_ROWS = 8
 PEOPLE = 8
-KINDS = {"wide": "wide", "poster": "poster", "square": "square", "text": "wide"}
+KINDS = {"wide": "wide", "poster": "poster", "square": "square", "text": "wide", "fav": "fav"}
 
 
 def rpc(method, **params):
@@ -35,6 +37,34 @@ def set_person(person):
     HOME.setProperty("korie.person.colour", colour((person or {}).get("color")))
 
 
+RAIL = ["home", "films", "series", "music", "live", "addons", "apps", "search", "settings"]
+
+
+TEST_APPS = os.path.join(korie.DATA, "test_apps.json")
+
+
+def android():
+    """Kodi on Android (a test_apps.json in the add-on's data stands in for it when testing elsewhere)."""
+    return xbmc.getCondVisibility("System.Platform.Android") or os.path.exists(TEST_APPS)
+
+
+def set_rail(person):
+    """Which entries the menu on the left has for this person on this TV (Music if they may,
+    Apps on Android), and each one's place in it (the skin focuses the screen's own entry)."""
+    music = (person or {}).get("music", True) is not False
+    HOME.setProperty("korie.music.off", "" if music else "1")
+    HOME.setProperty("korie.apps.on", "1" if android() else "")
+    HOME.setProperty("korie.may.install", "1" if (person or {}).get("canInstall") else "")
+    HOME.setProperty("korie.may.admin", "1" if (person or {}).get("admin") else "")
+    n = 0
+    for k in RAIL:
+        if (k == "music" and not music) or (k == "apps" and not android()):
+            HOME.setProperty("korie.pos." + k, "")
+            continue
+        HOME.setProperty("korie.pos." + k, str(n))
+        n += 1
+
+
 def show_people(people, status=""):
     for n in range(1, PEOPLE + 1):
         p = people[n - 1] if n <= len(people) else None
@@ -48,6 +78,10 @@ def show_people(people, status=""):
 
 def show_home(server):
     """Home's row titles and kinds, so the skin knows which rows to show and how."""
+    try:
+        set_rail(server.call("/api/me").get("person"))
+    except KorieError as e:
+        log(e)
     d = server.call("/api/home")
     rows = [r for r in d.get("rows", []) if r.get("items")][:HOME_ROWS]
     for n in range(1, HOME_ROWS + 1):
@@ -72,6 +106,20 @@ def skin_dir():
 
 def current_theme():
     return korie.load_state().get("theme", "classic")
+
+
+def disc_menu():
+    """Whether DVDs start with the disc's own menu on this screen (Settings, "Disc menus")."""
+    return xbmcaddon.Addon("plugin.video.korie").getSetting("disc_menu") != "false"
+
+
+def show_disc_menu():
+    HOME.setProperty("korie.discmenu.name", "Start with the disc's menu" if disc_menu() else "Go straight to the film")
+
+
+def toggle_disc_menu():
+    xbmcaddon.Addon("plugin.video.korie").setSetting("disc_menu", "false" if disc_menu() else "true")
+    show_disc_menu()
 
 
 def show_theme():
@@ -116,7 +164,56 @@ def reinstall_themes():
             log("couldn't put back theme %s: %s" % (name, e))
 
 
-def choose_theme():
+def sync_themes(server):
+    """The server's themes (from its Store) that this screen doesn't have yet, or has an older
+    version of: fetched into Korie's data, and put into the skin. True when something was added."""
+    import hashlib
+    import shutil
+    d = server.call("/api/themes")
+    folder = os.path.join(korie.DATA, "themes")
+    os.makedirs(folder, exist_ok=True)
+    added = False
+    for t in d.get("themes", []):
+        if t.get("builtin") or not theme.ID_RE.match(t.get("id", "")):
+            continue
+        dst = os.path.join(folder, t["id"])
+        try:
+            with open(os.path.join(dst, "theme.json"), encoding="utf-8") as f:
+                have = json.load(f).get("version")
+        except (OSError, ValueError):
+            have = None
+        if have == t.get("version"):
+            continue
+        tmp = dst + ".new"
+        shutil.rmtree(tmp, ignore_errors=True)
+        os.makedirs(tmp)
+        try:
+            for f in t.get("files", []):
+                name = f["name"]
+                if "/" in name or "\\" in name or name.startswith("."):
+                    raise KorieError("The theme lists a file Korie won't write (%s)." % name)
+                body = server.fetch("/api/themes/%s/%s" % (t["id"], urllib.parse.quote(name)))
+                if f.get("sha256") and hashlib.sha256(body).hexdigest() != f["sha256"]:
+                    raise KorieError("%s of the theme %s didn't arrive whole." % (name, t["name"]))
+                with open(os.path.join(tmp, name), "wb") as out:
+                    out.write(body)
+            shutil.rmtree(dst, ignore_errors=True)
+            os.rename(tmp, dst)
+            theme.install(theme.load(dst), skin_dir())
+            log("theme %s %s from the server" % (t["id"], t.get("version")))
+            added = True
+        except (KorieError, OSError, ValueError, theme.ThemeError) as e:
+            log("couldn't get theme %s: %s" % (t.get("id"), e))
+            shutil.rmtree(tmp, ignore_errors=True)
+    return added
+
+
+def choose_theme(server=None):
+    if server is not None:
+        try:
+            sync_themes(server)
+        except KorieError as e:
+            log(e)
     themes = theme.installed(skin_dir())
     if not themes:
         return
@@ -135,6 +232,8 @@ KODI_SETTINGS = {
     "myvideos.selectaction": 3,
     # no ".." row at the top of every list: Back does that
     "filelists.showparentdiritems": False,
+    # the clock on every screen in 24 hours ("21:40"), as on Korie's other screens
+    "locale.use24hourclock": "24hours",
 }
 
 
@@ -168,13 +267,43 @@ KEYMAP = """<?xml version="1.0" encoding="UTF-8"?>
       <backspace>Stop</backspace>
       <browser_back>Stop</browser_back>
       <escape>Stop</escape>
+      <menu>OSD</menu>
+      <c>OSD</c>
     </keyboard>
     <remote>
       <back>Stop</back>
+      <menu>OSD</menu>
+      <title>OSD</title>
     </remote>
+    <mouse>
+      <rightclick>OSD</rightclick>
+    </mouse>
   </FullscreenVideo>
+  <!-- in a DVD's own menu Kodi uses this section: Menu opens Korie's controls there too -->
+  <VideoMenu>
+    <keyboard>
+      <menu>OSD</menu>
+      <c>OSD</c>
+    </keyboard>
+    <remote>
+      <menu>OSD</menu>
+      <title>OSD</title>
+    </remote>
+    <mouse>
+      <rightclick>OSD</rightclick>
+    </mouse>
+  </VideoMenu>
 </keymap>
 """.format(menu=MENU_KEYS)
+
+
+def check_kodi_settings():
+    for k, v in KODI_SETTINGS.items():
+        r = rpc("Settings.GetSettingValue", setting=k)
+        now = (r.get("result") or {}).get("value")
+        if now != v:
+            r = rpc("Settings.SetSettingValue", setting=k, value=v)
+            log("Kodi setting %s was %r, set to %r: %s" % (k, now, v, r.get("result", r.get("error"))))
 
 
 def setup_kodi():
@@ -187,3 +316,37 @@ def setup_kodi():
     with open(os.path.join(folder, "korie.xml"), "w", encoding="utf-8") as f:
         f.write(KEYMAP)
     xbmc.executebuiltin("Action(reloadkeymaps)")
+
+
+# --- your languages (kept on the server: every screen in the house uses them) ----------------
+
+def language_names(me):
+    names = dict(me.get("languages") or [])
+    p = me.get("person") or {}
+    audio, subs = p.get("audio", ""), p.get("subs", "")
+    HOME.setProperty("korie.audio.name", names.get(audio, audio) if audio else "Original language")
+    HOME.setProperty("korie.subs.name", "Off" if subs == "off" else names.get(subs, subs) if subs else "As the film says")
+
+
+def choose_language(server, which):
+    from resources.lib import screens
+    me = server.call("/api/me")
+    langs = me.get("languages") or []
+    now = (me.get("person") or {}).get(which, "")
+    if which == "audio":
+        values = [""] + [c for c, _ in langs]
+        options = [{"label": "Original language"}] + [{"label": n} for _, n in langs]
+        title = "Audio language"
+    else:
+        values = [c for c, _ in langs] + ["off", ""]
+        options = [{"label": n} for _, n in langs] + [{"label": "Off"}, {"label": "As the film says"}]
+        title = "Subtitles"
+    start = values.index(now) if now in values else 0
+    options[start]["on"] = True
+    i = screens.menu(title, options, start=start)
+    if i < 0 or values[i] == now:
+        return
+    r = server.call("/api/me/playback", {which: values[i]})
+    me["person"] = r.get("person") or me.get("person")
+    language_names(me)
+

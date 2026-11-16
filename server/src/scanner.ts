@@ -55,7 +55,7 @@ function art(dir: string, files: string[], base: string, names: string[]): strin
 // --- Kodi .nfo (only the fields Korie uses) ---------------------------------------------
 
 export interface Nfo {
-  root?: string; title?: string; year?: string; plot?: string; tmdb?: number; imdb?: string; genres?: string[]; rating?: number; director?: string;
+  root?: string; title?: string; year?: string; plot?: string; tmdb?: number; imdb?: string; genres?: string[]; rating?: number; director?: string; mpaa?: string;
   runtime?: number; poster?: string; fanart?: string; season?: number; episode?: number; aired?: string;
 }
 
@@ -90,6 +90,8 @@ export function readNfo(file: string): Nfo {
   if (genres.length) out.genres = genres;
   const r = Number(tag(xml, "rating") ?? xml.match(/<rating[^>]*>[\s\S]*?<value>([\d.]+)<\/value>/i)?.[1]);
   if (r) out.rating = r;
+  const mpaa = tag(xml, "mpaa") || tag(xml, "certification");
+  if (mpaa) out.mpaa = mpaa;
   const rt = Number(tag(xml, "runtime"));
   if (rt) out.runtime = rt;
   const sn = Number(tag(xml, "season"));
@@ -166,8 +168,14 @@ export interface FoundFilm {
 }
 export interface FoundEpisode { id: string; file: string; season: number; episode: number; episodeEnd?: number; title: string; thumb: string; subs: string[]; nfo?: Nfo }
 export interface FoundSeries { id: string; dir: string; title: string; year: string; nfo: Nfo; poster: string; backdrop: string; episodes: FoundEpisode[] }
-export interface FoundTrack { id: string; file: string; title: string; artist: string; track: number; disc: number; duration: number }
-export interface FoundAlbum { id: string; title: string; artist: string; year: string; cover: string; tracks: FoundTrack[] }
+/** A song's genre tag, tidied ("electronic; dance" → "Electronic"; ID3's "(17)" numbers are left out). */
+function genreOf(g: unknown): string {
+  const first = (Array.isArray(g) ? g : [g]).map((x) => String(x ?? "").split(/[;/,]/)[0].trim()).find((x) => x && !/^\(?\d+\)?$/.test(x));
+  return first ? first.replace(/\b\w/g, (c) => c.toUpperCase()).slice(0, 40) : "";
+}
+
+export interface FoundTrack { id: string; file: string; title: string; artist: string; track: number; disc: number; duration: number; genre: string }
+export interface FoundAlbum { id: string; title: string; artist: string; year: string; cover: string; tracks: FoundTrack[]; genres: string[] }
 
 function subsFor(dir: string, files: string[], base: string): string[] {
   const b = base.toLowerCase();
@@ -370,7 +378,7 @@ export async function scanMusic(root: string, coverDir: string): Promise<FoundAl
       const key = (artist + "|" + albumTitle).toLowerCase();
       let a = albums.get(key);
       if (!a) {
-        a = { id: idFor("a", root + "|" + key), title: albumTitle, artist, year: common.year ? String(common.year) : "", cover: folderCover || common._cover || "", tracks: [] };
+        a = { id: idFor("a", root + "|" + key), title: albumTitle, artist, year: common.year ? String(common.year) : "", cover: folderCover || common._cover || "", tracks: [], genres: [] };
         albums.set(key, a);
       }
       if (!a.cover && common._cover) a.cover = common._cover;
@@ -378,7 +386,9 @@ export async function scanMusic(root: string, coverDir: string): Promise<FoundAl
       a.tracks.push({
         id: idFor("t", file), file, title: common.title || (tm ? tm[2] : f.replace(/\.[^.]+$/, "")).trim(),
         artist: common.artist || artist, track: common.track?.no ?? (tm ? Number(tm[1]) : 0), disc: common.disk?.no ?? 1, duration,
+        genre: genreOf(common.genre),
       });
+      if (a.tracks[a.tracks.length - 1].genre && !a.genres.includes(a.tracks[a.tracks.length - 1].genre)) a.genres.push(a.tracks[a.tracks.length - 1].genre);
     }
     if (depth < 6) for (const d of dirs) await walk(path.join(dir, d), depth + 1);
   };

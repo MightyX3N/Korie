@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- Korie: who's watching. The people come from the Korie server (the add-on puts them in
-     Window(Home) properties korie.p.1 ... korie.p.8); a lock shows who has a PIN. -->
+     Window(Home) properties korie.p.1 ... korie.p.8); a lock shows who has a PIN. Add person and
+     Manage people ask an admin to say who they are first. -->
 <window type="window" id="1190">
 	<defaultcontrol always="true">1000</defaultcontrol>
 	<onload>RunPlugin(plugin://plugin.video.korie/?a=people)</onload>
@@ -22,21 +23,23 @@
 			<visible>String.IsEmpty(Window(Home).Property(korie.p.1.name))</visible>
 		</control>
 		<control type="grouplist" id="1000">
-			<left>0</left><top>460</top><width>1920</width><height>340</height>
+			<left>0</left><top>430</top><width>1920</width><height>380</height>
 			<orientation>horizontal</orientation>
 			<align>center</align>
 			<itemgap>28</itemgap>
 			<usecontrolcoords>true</usecontrolcoords>
 			<control type="group" id="1201">
-				<width>276</width><height>320</height>
+				<top>30</top><width>276</width><height>320</height>
 				<visible>!String.IsEmpty(Window(Home).Property(korie.p.1.name))</visible>
 				<control type="image">
-					<left>18</left><top>-10</top><width>240</width><height>240</height>
-					<texture border="32" colordiffuse="korie_accent">korie/ring28.png</texture>
+					<left>14</left><top>-14</top><width>248</width><height>248</height>
+					<texture border="48" colordiffuse="korie_accent">korie/ring42.png</texture>
 					<visible>Control.HasFocus(1301)</visible>
 				</control>
 				<control type="button" id="1301">
-					<onright>1302</onright>
+					<ondown>1401</ondown>
+					<onright condition="Control.IsVisible(1202)">1302</onright>
+					<onright condition="!Control.IsVisible(1202)">1309</onright>
 					<left>28</left><top>0</top><width>220</width><height>220</height>
 					<texturefocus border="28" colordiffuse="$INFO[Window(Home).Property(korie.p.1.colour)]">korie/r28.png</texturefocus>
 					<texturenofocus border="28" colordiffuse="$INFO[Window(Home).Property(korie.p.1.colour)]">korie/r28.png</texturenofocus>
@@ -79,16 +82,18 @@
 				</control>
 			</control>
 			<control type="group" id="1202">
-				<width>276</width><height>320</height>
+				<top>30</top><width>276</width><height>320</height>
 				<visible>!String.IsEmpty(Window(Home).Property(korie.p.2.name))</visible>
 				<control type="image">
-					<left>18</left><top>-10</top><width>240</width><height>240</height>
-					<texture border="32" colordiffuse="korie_accent">korie/ring28.png</texture>
+					<left>14</left><top>-14</top><width>248</width><height>248</height>
+					<texture border="48" colordiffuse="korie_accent">korie/ring42.png</texture>
 					<visible>Control.HasFocus(1302)</visible>
 				</control>
 				<control type="button" id="1302">
+					<ondown>1401</ondown>
 					<onleft>1301</onleft>
-					<onright>1303</onright>
+					<onright condition="Control.IsVisible(1203)">1303</onright>
+					<onright condition="!Control.IsVisible(1203)">1309</onright>
 					<left>28</left><top>0</top><width>220</width><height>220</height>
 					<texturefocus border="28" colordiffuse="$INFO[Window(Home).Property(korie.p.2.colour)]">korie/r28.png</texturefocus>
 					<texturenofocus border="28" colordiffuse="$INFO[Window(Home).Property(korie.p.2.colour)]">korie/r28.png</texturenofocus>
@@ -131,16 +136,18 @@
 				</control>
 			</control>
 			<control type="group" id="1203">
-				<width>276</width><height>320</height>
+				<top>30</top><width>276</width><height>320</height>
 				<visible>!String.IsEmpty(Window(Home).Property(korie.p.3.name))</visible>
 				<control type="image">
-					<left>18</left><top>-10</top><width>240</width><height>240</height>
-					<texture border="32" colordiffuse="korie_accent">korie/ring28.png</texture>
+					<left>14</left><top>-14</top><width>248</width><height>248</height>
+					<texture border="48" colordiffuse="korie_accent">korie/ring42.png</texture>
 					<visible>Control.HasFocus(1303)</visible>
 				</control>
 				<control type="button" id="1303">
+					<ondown>1401</ondown>
 					<onleft>1302</onleft>
-					<onright>1304</onright>
+					<onright condition="Control.IsVisible(1204)">1304</onright>
+					<onright condition="!Control.IsVisible(1204)">1309</onright>
 					<left>28</left><top>0</top><width>220</width><height>220</height>
 					<texturefocus border="28" colordiffuse="$INFO[Window(Home).Property(korie.p.3.colour)]">korie/r28.png</texturefocus>
 					<texturenofocus border="28" colordiffuse="$INFO[Window(Home).Property(korie.p.3.colour)]">korie/r28.png</texturenofocus>
@@ -183,16 +190,18 @@
 				</control>
 			</control>
 			<control type="group" id="1204">
-				<width>276</width><height>320</height>
+				<top>30</top><width>276</width><height>320</height>
 				<visible>!String.IsEmpty(Window(Home).Property(korie.p.4.name))</visible>
 				<control type="image">
-					<left>18</left><top>-10</top><width>240</width><height>240</height>
-					<texture border="32" colordiffuse="korie_accent">korie/ring28.png</texture>
+					<left>14</left><top>-14</top><width>248</width><height>248</height>
+					<texture border="48" colordiffuse="korie_accent">korie/ring42.png</texture>
 					<visible>Control.HasFocus(1304)</visible>
 				</control>
 				<control type="button" id="1304">
+					<ondown>1401</ondown>
 					<onleft>1303</onleft>
-					<onright>1305</onright>
+					<onright condition="Control.IsVisible(1205)">1305</onright>
+					<onright condition="!Control.IsVisible(1205)">1309</onright>
 					<left>28</left><top>0</top><width>220</width><height>220</height>
 					<texturefocus border="28" colordiffuse="$INFO[Window(Home).Property(korie.p.4.colour)]">korie/r28.png</texturefocus>
 					<texturenofocus border="28" colordiffuse="$INFO[Window(Home).Property(korie.p.4.colour)]">korie/r28.png</texturenofocus>
@@ -235,16 +244,18 @@
 				</control>
 			</control>
 			<control type="group" id="1205">
-				<width>276</width><height>320</height>
+				<top>30</top><width>276</width><height>320</height>
 				<visible>!String.IsEmpty(Window(Home).Property(korie.p.5.name))</visible>
 				<control type="image">
-					<left>18</left><top>-10</top><width>240</width><height>240</height>
-					<texture border="32" colordiffuse="korie_accent">korie/ring28.png</texture>
+					<left>14</left><top>-14</top><width>248</width><height>248</height>
+					<texture border="48" colordiffuse="korie_accent">korie/ring42.png</texture>
 					<visible>Control.HasFocus(1305)</visible>
 				</control>
 				<control type="button" id="1305">
+					<ondown>1401</ondown>
 					<onleft>1304</onleft>
-					<onright>1306</onright>
+					<onright condition="Control.IsVisible(1206)">1306</onright>
+					<onright condition="!Control.IsVisible(1206)">1309</onright>
 					<left>28</left><top>0</top><width>220</width><height>220</height>
 					<texturefocus border="28" colordiffuse="$INFO[Window(Home).Property(korie.p.5.colour)]">korie/r28.png</texturefocus>
 					<texturenofocus border="28" colordiffuse="$INFO[Window(Home).Property(korie.p.5.colour)]">korie/r28.png</texturenofocus>
@@ -287,16 +298,18 @@
 				</control>
 			</control>
 			<control type="group" id="1206">
-				<width>276</width><height>320</height>
+				<top>30</top><width>276</width><height>320</height>
 				<visible>!String.IsEmpty(Window(Home).Property(korie.p.6.name))</visible>
 				<control type="image">
-					<left>18</left><top>-10</top><width>240</width><height>240</height>
-					<texture border="32" colordiffuse="korie_accent">korie/ring28.png</texture>
+					<left>14</left><top>-14</top><width>248</width><height>248</height>
+					<texture border="48" colordiffuse="korie_accent">korie/ring42.png</texture>
 					<visible>Control.HasFocus(1306)</visible>
 				</control>
 				<control type="button" id="1306">
+					<ondown>1401</ondown>
 					<onleft>1305</onleft>
-					<onright>1307</onright>
+					<onright condition="Control.IsVisible(1207)">1307</onright>
+					<onright condition="!Control.IsVisible(1207)">1309</onright>
 					<left>28</left><top>0</top><width>220</width><height>220</height>
 					<texturefocus border="28" colordiffuse="$INFO[Window(Home).Property(korie.p.6.colour)]">korie/r28.png</texturefocus>
 					<texturenofocus border="28" colordiffuse="$INFO[Window(Home).Property(korie.p.6.colour)]">korie/r28.png</texturenofocus>
@@ -339,16 +352,18 @@
 				</control>
 			</control>
 			<control type="group" id="1207">
-				<width>276</width><height>320</height>
+				<top>30</top><width>276</width><height>320</height>
 				<visible>!String.IsEmpty(Window(Home).Property(korie.p.7.name))</visible>
 				<control type="image">
-					<left>18</left><top>-10</top><width>240</width><height>240</height>
-					<texture border="32" colordiffuse="korie_accent">korie/ring28.png</texture>
+					<left>14</left><top>-14</top><width>248</width><height>248</height>
+					<texture border="48" colordiffuse="korie_accent">korie/ring42.png</texture>
 					<visible>Control.HasFocus(1307)</visible>
 				</control>
 				<control type="button" id="1307">
+					<ondown>1401</ondown>
 					<onleft>1306</onleft>
-					<onright>1308</onright>
+					<onright condition="Control.IsVisible(1208)">1308</onright>
+					<onright condition="!Control.IsVisible(1208)">1309</onright>
 					<left>28</left><top>0</top><width>220</width><height>220</height>
 					<texturefocus border="28" colordiffuse="$INFO[Window(Home).Property(korie.p.7.colour)]">korie/r28.png</texturefocus>
 					<texturenofocus border="28" colordiffuse="$INFO[Window(Home).Property(korie.p.7.colour)]">korie/r28.png</texturenofocus>
@@ -391,15 +406,17 @@
 				</control>
 			</control>
 			<control type="group" id="1208">
-				<width>276</width><height>320</height>
+				<top>30</top><width>276</width><height>320</height>
 				<visible>!String.IsEmpty(Window(Home).Property(korie.p.8.name))</visible>
 				<control type="image">
-					<left>18</left><top>-10</top><width>240</width><height>240</height>
-					<texture border="32" colordiffuse="korie_accent">korie/ring28.png</texture>
+					<left>14</left><top>-14</top><width>248</width><height>248</height>
+					<texture border="48" colordiffuse="korie_accent">korie/ring42.png</texture>
 					<visible>Control.HasFocus(1308)</visible>
 				</control>
 				<control type="button" id="1308">
+					<ondown>1401</ondown>
 					<onleft>1307</onleft>
+					<onright>1309</onright>
 					<left>28</left><top>0</top><width>220</width><height>220</height>
 					<texturefocus border="28" colordiffuse="$INFO[Window(Home).Property(korie.p.8.colour)]">korie/r28.png</texturefocus>
 					<texturenofocus border="28" colordiffuse="$INFO[Window(Home).Property(korie.p.8.colour)]">korie/r28.png</texturenofocus>
@@ -441,9 +458,53 @@
 					<visible>Control.HasFocus(1308)</visible>
 				</control>
 			</control>
+			<!-- Add person (an admin says who they are first) -->
+			<control type="group" id="1209">
+				<top>30</top><width>276</width><height>320</height>
+				<visible>!String.IsEmpty(Window(Home).Property(korie.p.1.name))</visible>
+				<control type="image">
+					<left>14</left><top>-14</top><width>248</width><height>248</height>
+					<texture border="48" colordiffuse="korie_accent">korie/ring42.png</texture>
+					<visible>Control.HasFocus(1309)</visible>
+				</control>
+				<control type="button" id="1309">
+					<onleft condition="Control.IsVisible(1208)">1308</onleft>
+					<onleft condition="!Control.IsVisible(1208) + Control.IsVisible(1207)">1307</onleft>
+					<onleft condition="!Control.IsVisible(1207) + Control.IsVisible(1206)">1306</onleft>
+					<onleft condition="!Control.IsVisible(1206) + Control.IsVisible(1205)">1305</onleft>
+					<onleft condition="!Control.IsVisible(1205) + Control.IsVisible(1204)">1304</onleft>
+					<onleft condition="!Control.IsVisible(1204) + Control.IsVisible(1203)">1303</onleft>
+					<onleft condition="!Control.IsVisible(1203) + Control.IsVisible(1202)">1302</onleft>
+					<onleft condition="!Control.IsVisible(1202)">1301</onleft>
+					<ondown>1401</ondown>
+					<left>28</left><top>0</top><width>220</width><height>220</height>
+					<texturefocus colordiffuse="korie_soft">korie/dashed28.png</texturefocus>
+					<texturenofocus colordiffuse="korie_soft60">korie/dashed28.png</texturenofocus>
+					<label />
+					<onclick>RunPlugin(plugin://plugin.video.korie/?a=addperson)</onclick>
+				</control>
+				<control type="image">
+					<left>114</left><top>86</top><width>48</width><height>48</height>
+					<texture colordiffuse="korie_soft">korie/icon-plus.png</texture>
+				</control>
+				<control type="label">
+					<left>0</left><top>240</top><width>276</width><height>50</height>
+					<align>center</align><font>korie_body36</font>
+					<textcolor>korie_soft</textcolor>
+					<label>Add person</label>
+					<visible>!Control.HasFocus(1309)</visible>
+				</control>
+				<control type="label">
+					<left>0</left><top>240</top><width>276</width><height>50</height>
+					<align>center</align><font>korie_body36</font>
+					<textcolor>korie_ink</textcolor>
+					<label>Add person</label>
+					<visible>Control.HasFocus(1309)</visible>
+				</control>
+			</control>
 			<!-- nobody to show (no server yet, or it didn't answer) -->
 			<control type="button" id="1400">
-				<width>360</width><height>84</height>
+				<top>30</top><width>360</width><height>84</height>
 				<align>center</align><aligny>center</aligny>
 				<font>korie_body28</font>
 				<textcolor>korie_ink</textcolor>
@@ -455,11 +516,23 @@
 				<visible>String.IsEmpty(Window(Home).Property(korie.p.1.name))</visible>
 			</control>
 		</control>
+		<!-- Manage people: Settings › People, once an admin has said who they are -->
+		<control type="button" id="1401">
+			<left>838</left><top>760</top><width>244</width><height>68</height>
+			<align>center</align><aligny>center</aligny>
+			<font>korie_body26</font><textcolor>korie_ink</textcolor><focusedcolor>korie_onaccent</focusedcolor>
+			<texturefocus border="34,0,34,0" colordiffuse="korie_accent">korie/pill72.png</texturefocus>
+			<texturenofocus border="34,0,34,0" colordiffuse="korie_soft60">korie/pillring68.png</texturenofocus>
+			<label>Manage people</label>
+			<onup>1301</onup>
+			<onclick>RunPlugin(plugin://plugin.video.korie/?a=managepeople&amp;signedout=1)</onclick>
+			<visible>!String.IsEmpty(Window(Home).Property(korie.p.1.name))</visible>
+		</control>
 		<control type="label">
 			<left>0</left><top>990</top><width>1920</width><height>40</height>
 			<align>center</align>
 			<font>korie_body22</font><textcolor>korie_dim</textcolor>
-			<label>People, PINs and what each may watch are set on the Korie server.</label>
+			<label>This TV can also sign in as one person by itself: Settings, This device.</label>
 		</control>
 	</controls>
 </window>

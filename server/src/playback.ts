@@ -155,7 +155,14 @@ export function parseCaps(q: string | undefined): Caps {
 }
 
 const TEXT_SUBS = new Set(["subrip", "ass", "ssa", "webvtt", "mov_text", "text", "srt"]);
-const LANG: Record<string, string> = { dan: "Dansk", da: "Dansk", eng: "English", en: "English", swe: "Svenska", sv: "Svenska", nor: "Norsk", nob: "Norsk", no: "Norsk", ger: "Deutsch", deu: "Deutsch", de: "Deutsch", fre: "Français", fra: "Français", fr: "Français", spa: "Español", es: "Español", ita: "Italiano", it: "Italiano", fin: "Suomi", fi: "Suomi", dut: "Nederlands", nld: "Nederlands", nl: "Nederlands", jpn: "日本語", ja: "日本語", por: "Português", pt: "Português", pol: "Polski", pl: "Polski" };
+const LANG: Record<string, string> = { dan: "Dansk", da: "Dansk", eng: "English", en: "English", swe: "Svenska", sv: "Svenska", nor: "Norsk", nob: "Norsk", no: "Norsk", ger: "Deutsch", deu: "Deutsch", de: "Deutsch", fre: "Français", fra: "Français", fr: "Français", spa: "Español", es: "Español", ita: "Italiano", it: "Italiano", fin: "Suomi", fi: "Suomi", dut: "Nederlands", nld: "Nederlands", nl: "Nederlands", jpn: "日本語", ja: "日本語", por: "Português", pt: "Português", pol: "Polski", pl: "Polski", kor: "한국어", ko: "한국어", chi: "中文", zho: "中文", zh: "中文" };
+
+/** Whether two language codes are the same language (eng/en, ger/deu/de ...). */
+export function sameLang(a: string, b: string): boolean {
+  if (!a || !b) return false;
+  const na = langName(a), nb = langName(b);
+  return a.toLowerCase() === b.toLowerCase() || (!!na && na === nb);
+}
 
 export function langName(code: string): string {
   return LANG[code.toLowerCase()] ?? (code && code !== "und" ? code : "");
@@ -182,8 +189,12 @@ function codecOk(c: string, caps: string[]): boolean {
   return caps.includes(name);
 }
 
+/** A person's languages: audio to pick first ("" = the file's own), subtitles ("" = the file's own
+ *  choice, "off", or a language shown when the audio isn't in it). */
+export interface Prefs { audio: string; subs: string }
+
 /** How a source plays for these client abilities. audio: chosen audio stream index; burn: picture subtitle index. */
-export async function plan(src: Source, caps: Caps, audio: number | null, burn: number | null, subFiles: string[], extraSubs: { url: string; title: string; language: string; default: boolean }[]): Promise<Plan> {
+export async function plan(src: Source, caps: Caps, audio: number | null, burn: number | null, subFiles: string[], extraSubs: { url: string; title: string; language: string; default: boolean }[], prefs: Prefs = { audio: "", subs: "" }): Promise<Plan> {
   const tok = token(src);
   let p: Probe;
   try {
@@ -198,6 +209,11 @@ export async function plan(src: Source, caps: Caps, audio: number | null, burn: 
   }
   const v = p.streams.find((s) => s.type === "video");
   const auds = p.streams.filter((s) => s.type === "audio");
+  if (audio === null && prefs.audio) {
+    // the person's language, when the file has it
+    const mine = auds.find((a) => sameLang(a.lang, prefs.audio));
+    if (mine && mine !== (auds.find((a) => a.isDefault) ?? auds[0])) audio = mine.index;
+  }
   const chosenAudio = audio !== null ? auds.find((a) => a.index === audio) ?? null : (auds.find((a) => a.isDefault) ?? auds[0] ?? null);
   const subsIn = p.streams.filter((s) => s.type === "subtitle");
   const live = !!src.live || (!!src.url && !p.duration);
@@ -217,6 +233,8 @@ export async function plan(src: Source, caps: Caps, audio: number | null, burn: 
     subs.push({ id: "x" + crypto.createHash("md5").update(x.url).digest("hex").slice(0, 8), label: x.title || langName(x.language) || "Subtitles", lang: x.language, isDefault: x.default, url: `/api/subs/${token({ url: x.url })}/file.vtt` });
   }
 
+  pickSubs(subs, chosenAudio?.lang ?? "", prefs.subs);
+
   const audioTracks: Track[] = auds.map((a) => ({ id: String(a.index), label: audioLabel(a), lang: a.lang, isDefault: a === chosenAudio }));
   const container = p.container;
   const containerOk = (MP4ISH.test(container) && caps.containers.includes("mp4")) || (container.startsWith("matroska,webm") && caps.containers.includes("webm") && (!v || ["vp8", "vp9", "av1"].includes(v.codec)));
@@ -235,6 +253,18 @@ export async function plan(src: Source, caps: Caps, audio: number | null, burn: 
     url: direct ? `/api/media/${tok}` : `/api/stream/${tok}?${q.toString()}`,
     duration: p.duration, live, seekable: !live, audio: audioTracks, audioIndex: chosenAudio?.index ?? null, subs, why,
   };
+}
+
+/** Marks the subtitles to start with (isDefault) by the person's choice: none when it's "off" or
+ *  the audio is already in their language, else the first in their language. Forced subtitles
+ *  (for the odd foreign line) stay on. "" leaves the file's own choice. */
+export function pickSubs(subs: { lang: string; isDefault: boolean; burn?: boolean; label: string }[], audioLang: string, pref: string): void {
+  if (!pref) return;
+  const forced = (s: { label: string }) => /forced/i.test(s.label);
+  for (const s of subs) if (!forced(s)) s.isDefault = false;
+  if (pref === "off" || sameLang(audioLang, pref)) return;
+  const mine = subs.find((s) => !s.burn && !forced(s) && sameLang(s.lang, pref)) ?? subs.find((s) => !forced(s) && sameLang(s.lang, pref));
+  if (mine) mine.isDefault = true;
 }
 
 /** Where a copied (not converted) stream really starts when asked to start at t: the key frame before it. */

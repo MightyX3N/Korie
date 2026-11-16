@@ -47,6 +47,22 @@ def save_state(state):
     os.replace(tmp, STATE_FILE)
 
 
+def device_id():
+    """This Kodi's own id, so an admin can let it sign in as one person by itself (People)."""
+    state = load_state()
+    d = state.get("device", "")
+    if not (isinstance(d, str) and 8 <= len(d) <= 64 and d.isalnum()):
+        d = os.urandom(16).hex()
+        state["device"] = d
+        save_state(state)
+    return d
+
+
+def device_name():
+    name = xbmc.getInfoLabel("System.FriendlyName") or "this device"
+    return name if name.lower().startswith("kodi") else "Kodi on " + name
+
+
 # --- finding servers -------------------------------------------------------------------
 
 def discover(wait=1.5):
@@ -103,21 +119,38 @@ class Server:
         self.url = url.rstrip("/")
         self.token = token
 
-    def call(self, path, body=None, timeout=20):
-        headers = {"Content-Type": "application/json", "User-Agent": "KorieKodi"}
+    def call(self, path, body=None, timeout=20, method=None):
+        headers = {"User-Agent": "KorieKodi"}
         if self.token:
             headers["Authorization"] = "Bearer " + self.token
         data = json.dumps(body).encode("utf-8") if body is not None else None
-        req = urllib.request.Request(self.url + path, data=data, headers=headers)
+        if data is not None:
+            headers["Content-Type"] = "application/json"
+        req = urllib.request.Request(self.url + path, data=data, headers=headers, method=method)
         try:
             with urllib.request.urlopen(req, timeout=timeout) as r:
-                return json.loads(r.read().decode("utf-8"))
+                raw = r.read().decode("utf-8")
+                return json.loads(raw) if raw else {}
         except urllib.error.HTTPError as e:
             try:
                 msg = json.loads(e.read().decode("utf-8")).get("error") or e.reason
             except ValueError:
                 msg = e.reason
             raise KorieError(str(msg), e.code)
+        except (urllib.error.URLError, socket.timeout, OSError) as e:
+            log("%s%s: %s" % (self.url, path, getattr(e, "reason", e)))
+            raise KorieError("The Korie server (%s) can't be reached. Is it on?" % self.url.split("://")[-1])
+
+    def fetch(self, path, timeout=60):
+        """A file from the server, as bytes."""
+        headers = {"User-Agent": "KorieKodi"}
+        if self.token:
+            headers["Authorization"] = "Bearer " + self.token
+        try:
+            with urllib.request.urlopen(urllib.request.Request(self.url + path, headers=headers), timeout=timeout) as r:
+                return r.read()
+        except urllib.error.HTTPError as e:
+            raise KorieError("The server didn't send %s (%s)." % (path, e.code), e.code)
         except (urllib.error.URLError, socket.timeout, OSError) as e:
             log("%s%s: %s" % (self.url, path, getattr(e, "reason", e)))
             raise KorieError("The Korie server (%s) can't be reached. Is it on?" % self.url.split("://")[-1])
@@ -197,7 +230,7 @@ def choose_profile(server):
         if i < 0:
             return "", None
         person = people[i]
-    body = {"person": person["id"], "device": "Kodi on " + (xbmc.getInfoLabel("System.FriendlyName") or "this device")}
+    body = {"person": person["id"], "device": device_name(), "deviceId": device_id()}
     if person.get("hasPin"):
         pin = xbmcgui.Dialog().numeric(0, "PIN for %s" % person["name"], "", True)
         if not pin:
@@ -224,15 +257,16 @@ def server_only(force=False):
     if not url:
         return None
     if url != state.get("server"):
-        state = {k: v for k, v in state.items() if k in ("skin_applied", "kodi_setup", "theme")}
+        state = {k: v for k, v in state.items() if k in ("skin_applied", "kodi_setup", "theme", "device")}
         state["server"] = url
         save_state(state)
     return Server(url, state.get("token", ""))
 
 
-def sign_in(server, person):
-    """Signs in as a person, asking for their PIN (or password) when they have one."""
-    body = {"person": person["id"], "device": "Kodi on " + (xbmc.getInfoLabel("System.FriendlyName") or "this device")}
+def sign_in(server, person, keep=True):
+    """Signs in as a person, asking for their PIN (or password) when they have one. keep=False:
+    only for now (an admin saying who they are), this screen stays signed in as it was."""
+    body = {"person": person["id"], "device": device_name(), "deviceId": device_id()}
     got = {}
 
     def attempt(pin=None):
@@ -268,13 +302,32 @@ def sign_in(server, person):
         error = attempt()
         if error:
             xbmcgui.Dialog().notification("Korie", error, xbmcgui.NOTIFICATION_WARNING, 4000)
-    r = got["r"]
+    if keep:
+        remember(server, got["r"], person)
+    else:
+        server.token = got["r"]["token"]
+    return True
+
+
+def auto_sign_in(server):
+    """When an admin set this Kodi to sign in as someone by itself: that person, else None."""
+    try:
+        r = server.call("/api/auto", {"device": device_name(), "deviceId": device_id()})
+    except KorieError as e:
+        log(e)
+        return None
+    if not r.get("token"):
+        return None
+    remember(server, r, r["person"])
+    return r["person"]
+
+
+def remember(server, r, person):
     server.token = r["token"]
     state = load_state()
     state.update({"server": server.url, "token": r["token"], "person": person["id"], "name": person["name"], "color": person.get("color", "")})
     save_state(state)
     ADDON.setSetting("profile_name", person["name"])
-    return True
 
 
 def connect(force_server=False, force_profile=False):

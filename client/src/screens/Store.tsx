@@ -1,7 +1,7 @@
 // The Store: add-ons to get, the ones you have, and each add-on's page with
 // its settings.
 import { useState } from "react";
-import { ChevronLeft, Download, Power, Trash2, RefreshCw, Gamepad2, Clapperboard, Puzzle, KeyRound, List, Type } from "lucide-react";
+import { ChevronLeft, Download, Power, Trash2, RefreshCw, Gamepad2, Clapperboard, Puzzle, KeyRound, List, Type, Palette } from "lucide-react";
 import { api } from "../api.ts";
 import { F, G, useFocusOnMount } from "../focus.tsx";
 import { useData } from "../data.ts";
@@ -32,17 +32,18 @@ function state(a: Addon): string {
 
 export function Store({ me }: { me: Me }) {
   const nav = useNav();
-  const tab = nav.top.params.tab ?? "store";
+  const tab = nav.top.params.tab ?? "installed";
   const { data } = useData<{ addons: Addon[]; store: { loading: boolean; error: string } }>("/api/addons", ["store", "addons"]);
-  const list = (data?.addons ?? []).filter((a) => (tab === "store" ? !a.builtin : a.installed));
+  const list = (data?.addons ?? []).filter((a) => (tab === "store" ? !a.installed : a.installed));
   return (
     <div className="page">
-      <Top title="Store" />
+      <Top title="Add-ons" />
       <G fk="store-tabs" className="pills">
-        {[["store", "Store"], ["installed", `Installed · ${(data?.addons ?? []).filter((a) => a.installed).length}`]].map(([id, label]) => (
+        {[["installed", `Installed · ${(data?.addons ?? []).filter((a) => a.installed).length}`], ["store", "Get more"], ["themes", "Themes"]].map(([id, label]) => (
           <F key={id} fk={`store-tab-${id}`} className={"pill" + (tab === id ? " on" : "")} onEnter={() => nav.replace({ tab: id })}>{label}</F>
         ))}
       </G>
+      {tab === "themes" ? <Themes me={me} /> : <>
       <G fk={`store-list-${tab}`} className="tiles">
         {list.map((a) => (
           <F key={a.id} fk={`addon-${a.id}`} className="tile" onEnter={() => nav.push("addon", { id: a.id })}>
@@ -54,9 +55,47 @@ export function Store({ me }: { me: Me }) {
           </F>
         ))}
       </G>
-      <Status text={data?.store.error || (data && !list.length ? (tab === "store" ? (data.store.loading ? "Loading the Store…" : "The Store is empty.") : "No add-ons installed.") : "")} />
-      {!me.person.admin && <p className="note">Only an admin can get, turn on or set up add-ons.</p>}
+      <Status text={data?.store.error || (data && !list.length ? (tab === "store" ? (data.store.loading ? "Loading the Store…" : "You have everything in the Store.") : "No add-ons installed.") : "")} />
+      {!me.person.canInstall && <p className="note">Ask an admin to let you get and turn on add-ons.</p>}
+      </>}
     </div>
+  );
+}
+
+interface ThemeView { id: string; name: string; version: string; author: string; description: string; builtin?: boolean; installed: boolean; update?: boolean }
+
+/** Themes: how Korie looks on the TVs (in Kodi). Each TV chooses its own in its settings. */
+function Themes({ me }: { me: Me }) {
+  const ui = useUI();
+  const { data, reload } = useData<{ themes: ThemeView[]; store: ThemeView[] }>("/api/themes", ["themes", "store"]);
+  const act = async (t: ThemeView) => {
+    if (!me.person.canInstall) return;
+    if (!t.installed || t.update) {
+      ui.toast(`Getting ${t.name}…`);
+      await api("/api/theme/install", { id: t.id }).then(() => ui.toast(`${t.name} is on the server. Choose it on a TV under Settings › Theme.`)).catch((e) => ui.message("Couldn't get it", e.message));
+    } else if (!t.builtin) {
+      const ok = await ui.ask(`Remove ${t.name}?`, "TVs that use it keep it until they choose another.", [{ label: "Remove", value: "yes", danger: true }, { label: "Keep it", value: "no", primary: true }]);
+      if (ok === "yes") await api("/api/theme/remove", { id: t.id }).catch((e) => ui.toast(e.message));
+    }
+    reload();
+  };
+  const all = [...(data?.themes ?? []), ...(data?.store ?? [])];
+  return (
+    <>
+      <G fk="store-list-themes" className="tiles">
+        {all.map((t) => (
+          <F key={t.id} fk={`theme-${t.id}`} className="tile" onEnter={() => act(t)}>
+            <div className="head">
+              <span className="ico"><Palette /></span>
+              <div><h3>{t.name}</h3><small>{t.builtin ? "Comes with Korie" : t.update ? "Update ready" : t.installed ? "On the server" : "Get"}{t.version ? ` · ${t.version}` : ""}</small></div>
+            </div>
+            <p>{t.description || (t.author ? `By ${t.author}` : "")}</p>
+          </F>
+        ))}
+      </G>
+      <Status text={data && !all.length ? "No themes yet." : ""} />
+      <p className="note">Themes change how Korie looks on the TVs. Each TV picks its own under Settings › Theme.</p>
+    </>
   );
 }
 
@@ -119,8 +158,9 @@ export function AddonInfo({ id, me }: { id: string; me: Me }) {
   };
 
   const admin = me.person.admin;
+  const may = me.person.canInstall;
   const buttons: { fk: string; label: string; icon: JSX.Element; act: () => void; primary?: boolean; danger?: boolean }[] = [];
-  if (admin && !a.error) {
+  if (may && !a.error) {
     if (!a.installed) buttons.push({ fk: "addon-main", label: a.busy || busy ? "Getting it…" : "Get", icon: <Download />, act: get, primary: true });
     else {
       if (a.status === "update") buttons.push({ fk: "addon-main", label: "Update", icon: <Download />, act: async () => { if (await run("install")) ui.toast(`${a.name} updated`); }, primary: true });

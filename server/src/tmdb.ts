@@ -4,6 +4,7 @@
 import { builtInTmdbKey } from "./config.ts";
 import { setting } from "./db.ts";
 import { fetchJson } from "./net.ts";
+import * as ages from "./ages.ts";
 
 const API = "https://api.themoviedb.org/3/";
 const IMG = "https://image.tmdb.org/t/p/";
@@ -36,6 +37,8 @@ export interface Cast { name: string; role: string; photo: string }
 export interface FilmDetails {
   tmdb: number; title: string; original: string; year: string; runtime: number; genres: string[];
   overview: string; rating: number; director: string; cast: Cast[]; poster: string; backdrop: string; logo?: string;
+  /** the age rating ("DK 11") and the age it means; empty / null when TMDb has none */
+  cert: string; age: number | null;
 }
 
 function cast(d: any): Cast[] {
@@ -43,14 +46,16 @@ function cast(d: any): Cast[] {
 }
 
 export async function film(id: number): Promise<FilmDetails | null> {
-  const d = await get(`movie/${id}`, { append_to_response: "credits" });
+  const d = await get(`movie/${id}`, { append_to_response: "credits,release_dates" });
   if (!d?.id) return null;
+  const rated = ages.pick((d.release_dates?.results ?? []).flatMap((r: any) =>
+    (r.release_dates ?? []).map((x: any) => ({ country: r.iso_3166_1, cert: String(x.certification ?? "").trim() }))));
   const directors = (d.credits?.crew ?? []).filter((c: any) => c.job === "Director").map((c: any) => c.name);
   return {
     tmdb: d.id, title: d.title ?? "", original: d.original_title ?? "", year: String(d.release_date ?? "").slice(0, 4),
     runtime: d.runtime ?? 0, genres: (d.genres ?? []).map((g: any) => g.name), overview: d.overview ?? "",
     rating: Math.round((d.vote_average ?? 0) * 10) / 10, director: directors.join(", "), cast: cast(d),
-    poster: image(d.poster_path), backdrop: image(d.backdrop_path),
+    poster: image(d.poster_path), backdrop: image(d.backdrop_path), cert: rated?.cert ?? "", age: rated?.age ?? null,
   };
 }
 
@@ -109,16 +114,17 @@ export interface EpisodeInfo { title: string; overview: string; runtime: number;
 
 export interface SeriesDetails {
   tmdb: number; title: string; year: string; genres: string[]; overview: string; rating: number;
-  cast: Cast[]; poster: string; backdrop: string; seasons: Record<number, { title: string; poster: string; episodes: Record<number, EpisodeInfo> }>;
+  cast: Cast[]; poster: string; backdrop: string; cert: string; age: number | null; seasons: Record<number, { title: string; poster: string; episodes: Record<number, EpisodeInfo> }>;
 }
 
 export async function series(id: number): Promise<SeriesDetails | null> {
-  const d = await get(`tv/${id}`, { append_to_response: "credits" });
+  const d = await get(`tv/${id}`, { append_to_response: "credits,content_ratings" });
   if (!d?.id) return null;
+  const rated = ages.pick((d.content_ratings?.results ?? []).map((r: any) => ({ country: r.iso_3166_1, cert: String(r.rating ?? "").trim() })));
   const v: SeriesDetails = {
     tmdb: d.id, title: d.name ?? "", year: String(d.first_air_date ?? "").slice(0, 4), genres: (d.genres ?? []).map((g: any) => g.name),
     overview: d.overview ?? "", rating: Math.round((d.vote_average ?? 0) * 10) / 10, cast: cast(d),
-    poster: image(d.poster_path), backdrop: image(d.backdrop_path), seasons: {},
+    poster: image(d.poster_path), backdrop: image(d.backdrop_path), seasons: {}, cert: rated?.cert ?? "", age: rated?.age ?? null,
   };
   await Promise.all((d.seasons ?? []).map(async (s: any) => {
     const sn = Number(s.season_number ?? 0);
@@ -131,3 +137,15 @@ export async function series(id: number): Promise<SeriesDetails | null> {
   }));
   return v;
 }
+
+/** The posters TMDb has for a film or series (the details' language, English and textless first). */
+export async function posters(kind: "film" | "series", id: number): Promise<{ url: string; lang: string; width: number; height: number }[]> {
+  const lang = String(setting("language") || "en-US").slice(0, 2);
+  const r = await get(`${kind === "film" ? "movie" : "tv"}/${id}/images`, { include_image_language: `${lang},en,null` });
+  const order = (l: string | null) => (l === lang ? 0 : l === null ? 1 : l === "en" ? 2 : 3);
+  return ((r?.posters ?? []) as any[])
+    .sort((a, b) => order(a.iso_639_1) - order(b.iso_639_1) || (b.vote_average ?? 0) - (a.vote_average ?? 0))
+    .slice(0, 24)
+    .map((p) => ({ url: image(p.file_path, "w780"), lang: p.iso_639_1 ?? "", width: p.width ?? 0, height: p.height ?? 0 }));
+}
+

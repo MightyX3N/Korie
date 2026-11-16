@@ -3,7 +3,8 @@
      while paused. When it shows is Kodi's (the same as Estuary); the look is Korie's. Kodi moves
      slider 401 while you seek. -->
 <window>
-	<visible>Window.IsActive(fullscreenvideo) | Window.IsActive(visualisation)</visible>
+	<!-- films only: music has its own Now playing screen (MusicVisualisation.xml) -->
+	<visible>Window.IsActive(fullscreenvideo)</visible>
 	<visible>![Window.IsActive(sliderdialog) | Window.IsActive(pvrosdchannels) | Window.IsActive(pvrchannelguide) | Window.IsActive(pvrguideinfo) | Window.IsActive(1110)]</visible>
 	<visible>Player.Seeking | Player.HasPerformedSeek(3) | [Player.Paused + !Player.Caching] | Player.Forwarding | Player.Rewinding | Player.ShowInfo | Window.IsActive(fullscreeninfo) | Player.ShowTime | Window.IsActive(videoosd) | Window.IsActive(musicosd) | Window.IsActive(playerprocessinfo) | !String.IsEmpty(Player.SeekNumeric)</visible>
 	<depth>DepthOSD</depth>

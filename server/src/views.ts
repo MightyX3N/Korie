@@ -6,6 +6,8 @@ import * as lib from "./library.ts";
 import * as browse from "./addons/browse.ts";
 import * as addons from "./addons/manager.ts";
 import type { Person } from "./people.ts";
+import * as ages from "./ages.ts";
+import * as playlists from "./playlists.ts";
 
 export interface Card {
   id: string; kind: string; title: string; subtitle: string; year: string; poster: string; thumb: string; backdrop: string;
@@ -15,6 +17,12 @@ export interface Card {
   cast?: { name: string; role: string; photo: string }[]; position?: number; duration?: number;
   // for a client's options menu: in this person's favourites; in the library (so its details can be fixed)
   favourite?: boolean; local?: boolean;
+  // a song: its length in seconds, its album, and its number on the album
+  length?: number; album?: string; n?: number;
+  /** a film that's a disc folder or image: "dvd", "bluray" or "iso" */
+  disc?: string;
+  /** its age rating, as it was given ("DK 11", "PG-13") */
+  cert?: string;
 }
 
 interface Prog { position: number; duration: number; watched: number; updated: number; snapshot: string | null }
@@ -27,11 +35,51 @@ function frac(p: Prog | null): number {
   return p && p.duration > 0 && !p.watched ? Math.min(1, p.position / p.duration) : 0;
 }
 
+/** Whether this person may see a library thing: their age limit for films and series (an episode
+ *  goes by its series), Music for albums and songs. */
+export function may(person: Person, r: lib.Row): boolean {
+  if (r.kind === "album" || r.kind === "track") return person.music;
+  if (person.maxAge === null || person.maxAge === undefined) return true;
+  const top = r.kind === "episode" ? lib.getRow(r.parent ?? "") : r;
+  return !!top && ages.allows(person.maxAge, lib.data(top).age);
+}
+
+/** An add-on's film or series: one it gave an age rating goes by the person's age limit (episodes
+ *  by their series); one without a rating is shown, as the add-ons each person may use are chosen
+ *  by an admin. */
+export function mayItem(person: Person, a: browse.AItem): boolean {
+  if (person.maxAge === null || person.maxAge === undefined) return true;
+  const top = a.kind === "episode" && a.series ? browse.get(a.series) ?? a : a;
+  return top.age === null || top.age === undefined || ages.allows(person.maxAge, top.age);
+}
+
+/** A playlist as a card: the cover of its first song's album. */
+export function playlistCard(person: Person, pl: playlists.Playlist): Card {
+  const songs = playlists.songs(pl);
+  const album = songs.length ? lib.getRow(songs[0].parent ?? "") : null;
+  const pics = album ? lib.pictures(album) : { poster: "", backdrop: "", thumb: "" };
+  return {
+    id: "playlist:" + pl.id, kind: "playlist", title: pl.name, subtitle: songs.length === 1 ? "1 song" : `${songs.length} songs`, year: "",
+    poster: pics.poster, thumb: pics.thumb, backdrop: pics.backdrop, progress: 0, watched: false, source: "", local: true,
+  };
+}
+
+/** A playlist's page: like an album's, its songs from several albums. */
+export function playlistDetails(person: Person, pl: playlists.Playlist): Record<string, unknown> {
+  const c = playlistCard(person, pl);
+  const tracks = playlists.songs(pl).map((t, i) => {
+    const td = lib.data(t);
+    const al = lib.getRow(t.parent ?? "");
+    return { id: t.id, n: i + 1, title: t.title, artist: td.artist || (al ? lib.data(al).artist : ""), duration: td.duration, album: t.parent, albumTitle: al?.title ?? "", poster: al ? lib.pictures(al).poster : "" };
+  });
+  return { ...c, overview: "", genres: [], rating: 0, runtime: Math.round(tracks.reduce((n, t) => n + (Number(t.duration) || 0), 0) / 60), cast: [], favourite: false, matched: true, artist: "", tracks };
+}
+
 export function card(person: Person, id: string): Card | null {
   const r = lib.getRow(id);
-  if (r) return rowCard(person, r);
+  if (r) return lib.isHidden(r) || !may(person, r) ? null : rowCard(person, r);
   const a = browse.get(id);
-  if (a) return addonCard(person, a);
+  if (a) return mayItem(person, a) ? addonCard(person, a) : null;
   return null;
 }
 
@@ -51,12 +99,18 @@ export function rowCard(person: Person, r: lib.Row): Card {
   } else if (r.kind === "episode") {
     const s = lib.getRow(r.parent ?? "");
     subtitle = `${s?.title ?? ""} · S${d.season}E${d.episode}`;
+  } else if (r.kind === "track") {
+    const al = lib.getRow(r.parent ?? "");
+    subtitle = [d.artist || (al ? lib.data(al).artist : ""), al?.title].filter(Boolean).join(" · ");
   }
   return {
     id: r.id, kind: r.kind, title: r.title, subtitle, year: r.year, poster: pics.poster, thumb: pics.thumb, backdrop: pics.backdrop, progress: frac(p), watched, source: "",
     overview: d.overview ?? d.nfo?.plot ?? "", genres: d.genres ?? d.nfo?.genres ?? [], rating: d.rating ?? d.nfo?.rating ?? 0,
     runtime: d.runtime ?? 0, director: d.director ?? d.nfo?.director ?? "", cast: castView(d.cast).slice(0, 10),
     position: p && !p.watched ? p.position : 0, duration: p?.duration ?? 0, favourite: isFavourite(person, r.id), local: true,
+    ...(d.cert ? { cert: String(d.cert) } : {}),
+    ...(r.kind === "track" ? { length: Number(d.duration) || 0, album: r.parent ?? "", n: Number(d.track) || 0 } : {}),
+    ...(r.kind !== "track" && typeof d.disc === "string" ? { disc: d.disc } : {}),
   };
 }
 
@@ -103,7 +157,7 @@ export function nextUp(person: Person): Card[] {
     const eps = lib.rows("episode", l.series);
     const lastWatched = eps.map((e, i) => (progressOf(person.id, e.id)?.watched ? i : -1)).reduce((a, b) => Math.max(a, b), -1);
     const next = eps[lastWatched + 1];
-    if (next && !progressOf(person.id, next.id)?.position) out.push(rowCard(person, next));
+    if (next && !progressOf(person.id, next.id)?.position && may(person, next)) out.push(rowCard(person, next));
   }
   return out;
 }
@@ -159,6 +213,7 @@ function castView(cast: unknown): { name: string; role: string; photo: string }[
 
 export function details(person: Person, id: string): Record<string, unknown> | null {
   const r = lib.getRow(id);
+  if (r && (lib.isHidden(r) || !may(person, r))) return null;
   if (r) {
     const d = lib.data(r);
     const pics = lib.pictures(r);
@@ -166,7 +221,7 @@ export function details(person: Person, id: string): Record<string, unknown> | n
     const base = {
       id, kind: r.kind, title: r.title, year: r.year, overview: d.overview ?? d.nfo?.plot ?? "", genres: d.genres ?? d.nfo?.genres ?? [],
       rating: d.rating ?? d.nfo?.rating ?? 0, runtime: d.runtime ?? 0, director: d.director ?? d.nfo?.director ?? "", cast: castView(d.cast),
-      ...pics, favourite: isFavourite(person, id), source: "", local: true, matched: !!d.tmdb,
+      ...pics, favourite: isFavourite(person, id), source: "", local: true, matched: !!d.tmdb, cert: d.cert ?? "", age: d.age ?? null,
       position: p && !p.watched ? p.position : 0, duration: p?.duration ?? 0, watched: !!p?.watched,
     };
     if (r.kind === "series") {
@@ -176,7 +231,7 @@ export function details(person: Person, id: string): Record<string, unknown> | n
         const ed = lib.data(e);
         const ep = progressOf(person.id, e.id);
         const list = seasons.get(ed.season) ?? [];
-        list.push({ id: e.id, n: ed.episode, title: e.title, overview: ed.overview ?? "", runtime: ed.runtime ?? 0, thumb: lib.pictures(e).thumb, progress: frac(ep), watched: !!ep?.watched });
+        list.push({ id: e.id, n: ed.episode, title: e.title, overview: ed.overview ?? "", runtime: ed.runtime ?? 0, thumb: lib.pictures(e).thumb, progress: frac(ep), watched: !!ep?.watched, position: ep && !ep.watched ? ep.position : 0, duration: ep?.duration ?? 0 });
         seasons.set(ed.season, list);
       }
       const info = d.seasonInfo ?? {};
@@ -196,7 +251,7 @@ export function details(person: Person, id: string): Record<string, unknown> | n
     return base;
   }
   const a = browse.get(id);
-  if (!a) return null;
+  if (!a || !mayItem(person, a)) return null;
   const p = progressOf(person.id, id);
   return {
     id, kind: a.kind, title: a.title, year: a.year, overview: a.overview, genres: a.genres, rating: a.rating, runtime: a.runtime, director: a.director,
@@ -207,7 +262,7 @@ export function details(person: Person, id: string): Record<string, unknown> | n
       n: s.n, title: s.title || (s.n === 0 ? "Extras" : `Season ${s.n}`),
       episodes: s.episodes.map((e: any) => {
         const ep = progressOf(person.id, e.id);
-        return { id: e.id, n: e.episode ?? 0, title: e.title, overview: e.overview, runtime: e.runtime, thumb: img(e.thumb || e.backdrop), progress: frac(ep), watched: !!ep?.watched };
+        return { id: e.id, n: e.episode ?? 0, title: e.title, overview: e.overview, runtime: e.runtime, thumb: img(e.thumb || e.backdrop), progress: frac(ep), watched: !!ep?.watched, position: ep && !ep.watched ? ep.position : 0, duration: ep?.duration ?? 0 };
       }),
     })),
   };

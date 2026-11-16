@@ -67,7 +67,7 @@
 				<top>222</top><width>1400</width><height>84</height>
 				<orientation>horizontal</orientation>
 				<itemgap>20</itemgap>
-				<ondown>50</ondown>
+				<ondown>noop</ondown>
 				<control type="button" id="109">
 					<width>460</width><height>84</height>
 					<align>center</align><aligny>center</aligny>
@@ -76,9 +76,11 @@
 					<focusedcolor>korie_onaccent</focusedcolor>
 					<texturefocus border="42,0,42,0" colordiffuse="korie_accent">korie/pill84.png</texturefocus>
 					<texturenofocus border="42,0,42,0" colordiffuse="korie_panel">korie/pill84.png</texturenofocus>
-					<label>$INFO[ListItem.Property(korie.resumeat),Resume from ,]</label>
-					<onclick>SendClick(9)</onclick>
-					<visible>ListItem.IsResumable</visible>
+					<!-- always the first button, so focus starts here: Resume when there's somewhere to
+					     resume from (Kodi only knows a moment after the page opens), else Play -->
+					<label>$VAR[KorieFirstButton]</label>
+					<onclick condition="ListItem.IsResumable">SendClick(9)</onclick>
+					<onclick condition="!ListItem.IsResumable">SendClick(8)</onclick>
 				</control>
 				<control type="button" id="108">
 					<width>380</width><height>84</height>
@@ -90,6 +92,7 @@
 					<texturenofocus border="42,0,42,0" colordiffuse="korie_panel">korie/pill84.png</texturenofocus>
 					<label>$VAR[KoriePlayLabel]</label>
 					<onclick>SendClick(8)</onclick>
+					<visible>ListItem.IsResumable</visible>
 				</control>
 				<control type="label">
 					<width>auto</width><height>84</height>
@@ -97,6 +100,15 @@
 					<font>korie_body24</font><textcolor>korie_dim</textcolor>
 					<label>$INFO[ListItem.Property(korie.left)]</label>
 					<visible>ListItem.IsResumable</visible>
+				</control>
+				<!-- more: Korie's options for this film (favourite, watched, which version...) -->
+				<control type="button" id="107">
+					<width>84</width><height>84</height>
+					<texturefocus colordiffuse="korie_accent">korie/more84.png</texturefocus>
+					<texturenofocus colordiffuse="korie_ink40">korie/more84.png</texturenofocus>
+					<label></label>
+					<onclick>RunPlugin(plugin://plugin.video.korie/?a=options)</onclick>
+					<visible>!String.IsEmpty(ListItem.Property(korie.id))</visible>
 				</control>
 			</control>
 
@@ -125,9 +137,12 @@
 			<label>Cast</label>
 			<visible>Integer.IsGreater(Container(50).NumItems,0)</visible>
 		</control>
+		<!-- shown, not chosen: OK on a cast member makes Kodi search its own library for them,
+		     which has nothing from Korie ("No results found") -->
 		<control type="list" id="50">
 			<left>96</left><top>862</top><width>1728</width><height>180</height>
 			<orientation>horizontal</orientation>
+			<enable>false</enable>
 			<onup>100</onup>
 			<scrolltime tween="cubic" easing="out">200</scrolltime>
 			<itemlayout width="300" height="180">

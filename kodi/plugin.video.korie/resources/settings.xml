@@ -17,6 +17,13 @@
           <control type="edit" format="string"><heading>30002</heading></control>
         </setting>
       </group>
+      <group id="2">
+        <setting id="disc_menu" type="boolean" label="30003">
+          <level>0</level>
+          <default>true</default>
+          <control type="toggle"/>
+        </setting>
+      </group>
     </category>
   </section>
 </settings>

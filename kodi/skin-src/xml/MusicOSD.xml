@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Korie: the buttons of Now playing (OK on it): shuffle, back, play or pause, on, repeat. Drawn
+     where MusicVisualisation.xml shows them, with the focus. -->
+<window>
+	<defaultcontrol always="true">703</defaultcontrol>
+	<depth>DepthOSD</depth>
+	<controls>
+		<control type="button">
+			<left>0</left><top>0</top><width>1920</width><height>1080</height>
+			<texturefocus /><texturenofocus />
+			<label />
+			<onclick>Action(close)</onclick>
+		</control>
+		<control type="button" id="701">
+			<left>728</left><top>580</top><width>64</width><height>64</height>
+			<onleft>noop</onleft><onright>702</onright><onup>noop</onup><ondown>noop</ondown>
+			<texturefocus /><texturenofocus />
+			<label />
+			<onclick>PlayerControl(Random)</onclick>
+		</control>
+		<control type="image">
+			<left>728</left><top>580</top><width>64</width><height>64</height>
+			<texture colordiffuse="korie_accent">korie/mask-circle.png</texture>
+			<visible>Control.HasFocus(701)</visible>
+		</control>
+		<control type="image">
+			<left>744</left><top>596</top><width>32</width><height>32</height>
+			<texture colordiffuse="korie_onaccent">korie/icon-shuffle.png</texture>
+			<visible>Control.HasFocus(701)</visible>
+		</control>
+		<control type="button" id="702">
+			<left>814</left><top>572</top><width>80</width><height>80</height>
+			<onleft>701</onleft><onright>703</onright><onup>noop</onup><ondown>noop</ondown>
+			<texturefocus /><texturenofocus />
+			<label />
+			<onclick>PlayerControl(Previous)</onclick>
+		</control>
+		<control type="image">
+			<left>814</left><top>572</top><width>80</width><height>80</height>
+			<texture colordiffuse="korie_accent">korie/mask-circle.png</texture>
+			<visible>Control.HasFocus(702)</visible>
+		</control>
+		<control type="image">
+			<left>837</left><top>595</top><width>34</width><height>34</height>
+			<texture colordiffuse="korie_onaccent">korie/icon-prev.png</texture>
+			<visible>Control.HasFocus(702)</visible>
+		</control>
+		<control type="button" id="703">
+			<left>916</left><top>560</top><width>104</width><height>104</height>
+			<onleft>702</onleft><onright>704</onright><onup>noop</onup><ondown>noop</ondown>
+			<texturefocus /><texturenofocus />
+			<label />
+			<onclick>PlayerControl(Play)</onclick>
+		</control>
+		<control type="image">
+			<left>916</left><top>560</top><width>104</width><height>104</height>
+			<texture colordiffuse="korie_accent">korie/mask-circle.png</texture>
+		</control>
+		<control type="image">
+			<left>910</left><top>554</top><width>116</width><height>116</height>
+			<texture colordiffuse="korie_ink">korie/ring-circle.png</texture>
+			<visible>Control.HasFocus(703)</visible>
+		</control>
+		<control type="image">
+			<left>946</left><top>590</top><width>44</width><height>44</height>
+			<texture colordiffuse="korie_onaccent">$VAR[KoriePlayPauseIcon]</texture>
+		</control>
+		<control type="button" id="704">
+			<left>1042</left><top>572</top><width>80</width><height>80</height>
+			<onleft>703</onleft><onright>705</onright><onup>noop</onup><ondown>noop</ondown>
+			<texturefocus /><texturenofocus />
+			<label />
+			<onclick>PlayerControl(Next)</onclick>
+		</control>
+		<control type="image">
+			<left>1042</left><top>572</top><width>80</width><height>80</height>
+			<texture colordiffuse="korie_accent">korie/mask-circle.png</texture>
+			<visible>Control.HasFocus(704)</visible>
+		</control>
+		<control type="image">
+			<left>1065</left><top>595</top><width>34</width><height>34</height>
+			<texture colordiffuse="korie_onaccent">korie/icon-next.png</texture>
+			<visible>Control.HasFocus(704)</visible>
+		</control>
+		<control type="button" id="705">
+			<left>1144</left><top>580</top><width>64</width><height>64</height>
+			<onleft>704</onleft><onright>noop</onright><onup>noop</onup><ondown>noop</ondown>
+			<texturefocus /><texturenofocus />
+			<label />
+			<onclick>PlayerControl(Repeat)</onclick>
+		</control>
+		<control type="image">
+			<left>1144</left><top>580</top><width>64</width><height>64</height>
+			<texture colordiffuse="korie_accent">korie/mask-circle.png</texture>
+			<visible>Control.HasFocus(705)</visible>
+		</control>
+		<control type="image">
+			<left>1160</left><top>596</top><width>32</width><height>32</height>
+			<texture colordiffuse="korie_onaccent">korie/icon-repeat.png</texture>
+			<visible>Control.HasFocus(705)</visible>
+		</control>
+	</controls>
+</window>

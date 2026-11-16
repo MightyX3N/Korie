@@ -86,8 +86,11 @@ edit("xml/Includes.xml", includes)
 
 
 
-# none of Home's row lists (5<row><1 wide, 2 poster, 3 square>) is loading
-ROWS_IDLE = " + ".join("!Container(5%d%d).IsUpdating" % (n, k) for n in range(1, 9) for k in (1, 2, 3))
+# none of Home's shown row lists (5<row><1 wide, 2 poster, 3 square>) is loading; a hidden list
+# never loads, so only the one of each row's kind counts
+ROWS_IDLE = " + ".join(
+    "[!String.IsEqual(Window(Home).Property(korie.row.%d.kind),%s) | !Container(5%d%d).IsUpdating]" % (n, kind, n, k)
+    for n in range(1, 9) for k, kind in ((1, "wide"), (2, "poster"), (3, "square")))
 
 
 def timers(s):
