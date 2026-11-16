@@ -18,6 +18,8 @@ export interface Person {
    *  isn't in this language ("off" = none, "" = as the file says) */
   audio: string;
   subs: string;
+  /** an episode's intro: a Skip button while it plays, skipped by itself, or neither */
+  skipIntro: "button" | "auto" | "off";
   /** may see Music; may install and turn add-ons and themes on and off; may remove things from the library */
   music: boolean;
   canInstall: boolean;
@@ -46,12 +48,13 @@ interface Row {
 }
 
 function view(r: Row): Person {
-  const pb = json<{ audio?: string; subs?: string }>(r.playback, {});
+  const pb = json<{ audio?: string; subs?: string; skipIntro?: string }>(r.playback, {});
   const pm = json<Perms>(r.perms, {});
   return {
     id: r.id, name: r.name, color: r.color, hasPin: !!r.pin, admin: !!r.admin,
     canSettings: !!r.admin || !!r.can_settings, addons: json(r.addons, "all"),
     audio: pb.audio ?? "", subs: pb.subs ?? "",
+    skipIntro: pb.skipIntro === "auto" || pb.skipIntro === "off" ? pb.skipIntro : "button",
     music: pm.music ?? true,
     canInstall: !!r.admin || !!pm.canInstall,
     canDelete: !!r.admin || (pm.canDelete ?? !!r.can_settings),
@@ -62,11 +65,12 @@ function view(r: Row): Person {
 }
 
 /** A person's audio and subtitle languages ("" = the film's own audio / no subtitles). */
-export function setPlayback(id: string, change: { audio?: string; subs?: string }): Person | null {
+export function setPlayback(id: string, change: { audio?: string; subs?: string; skipIntro?: string }): Person | null {
   const p = get(id);
   if (!p) return null;
   const ok = (c: unknown) => c === "" || LANGUAGES.some(([code]) => code === c);
-  const next = { audio: p.audio, subs: p.subs };
+  const next = { audio: p.audio, subs: p.subs, skipIntro: p.skipIntro as string };
+  if (change.skipIntro !== undefined && ["button", "auto", "off"].includes(change.skipIntro)) next.skipIntro = change.skipIntro;
   if (change.audio !== undefined && ok(change.audio)) next.audio = change.audio;
   if (change.subs !== undefined && (ok(change.subs) || change.subs === "off")) next.subs = change.subs;
   db.prepare("UPDATE people SET playback = ? WHERE id = ?").run(JSON.stringify(next), id);

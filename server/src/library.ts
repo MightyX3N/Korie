@@ -8,6 +8,7 @@ import { db, json, now } from "./db.ts";
 import { img } from "./images.ts";
 import * as tmdb from "./tmdb.ts";
 import * as ages from "./ages.ts";
+import * as intros from "./intros.ts";
 import { scanFilms, scanMusic, scanSeries, type FoundAlbum, type FoundFilm, type FoundSeries, type Nfo } from "./scanner.ts";
 import { emit } from "./events.ts";
 
@@ -191,6 +192,8 @@ export async function scan(ids: number[] = []): Promise<void> {
       emit("library");
     }
     await enrich();
+    // intros take a while (the sound of every new episode): after the rest, in the background
+    void intros.findAll();
   } finally {
     status.scanning = false;
     status.text = "";

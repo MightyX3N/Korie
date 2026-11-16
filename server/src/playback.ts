@@ -268,17 +268,22 @@ export function pickSubs(subs: { lang: string; isDefault: boolean; burn?: boolea
 }
 
 /** Where a copied (not converted) stream really starts when asked to start at t: the key frame before it. */
-export async function keyframeBefore(src: Source, t: number): Promise<number> {
+export async function keyframeBefore(src: Source, t: number, after = false): Promise<number> {
   if (!src.file || src.disc || t <= 0) return t;
   try {
     const input = (await inputArgs(src)).filter((a) => a !== "-i");
     const out = await run(FFPROBE, ["-v", "error", "-select_streams", "v:0", "-skip_frame", "nokey", "-show_entries", "frame=pts_time,best_effort_timestamp_time",
-      "-read_intervals", `${Math.max(0, t - 30)}%${t + 0.5}`, "-of", "csv=p=0", ...input], 20000);
+      "-read_intervals", `${Math.max(0, t - 30)}%${t + (after ? 6 : 0.5)}`, "-of", "csv=p=0", ...input], 20000);
     let best = -1;
+    let next = -1;
     for (const line of out.split("\n")) {
       const v = Number(line.split(",").find((x) => x && x !== "N/A"));
-      if (Number.isFinite(v) && v <= t + 0.05 && v > best) best = v;
+      if (!Number.isFinite(v)) continue;
+      if (v <= t + 0.05 && v > best) best = v;
+      if (v > t + 0.05 && v <= t + 5 && (next < 0 || v < next)) next = v;
     }
+    // where something ends (an intro): rather the key frame just after it, if one is close
+    if (after && next >= 0) return next;
     return best >= 0 ? best : t;
   } catch {
     return t;
@@ -309,7 +314,9 @@ function friendly(err: string): string {
 export async function stream(src: Source, start: number, q: { audio?: string; burn?: string; v?: string; a?: string }, res: ServerResponse, onClose: (fn: () => void) => void, key = ""): Promise<void> {
   streamErrors.delete(key);
   const args = ["-hide_banner", "-loglevel", "error", "-nostdin"];
-  if (start > 0 && !src.live) args.push("-ss", String(start));
+  // a copied picture starts at a key frame: asked for exactly one, FFmpeg can land on the one
+  // before it, so aim a hair past it
+  if (start > 0 && !src.live) args.push("-ss", String(q.v === "copy" && q.burn === undefined ? start + 0.05 : start));
   args.push(...(await inputArgs(src)));
   const audio = q.audio !== undefined && /^\d+$/.test(q.audio) ? Number(q.audio) : null;
   const burn = q.burn !== undefined && /^\d+$/.test(q.burn) ? Number(q.burn) : null;

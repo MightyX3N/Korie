@@ -398,3 +398,5 @@ p { margin: 0; }
 .phone .nowplaying .np { grid-template-columns: 1fr; }
 .phone .musicbar { left: 0; bottom: var(--tabs-h, 4.4rem); padding: 0.6rem 1rem; }
 .page:has(.musicbar) { padding-bottom: 7rem; }
+.player .skipper { position: absolute; right: 4rem; bottom: 8rem; z-index: 6; }
+.player .skipper .btn { font-size: 1.3rem; padding: 0.9rem 1.8rem; border-radius: 2rem; }

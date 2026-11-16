@@ -17,6 +17,7 @@ LANGS = [("en-US", "English"), ("da-DK", "Dansk"), ("sv-SE", "Svenska"), ("nb-NO
 # hardware decoding is a different Kodi setting on each kind of device: the first one this Kodi has
 HW_DECODING = ["videoplayer.usemediacodecsurface", "videoplayer.usemediacodec", "videoplayer.usevaapi", "videoplayer.usedxva2",
                "videoplayer.usevideotoolbox", "videoplayer.usevdpau"]
+SKIP = [("button", "Show a Skip button"), ("auto", "Skip by itself"), ("off", "Never")]
 KIND_NAMES = {"films": "Films", "series": "Series", "music": "Music"}
 
 
@@ -226,6 +227,8 @@ class _Settings(xbmcgui.WindowXML):
             row("Subtitles", "Shown when the audio isn't in your language", "Off" if subs == "off" else names.get(subs, subs) if subs else "As the film says", "sel",
                 do=lambda: ui.choose_language(self.server, "subs")),
             row("Start DVDs with the disc's menu", "Off: go straight to the film", kind="tick", on=ui.disc_menu(), do=ui.toggle_disc_menu, words="dvd disc"),
+            row("Skip intros", "For series where Korie found the intro", dict(SKIP).get(p.get("skipIntro", "button"), "Show a Skip button"), "sel",
+                do=self.choose_skip, words="intro series episode"),
         ]
         rate = kodi_setting("videoplayer.adjustrefreshrate")
         if rate is not None:
@@ -237,6 +240,12 @@ class _Settings(xbmcgui.WindowXML):
             out.append(row("Hardware video decoding", "Faster and cooler; turn off if a film shows errors", kind="tick", on=on,
                            do=lambda: set_kodi_setting(hw, not on), words="decode"))
         return out
+
+    def choose_skip(self):
+        now = self.person().get("skipIntro", "button")
+        i = screens.menu("Skip intros", [{"label": n, "on": k == now} for k, n in SKIP], start=[k for k, _ in SKIP].index(now) if now in dict(SKIP) else 0)
+        if i >= 0:
+            self.server.call("/api/me/playback", {"skipIntro": SKIP[i][0]})
 
     def cat_libraries(self):
         if not self.may_settings():

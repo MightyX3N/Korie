@@ -628,6 +628,38 @@ class _Search(xbmcgui.WindowXML):
             self.close()
 
 
+# --- Skip intro, over a playing episode ------------------------------------------------------------
+
+class _Skip(xbmcgui.WindowXMLDialog):
+    def __init__(self, *args, **kwargs):
+        self.on_skip = kwargs["on_skip"]
+        self.gone = False
+
+    def onClick(self, cid):
+        if cid == 10:
+            self.on_skip()
+
+    def onAction(self, action):
+        if action.getId() in BACK:
+            # Back: no skipping, the episode goes on (and the button doesn't come back for this intro)
+            self.gone = True
+            self.close()
+
+
+def skip_button(on_skip):
+    """Shows "Skip intro" (not modal: the episode goes on) and returns it, to close later. None
+    outside the Korie skin."""
+    if not korie_skin():
+        return None
+    try:
+        w = _Skip("Korie_Skip.xml", PATH, "Default", "1080i", on_skip=on_skip)
+        w.show()
+        return w
+    except RuntimeError as e:
+        log("Korie_Skip.xml: %s" % e)
+        return None
+
+
 def _highlight(title, q):
     """The part of the title you typed, in the theme's accent colour."""
     i = title.lower().find(q.lower()) if q else -1

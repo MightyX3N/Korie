@@ -30,6 +30,7 @@ function seen(t: number): string {
   return d.toLocaleDateString([], { day: "numeric", month: "short" });
 }
 
+const SKIPS: [string, string][] = [["button", "Show a Skip button"], ["auto", "Skip by itself"], ["off", "Never"]];
 const LANGS = [["en-US", "English"], ["da-DK", "Dansk"], ["sv-SE", "Svenska"], ["nb-NO", "Norsk"], ["de-DE", "Deutsch"], ["fr-FR", "Français"], ["es-ES", "Español"]];
 export const AGES: (number | null)[] = [null, 15, 11, 7, 0];
 export const ageLabel = (a: number | null | undefined) => (a === null || a === undefined ? "Everything" : a === 0 ? "For everyone" : `Age ${a}`);
@@ -150,6 +151,11 @@ function Playback({ me, refresh }: { me: Me; refresh: () => void }) {
         const v = await ui.menu("Subtitles", [...langs.map(([c, n]) => ({ label: (c === subs ? "✓ " : "") + n, value: c })), { label: (subs === "off" ? "✓ " : "") + "Off", value: "off" }, { label: (subs === "" ? "✓ " : "") + "As the film says", value: "@file" }]);
         if (v) await save({ subs: v === "@file" ? "" : v });
       }}><Sel text={subs === "off" ? "Off" : subs ? name(subs) : "As the film says"} /></Row>
+      <Row fk="pb-skip" label="Skip intros" help="For series where Korie found the intro" words="intro series episode" onEnter={async () => {
+        const now = me.person.skipIntro ?? "button";
+        const v = await ui.menu("Skip intros", SKIPS.map(([id, label]) => ({ label: (id === now ? "✓ " : "") + label, value: id })));
+        if (v) await save({ skipIntro: v });
+      }}><Sel text={SKIPS.find(([id]) => id === (me.person.skipIntro ?? "button"))?.[1] ?? "Show a Skip button"} /></Row>
       {!q && <p className="note">Yours, on every screen. DVD menus, frame rate and hardware decoding are set on each TV (Korie in Kodi: Settings, Playback).</p>}
     </div>
   );

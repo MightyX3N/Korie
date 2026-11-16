@@ -13,6 +13,7 @@ import * as themes from "./themes.ts";
 import * as views from "./views.ts";
 import * as ages from "./ages.ts";
 import * as playlists from "./playlists.ts";
+import * as intros from "./intros.ts";
 import * as addons from "./addons/manager.ts";
 import * as browse from "./addons/browse.ts";
 import * as store from "./addons/store.ts";
@@ -140,7 +141,7 @@ app.post("/api/apps", async (req: Req) => {
 app.post("/api/me/playback", async (req: Req) => {
   const p = who(req);
   const b = body(req);
-  return { person: people.setPlayback(p.id, { audio: b.audio != null ? String(b.audio) : undefined, subs: b.subs != null ? String(b.subs) : undefined }) };
+  return { person: people.setPlayback(p.id, { audio: b.audio != null ? String(b.audio) : undefined, subs: b.subs != null ? String(b.subs) : undefined, skipIntro: b.skipIntro != null ? String(b.skipIntro) : undefined }) };
 });
 
 app.get("/api/events", (req, reply) => {
@@ -436,6 +437,9 @@ app.post("/api/play", async (req: Req) => {
   }
   const prog0 = views.progressOf(p.id, id);
   const resume = prog0 && !prog0.watched ? prog0.position : 0;
+  // an episode's intro (found by intros.ts) and what this person wants done with it
+  const intro = row?.kind === "episode" && p.skipIntro !== "off" ? (lib.data(row).intro as { start: number; end: number } | null) ?? null : null;
+  const skip = intro ? { ...intro, auto: p.skipIntro === "auto" } : null;
   // Kodi plays nearly everything itself: hand it the original file or stream, nothing probed or converted
   // a DVD with "Play the film only": the server sends the main title, as it does for every other screen
   const filmOnly = body(req).menu === false && src.disc === "dvd";
@@ -447,7 +451,7 @@ app.post("/api/play", async (req: Req) => {
         ...extra.map((x) => x.url),
       ];
       // Kodi picks the tracks itself, after it starts: it gets the person's languages to pick by
-      return { mode: "kodi", url: k, subs, id, title, subtitle, episode, resume, next, live: !!src.live, languages: { audio: p.audio, subs: p.subs }, discMenu: src.disc === "dvd" };
+      return { mode: "kodi", url: k, subs, id, title, subtitle, episode, resume, next, live: !!src.live, languages: { audio: p.audio, subs: p.subs }, discMenu: src.disc === "dvd", intro: skip };
     }
   }
   let pl: playback.Plan;
@@ -457,7 +461,7 @@ app.post("/api/play", async (req: Req) => {
     throw new HttpError(422, e instanceof Error ? e.message : String(e));
   }
   const prog = views.progressOf(p.id, id);
-  return { ...pl, id, title, subtitle, episode, resume: prog && !prog.watched ? prog.position : 0, next };
+  return { ...pl, id, title, subtitle, episode, resume: prog && !prog.watched ? prog.position : 0, next, intro: skip };
 });
 
 /** The address Kodi should open for a source, or null when the server has to convert it (disc folders). */
@@ -562,7 +566,7 @@ app.get("/api/seek/:tok", async (req: Req) => {
   const src = playback.source(req.params.tok);
   if (!src) throw new HttpError(404, "Not found.");
   const t = Math.max(0, Number(req.query.t ?? 0) || 0);
-  return { start: req.query.v === "copy" ? await playback.keyframeBefore(src, t) : t };
+  return { start: req.query.v === "copy" ? await playback.keyframeBefore(src, t, req.query.after === "1") : t };
 });
 
 app.get("/api/subs/:tok/:name", async (req: Req, reply: FastifyReply) => {
@@ -883,3 +887,5 @@ browse.refreshAll();
 setInterval(() => browse.refreshAll(), 5 * 60 * 1000).unref();
 void store.refresh();
 if (setting("scan_on_start")) void lib.scan();
+// episodes from before Korie found intros (or added while it was off): looked at in the background
+else void intros.findAll();

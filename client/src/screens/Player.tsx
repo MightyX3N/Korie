@@ -16,6 +16,8 @@ interface Track { id: string; label: string; lang: string; isDefault: boolean; u
 interface Plan {
   mode: "direct" | "stream"; url: string; duration: number; live: boolean; seekable: boolean; audio: Track[]; audioIndex: number | null;
   subs: Track[]; why: string; id: string; title: string; subtitle: string; resume: number; next: string | null; web?: string;
+  /** an episode's intro, and whether this person has it skipped by itself */
+  intro?: { start: number; end: number; auto: boolean } | null;
 }
 interface Cue { start: number; end: number; text: string }
 
@@ -95,7 +97,7 @@ export function Player({ id: firstId, mode, album, index, shuffle }: { id: strin
     }).catch(() => {});
   }, [album, shuffle]);
 
-  const start = useCallback(async (p: Plan, at: number) => {
+  const start = useCallback(async (p: Plan, at: number, after = false) => {
     const v = video.current;
     if (!v) return;
     setWaiting(true);
@@ -106,10 +108,10 @@ export function Player({ id: firstId, mode, album, index, shuffle }: { id: strin
       v.currentTime = s;
     } else {
       if (s > 0 && !p.live) {
-        // a copied stream starts at the key frame before s: ask where that is
+        // a copied stream starts at a key frame: the one before s (or, past the end of an intro, the one after)
         const m = p.url.match(/\/api\/stream\/([^?]+)\?(.*)$/);
         const vq = new URLSearchParams(m?.[2] ?? "").get("v");
-        if (m) s = (await api<{ start: number }>(`/api/seek/${m[1]}?t=${s}&v=${vq}`).catch(() => ({ start: s }))).start;
+        if (m) s = (await api<{ start: number }>(`/api/seek/${m[1]}?t=${s}&v=${vq}${after ? "&after=1" : ""}`).catch(() => ({ start: s }))).start;
       }
       setOffset(s);
       v.src = p.url + (s > 0 ? `&start=${s.toFixed(3)}` : "");
@@ -186,13 +188,13 @@ export function Player({ id: firstId, mode, album, index, shuffle }: { id: strin
     setOsd(true);
   };
 
-  const seekTo = useCallback(async (t: number) => {
+  const seekTo = useCallback(async (t: number, after = false) => {
     const p = planRef.current;
     const v = video.current;
     if (!p || !v || p.live) return;
     const target = Math.max(0, Math.min(t, (p.duration || Infinity) - 2));
     if (p.mode === "direct") v.currentTime = target;
-    else await start(p, target);
+    else await start(p, target, after);
     setNow(target);
   }, [start]);
 
@@ -213,6 +215,28 @@ export function Player({ id: firstId, mode, album, index, shuffle }: { id: strin
     }, 650);
     return () => clearTimeout(t);
   }, [pendingSeek, seekTo]);
+
+  // the intro: skipped by itself, or a Skip intro button while it plays (Back hides it)
+  const [introDone, setIntroDone] = useState(false);
+  const intro = plan?.intro ?? null;
+  const inIntro = !!intro && now >= intro.start && now < intro.end - 1;
+  useEffect(() => {
+    if (intro && now < intro.start) setIntroDone(false);
+    if (inIntro && intro?.auto && !introDone) {
+      setIntroDone(true);
+      void seekTo(intro.end, true);
+      ui.toast("Skipped the intro");
+    }
+  }, [inIntro, intro, introDone, now, seekTo, ui]);
+  const showSkip = inIntro && !intro?.auto && !introDone;
+  useEffect(() => {
+    if (showSkip) window.setTimeout(() => setFocus("pl-skip"), 0);
+  }, [showSkip]);
+  useBackHandler(() => {
+    if (!showSkip) return false;
+    setIntroDone(true);
+    return true;
+  }, showSkip);
 
   const togglePause = () => {
     const v = video.current;
@@ -257,6 +281,14 @@ export function Player({ id: firstId, mode, album, index, shuffle }: { id: strin
       if (e.key === "MediaTrackPrevious") { prev(); return; }
       if (e.key === "MediaFastForward") { jump(30); return; }
       if (e.key === "MediaRewind") { jump(-10); return; }
+      // while "Skip intro" shows, OK skips (as on Korie's TVs)
+      if (showSkip && intro && e.key === "Enter" && (!osd || getCurrentFocusKey() === "pl-skip")) {
+        e.preventDefault();
+        e.stopPropagation();
+        setIntroDone(true);
+        void seekTo(intro.end, true);
+        return;
+      }
       if (osd) {
         idle.current = Date.now();
         return;
@@ -385,6 +417,11 @@ export function Player({ id: firstId, mode, album, index, shuffle }: { id: strin
               {subId === s.id ? <Check /> : <span style={{ width: "1.4rem" }} />}<div className="grow">{s.label}</div>
             </F>
           ))}
+        </G>
+      )}
+      {showSkip && intro && (
+        <G fk="pl-skipper" className="skipper">
+          <F fk="pl-skip" className="btn primary" onEnter={() => { setIntroDone(true); void seekTo(intro.end, true); }}>Skip intro</F>
         </G>
       )}
       {android && null}

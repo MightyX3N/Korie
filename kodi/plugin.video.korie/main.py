@@ -530,7 +530,7 @@ def play(server, id_, direct=False, start=0):
         HOME_WINDOW.setProperty("korie.disc.id", id_)
     else:
         HOME_WINDOW.clearProperty("korie.disc.id")
-    tracker = Tracker(server, id_, start, bool(plan.get("live")), plan.get("languages"))
+    tracker = Tracker(server, id_, start, bool(plan.get("live")), plan.get("languages"), plan.get("intro"))
     if direct:
         tracker.play(target, li)
     else:
@@ -542,10 +542,14 @@ class Tracker(xbmc.Player):
     """Watches the playback this add-on started: seeks to the resume point, and tells the
     server how far you got (so every screen in the house can carry on from there)."""
 
-    def __init__(self, server, id_, resume, live, languages=None):
+    def __init__(self, server, id_, resume, live, languages=None, intro=None):
         super().__init__()
         self.server, self.id, self.resume, self.live = server, id_, resume, live
         self.languages = languages or {}
+        # an episode's intro {start, end, auto}: skipped by itself, or a Skip intro button while it plays
+        self.intro = intro
+        self.skip_shown = None
+        self.skipped = False
         self.started = False
         self.done = False
         self.pos = 0.0
@@ -598,9 +602,45 @@ class Tracker(xbmc.Player):
                     self.total = self.getTotalTime() or self.total
             except RuntimeError:
                 pass
+            if self.intro:
+                self.check_intro()
             if self.pos - last >= 15 or last - self.pos >= 15:
                 last = self.pos
                 self.report()
+        self.hide_skip()
+
+    def check_intro(self):
+        start, end = float(self.intro["start"]), float(self.intro["end"])
+        inside = start <= self.pos < end - 1
+        if not inside:
+            self.hide_skip()
+            if self.pos < start:
+                self.skipped = False  # went back before the intro: it can be skipped again
+            return
+        if self.intro.get("auto"):
+            if not self.skipped:
+                self.skipped = True
+                self.seekTime(end)
+                xbmcgui.Dialog().notification("Korie", "Skipped the intro", xbmcgui.NOTIFICATION_INFO, 2000)
+            return
+        if self.skip_shown is None and not self.skipped:
+            self.skip_shown = screens.skip_button(lambda: self.skip_to(end))
+
+    def skip_to(self, end):
+        self.skipped = True
+        self.hide_skip()
+        try:
+            self.seekTime(end)
+        except RuntimeError:
+            pass
+
+    def hide_skip(self):
+        if self.skip_shown is not None:
+            try:
+                self.skip_shown.close()
+            except RuntimeError:
+                pass
+            self.skip_shown = None
 
 
 def _same_language(a, b):

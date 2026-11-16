@@ -1,7 +1,7 @@
 // Talking to the Korie server: the same server that served this page.
 // The device keeps one sign-in per server in localStorage.
 
-export interface Person { id: string; name: string; color: string; hasPin: boolean; admin?: boolean; maxAge?: number | null; autoDevice?: string | null; canSettings?: boolean; addons?: "all" | string[]; audio?: string; subs?: string; music?: boolean; canInstall?: boolean; canDelete?: boolean; apps?: "all" | string[] }
+export interface Person { id: string; name: string; color: string; hasPin: boolean; admin?: boolean; maxAge?: number | null; autoDevice?: string | null; canSettings?: boolean; addons?: "all" | string[]; audio?: string; subs?: string; skipIntro?: "button" | "auto" | "off"; music?: boolean; canInstall?: boolean; canDelete?: boolean; apps?: "all" | string[] }
 export interface Card { id: string; kind: string; title: string; subtitle: string; year: string; poster: string; thumb: string; backdrop: string; progress: number; watched: boolean; source: string }
 export interface Row { id: string; title: string; kind: string; items: Card[]; source?: string }
 
