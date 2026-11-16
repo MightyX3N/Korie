@@ -13,3 +13,5 @@ android/local.properties
 *.keystore
 *.pass
 .DS_Store
+__pycache__/
+*.pyc
