@@ -199,6 +199,11 @@ export function get(id: string): AItem | null {
   return items.get(id) ?? null;
 }
 
+/** An item known again from a snapshot (kept with someone's progress), after a restart. */
+export function remember(a: AItem): void {
+  if (a && typeof a.id === "string" && !items.has(a.id)) items.set(a.id, a);
+}
+
 // --- pages (an add-on's categories) -------------------------------------------------
 
 export async function page(id: string): Promise<{ title: string; rows: ARow[]; error: string }> {

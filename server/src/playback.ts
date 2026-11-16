@@ -323,7 +323,8 @@ export async function stream(src: Source, start: number, q: { audio?: string; bu
   const copyV = q.v === "copy" && burn === null;
   if (burn !== null) {
     args.push("-filter_complex", `[0:v:0][0:${burn}]overlay[v]`, "-map", "[v]");
-  } else if (!src.url) {
+  } else if (!src.url || audio !== null) {
+    // the picture too whenever streams are picked by hand (a chosen audio track alone would leave it out)
     args.push("-map", "0:v:0?");
   }
   if (audio !== null) args.push("-map", `0:${audio}`);
@@ -344,19 +345,33 @@ export async function stream(src: Source, start: number, q: { audio?: string; bu
   const p0 = src.file || src.url ? await probe(src).catch(() => null) : null;
   const vcodec = p0?.streams.find((s) => s.type === "video")?.codec;
   if (!(copyV && vcodec === "hevc")) args.splice(args.indexOf("-tag:v"), 2);
-  res.writeHead(200, { "Content-Type": "video/mp4", "Cache-Control": "no-store", "Access-Control-Allow-Origin": "*" });
   const ff = spawn(FFMPEG, args, { stdio: ["ignore", "pipe", "pipe"] });
   let errText = "";
   ff.stderr.on("data", (d) => {
     errText = (errText + d.toString()).slice(-2000);
   });
-  ff.stdout.pipe(res);
+  // the answer starts with ffmpeg's first bytes, so a source that can't be opened (a dead link,
+  // a stream only for one country) is an error the app can show, not an empty video
+  let started = false;
+  ff.stdout.once("data", (first: Buffer) => {
+    started = true;
+    res.writeHead(200, { "Content-Type": "video/mp4", "Cache-Control": "no-store", "Access-Control-Allow-Origin": "*" });
+    res.write(first);
+    ff.stdout.pipe(res);
+  });
   ff.on("close", (code) => {
+    let why = "";
     if (code && code !== 255) {
       const last = errText.trim().split("\n").slice(-3).join(" | ");
       log("stream", `ffmpeg ended with ${code}: ${last}`);
-      streamErrors.set(key, friendly(last));
+      why = friendly(last);
+      streamErrors.set(key, why);
       if (streamErrors.size > 50) streamErrors.delete(streamErrors.keys().next().value!);
+    }
+    if (!started && !res.headersSent) {
+      res.writeHead(502, { "Content-Type": "text/plain; charset=utf-8", "Access-Control-Allow-Origin": "*" });
+      res.end("The video could not be started" + (why ? ": " + why : "."));
+      return;
     }
     res.end();
   });

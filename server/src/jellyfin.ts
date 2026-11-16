@@ -18,6 +18,7 @@ import * as lib from "./library.ts";
 import * as views from "./views.ts";
 import * as playback from "./playback.ts";
 import { picture } from "./images.ts";
+import * as browse from "./addons/browse.ts";
 import { serverId } from "./ident.ts";
 import EMPTY from "./jellyfin-empty.json" with { type: "json" };
 import websocket from "@fastify/websocket";
@@ -123,14 +124,24 @@ function personByJid(j: string): P | null {
 
 /** What a Jellyfin item is, on the Korie side. */
 type Thing =
-  | { t: "view"; kind: "films" | "series" }
+  | { t: "view"; kind: "films" | "series" | "live" }
   | { t: "row"; row: lib.Row }
-  | { t: "season"; series: lib.Row; n: number };
+  | { t: "season"; series: lib.Row; n: number }
+  // what add-ons offer: films, series, their episodes, categories (pages) and live channels
+  | { t: "aitem"; a: browse.AItem }
+  | { t: "aseason"; series: browse.AItem; n: number };
 
 function thing(j: string | undefined | null): Thing | null {
   const k = kid(j);
   if (!k) return null;
-  if (k === "view:films" || k === "view:series") return { t: "view", kind: k.slice(5) as "films" | "series" };
+  if (k === "view:films" || k === "view:series" || k === "view:live") return { t: "view", kind: k.slice(5) as "films" | "series" | "live" };
+  if (k.startsWith("aseason:")) {
+    const m = k.match(/^aseason:(.+):(\d+)$/);
+    const a = m ? browse.get(m[1]) : null;
+    return a ? { t: "aseason", series: a, n: Number(m![2]) } : null;
+  }
+  const a = browse.get(k);
+  if (a) return { t: "aitem", a };
   if (k.startsWith("season:")) {
     const m = k.match(/^season:(.+):(\d+)$/);
     const s = m ? lib.getRow(m[1]) : null;
@@ -138,6 +149,81 @@ function thing(j: string | undefined | null): Thing | null {
   }
   const row = lib.getRow(k);
   return row && !lib.isHidden(row) ? { t: "row", row } : null;
+}
+
+// an add-on episode's series, so the episode can be found again after a restart
+db.exec("CREATE TABLE IF NOT EXISTS jf_parent(kid TEXT PRIMARY KEY, series TEXT NOT NULL)");
+const putParent = db.prepare("INSERT OR REPLACE INTO jf_parent(kid, series) VALUES(?, ?)");
+const getParent = db.prepare("SELECT series FROM jf_parent WHERE kid = ?");
+const getSnapshot = db.prepare(`SELECT snapshot FROM progress WHERE item = ? AND snapshot IS NOT NULL
+  UNION ALL SELECT snapshot FROM favourites WHERE item = ? AND snapshot IS NOT NULL LIMIT 1`);
+
+function fromSnapshot(k: string): void {
+  const r = getSnapshot.get(k, k) as { snapshot: string } | undefined;
+  if (r) browse.remember(json(r.snapshot, null as unknown as browse.AItem));
+}
+
+/** Like thing(), but also finds add-on things the server doesn't hold in memory right now (after
+ *  a restart, or an episode of a series nobody opened since): from someone's progress, or by
+ *  opening the series again. */
+async function resolve(j: string | undefined | null): Promise<Thing | null> {
+  const th = thing(j);
+  if (th) return th;
+  const k = kid(j);
+  if (!k) return null;
+  const m = k.match(/^aseason:(.+):(\d+)$/);
+  const seriesKid = m ? m[1] : (getParent.get(k) as { series: string } | undefined)?.series ?? null;
+  if (!m) fromSnapshot(k);
+  if (seriesKid && !browse.get(seriesKid)) fromSnapshot(seriesKid);
+  if (seriesKid && browse.get(seriesKid) && !browse.get(k)) {
+    try {
+      await openSeries(browse.get(seriesKid)!);
+    } catch (e) {
+      log("jellyfin", `couldn't open ${seriesKid}: ${e instanceof Error ? e.message : e}`);
+    }
+  }
+  return thing(j);
+}
+
+/** An add-on series with its seasons (the add-on is asked once; episodes remember their series). */
+async function openSeries(a: browse.AItem): Promise<browse.AItem> {
+  const s = await browse.open(a.id);
+  for (const sn of s.seasons ?? []) for (const e of sn.episodes) putParent.run(e.id, s.id);
+  return s;
+}
+
+/** Whether a person may see an add-on's thing: they may use the add-on, and its age rating fits. */
+function mayA(p: P, a: browse.AItem): boolean {
+  return people.mayUseAddon(p, a.source) && views.mayItem(p, a);
+}
+
+/** What the add-ons this person may use offer for a section (films: films and categories; series:
+ *  series and categories; live: channels), each once. */
+function addonItems(p: P, sec: "films" | "series" | "live"): browse.AItem[] {
+  const kinds = sec === "films" ? ["film", "page"] : sec === "series" ? ["series", "page"] : ["live"];
+  const seen = new Set<string>();
+  const out: browse.AItem[] = [];
+  for (const v of browse.section(sec, (aid) => people.mayUseAddon(p, aid))) {
+    for (const row of v.rows) {
+      for (const a of row.items) {
+        if (seen.has(a.id) || !kinds.includes(a.kind) || !mayA(p, a)) continue;
+        seen.add(a.id);
+        out.push(a);
+      }
+    }
+  }
+  return out;
+}
+
+/** Add-on search results (add-ons answer in their own time: a few seconds at most). */
+async function addonSearch(p: P, term: string): Promise<browse.AItem[]> {
+  const until = Date.now() + 4000;
+  let found = browse.search(term, (aid) => people.mayUseAddon(p, aid));
+  while ([...found.values()].some((v) => v === null) && Date.now() < until) {
+    await new Promise((r) => setTimeout(r, 150));
+    found = browse.search(term, (aid) => people.mayUseAddon(p, aid));
+  }
+  return [...found.values()].flatMap((v) => v ?? []).filter((a) => a.kind !== "episode" && mayA(p, a));
 }
 
 /** The raw picture sources (a web address or "file:" + path), as library.pictures picks them. */
@@ -191,15 +277,83 @@ function common(name: string, k: string, type: string): Record<string, unknown> 
   return { Name: name, ServerId: SID(), Id: jid(k), Type: type, LocationType: "FileSystem", ChannelId: null };
 }
 
+/** An add-on's film, series, episode, category or channel, in Jellyfin's shape. */
+function aDto(p: P, a: browse.AItem): Record<string, unknown> {
+  const type = a.kind === "film" ? "Movie" : a.kind === "series" ? "Series" : a.kind === "episode" ? "Episode" : a.kind === "live" ? "TvChannel" : "BoxSet";
+  const o = common(a.title, a.id, type);
+  const genres = a.genres ?? [];
+  const year = Number(a.year) || undefined;
+  Object.assign(o, {
+    SortName: a.title.toLowerCase(), LocationType: "Remote", CanDelete: false, CanDownload: false, PlayAccess: "Full",
+    Overview: a.overview || undefined, Genres: genres, GenreItems: genres.map((g) => ({ Name: g, Id: jid("genre:" + g.toLowerCase()) })),
+    CommunityRating: a.rating ? Number(Number(a.rating).toFixed(1)) : undefined, OfficialRating: a.cert || undefined,
+    ProductionYear: year, PremiereDate: year ? `${year}-01-01T00:00:00.0000000Z` : undefined,
+    RunTimeTicks: a.runtime ? Math.round(a.runtime * 60 * TICKS) : undefined, ProviderIds: {},
+    Taglines: [], Tags: [], Studios: [], People: [], RemoteTrailers: [], LocalTrailerCount: 0, SpecialFeatureCount: 0,
+    DisplayPreferencesId: jid(a.id), EnableMediaSourceDisplay: true, UserData: userData(p, a.id),
+  });
+  if (a.kind === "film") {
+    Object.assign(o, { IsFolder: false, MediaType: "Video", VideoType: "VideoFile", ParentId: jid("view:films") });
+    images(o, a.poster || a.thumb, a.backdrop, 2 / 3);
+  } else if (a.kind === "series") {
+    Object.assign(o, { IsFolder: true, MediaType: "Unknown", ParentId: jid("view:series"), ChildCount: a.seasons?.length, Status: "Continuing" });
+    images(o, a.poster || a.thumb, a.backdrop, 2 / 3);
+  } else if (a.kind === "page") {
+    // an add-on's category ("Dokumentar", "Krimi" ...): a folder of its films and series
+    Object.assign(o, { IsFolder: true, MediaType: "Unknown", CollectionType: "boxsets" });
+    images(o, a.poster || a.thumb, a.backdrop, a.poster ? 2 / 3 : 16 / 9);
+  } else if (a.kind === "episode") {
+    const s = a.series ? browse.get(a.series) : null;
+    const e = a as browse.AItem & { season?: number; episode?: number };
+    const n = Number(e.season) || 0;
+    Object.assign(o, {
+      IsFolder: false, MediaType: "Video", VideoType: "VideoFile", IndexNumber: Number(e.episode) || undefined, ParentIndexNumber: n,
+      SeriesName: s?.title, SeriesId: s ? jid(s.id) : undefined, SeasonId: s ? jid(`aseason:${s.id}:${n}`) : undefined, SeasonName: seasonName(n),
+      ParentId: s ? jid(`aseason:${s.id}:${n}`) : undefined, SeriesPrimaryImageTag: s?.poster ? tag(s.poster) : undefined,
+      ParentBackdropItemId: s?.backdrop ? jid(s.id) : undefined, ParentBackdropImageTags: s?.backdrop ? [tag(s.backdrop)] : undefined,
+    });
+    images(o, a.thumb || a.backdrop, "", 16 / 9);
+  } else {
+    Object.assign(o, { IsFolder: false, MediaType: "Video", ChannelType: "TV", ParentId: jid("view:live"), Name: a.title });
+    images(o, a.poster || a.thumb, "", 1);
+  }
+  return o;
+}
+
 export function dto(p: P, th: Thing): Record<string, unknown> {
   if (th.t === "view") {
     const k = "view:" + th.kind;
+    if (th.kind === "live") {
+      // Jellyfin's apps open their own Live TV screens for this one
+      const o = common("Live TV", k, "UserView");
+      Object.assign(o, { CollectionType: "livetv", IsFolder: true, SortName: "live tv", MediaType: "Unknown", ChildCount: addonItems(p, "live").length,
+        DisplayPreferencesId: jid(k), UserData: userData(p, k), ImageTags: {}, BackdropImageTags: [], PlayAccess: "Full" });
+      return o;
+    }
     const o = common(th.kind === "films" ? "Films" : "Series", k, "CollectionFolder");
     Object.assign(o, {
       CollectionType: th.kind === "films" ? "movies" : "tvshows", IsFolder: true, SortName: th.kind, MediaType: "Unknown",
-      ChildCount: lib.rows(th.kind === "films" ? "film" : "series").filter((r) => views.may(p, r)).length,
+      ChildCount: lib.rows(th.kind === "films" ? "film" : "series").filter((r) => views.may(p, r)).length + addonItems(p, th.kind).length,
       DisplayPreferencesId: jid(k), UserData: userData(p, k), ImageTags: {}, BackdropImageTags: [], PlayAccess: "Full",
     });
+    return o;
+  }
+  if (th.t === "aitem") return aDto(p, th.a);
+  if (th.t === "aseason") {
+    const { series, n } = th;
+    const k = `aseason:${series.id}:${n}`;
+    const sn = series.seasons?.find((x) => x.n === n);
+    const eps = sn?.episodes ?? [];
+    const unplayed = eps.filter((e) => !views.progressOf(p.id, e.id)?.watched).length;
+    const o = common(sn?.title || seasonName(n), k, "Season");
+    Object.assign(o, {
+      IndexNumber: n, IsFolder: true, MediaType: "Unknown", SeriesName: series.title, SeriesId: jid(series.id), ParentId: jid(series.id), LocationType: "Remote",
+      SeriesPrimaryImageTag: series.poster ? tag(series.poster) : undefined, ChildCount: eps.length, SortName: String(n).padStart(4, "0"),
+      ParentBackdropItemId: series.backdrop ? jid(series.id) : undefined, ParentBackdropImageTags: series.backdrop ? [tag(series.backdrop)] : undefined,
+      UserData: userData(p, k, { UnplayedItemCount: unplayed, Played: unplayed === 0 && eps.length > 0, PlayedPercentage: eps.length ? (100 * (eps.length - unplayed)) / eps.length : 0 }),
+      PlayAccess: "Full",
+    });
+    images(o, series.poster, "", 2 / 3);
     return o;
   }
   if (th.t === "season") {
@@ -278,11 +432,13 @@ function lower(q: Record<string, unknown> | undefined): Record<string, string> {
 const list = (s: string | undefined) => (s ? s.split(",").map((x) => x.trim()).filter(Boolean) : []);
 
 /** Everything below a parent (or the whole library), as Things this person may see. */
-function children(p: P, parent: Thing | null, recursive: boolean, types: string[]): Thing[] {
+async function children(p: P, parent: Thing | null, recursive: boolean, types: string[]): Promise<Thing[]> {
   const want = (t: string) => !types.length || types.some((x) => x.toLowerCase() === t.toLowerCase());
   const rowThing = (r: lib.Row): Thing => ({ t: "row", row: r });
   const ok = (r: lib.Row) => views.may(p, r);
   const out: Thing[] = [];
+  const aThing = (a: browse.AItem): Thing => ({ t: "aitem", a });
+  const wantA = (a: browse.AItem) => want(a.kind === "film" ? "Movie" : a.kind === "series" ? "Series" : a.kind === "page" ? "BoxSet" : a.kind === "live" ? "TvChannel" : "Episode");
   const addSeries = (s: lib.Row, deep: boolean) => {
     if (want("Series")) out.push(rowThing(s));
     if (!deep) return;
@@ -292,12 +448,45 @@ function children(p: P, parent: Thing | null, recursive: boolean, types: string[
   if (!parent) {
     if (want("Movie")) out.push(...lib.rows("film").filter(ok).map(rowThing));
     for (const s of lib.rows("series").filter(ok)) addSeries(s, recursive);
+    // add-on films and series (not their categories, which aren't films or series themselves)
+    if (types.length) out.push(...[...addonItems(p, "films"), ...addonItems(p, "series")].filter((a) => a.kind !== "page" && wantA(a)).map(aThing));
     return out;
   }
   if (parent.t === "view") {
-    if (parent.kind === "films") return want("Movie") ? lib.rows("film").filter(ok).map(rowThing) : [];
-    for (const s of lib.rows("series").filter(ok)) addSeries(s, recursive);
+    if (parent.kind === "live") return addonItems(p, "live").filter(wantA).map(aThing);
+    if (parent.kind === "films") {
+      if (want("Movie")) out.push(...lib.rows("film").filter(ok).map(rowThing));
+    } else {
+      for (const s of lib.rows("series").filter(ok)) addSeries(s, recursive);
+    }
+    // what the add-ons offer sits right among the library's own; their categories only when the
+    // app lists the library as it is (not when it asks for films or series only)
+    out.push(...addonItems(p, parent.kind).filter((a) => (a.kind === "page" ? !types.length && !recursive : wantA(a))).map(aThing));
     return out;
+  }
+  if (parent.t === "aitem") {
+    const a = parent.a;
+    if (!mayA(p, a)) return [];
+    if (a.kind === "page") {
+      const pg = await browse.page(a.id);
+      const seen = new Set<string>();
+      for (const row of pg.rows) for (const x of row.items) if (!seen.has(x.id) && mayA(p, x) && (!types.length || wantA(x))) { seen.add(x.id); out.push(aThing(x)); }
+      return out;
+    }
+    if (a.kind === "series") {
+      const s = await openSeries(a);
+      for (const sn of s.seasons ?? []) {
+        if (want("Season")) out.push({ t: "aseason", series: s, n: sn.n });
+        if (recursive && want("Episode")) out.push(...sn.episodes.map(aThing));
+      }
+      return out;
+    }
+    return [];
+  }
+  if (parent.t === "aseason") {
+    if (!mayA(p, parent.series)) return [];
+    const s = await openSeries(parent.series);
+    return (s.seasons?.find((x) => x.n === parent.n)?.episodes ?? []).map(aThing).filter(() => want("Episode"));
   }
   if (parent.t === "season") {
     if (!ok(parent.series)) return [];
@@ -316,7 +505,16 @@ function children(p: P, parent: Thing | null, recursive: boolean, types: string[
 }
 
 function keyOf(th: Thing): string {
+  if (th.t === "aitem") return th.a.id;
+  if (th.t === "aseason") return `aseason:${th.series.id}:${th.n}`;
   return th.t === "view" ? "view:" + th.kind : th.t === "season" ? `season:${th.series.id}:${th.n}` : th.row.id;
+}
+
+/** Title, sort name, genres and year of a library or add-on thing (for searching, filtering, sorting). */
+function facts(t: Thing): { title: string; sort: string; genres: string[]; year: string } | null {
+  if (t.t === "row") return { title: t.row.title, sort: t.row.sort, genres: lib.data(t.row).genres ?? [], year: t.row.year };
+  if (t.t === "aitem") return { title: t.a.title, sort: t.a.title.toLowerCase().replace(/^(the|a|an|den|det|de|en|et)\s+/, ""), genres: t.a.genres ?? [], year: t.a.year };
+  return null;
 }
 
 function filterSort(p: P, items: Thing[], q: Record<string, string>): Thing[] {
@@ -329,20 +527,30 @@ function filterSort(p: P, items: Thing[], q: Record<string, string>): Thing[] {
   if (filters.includes("isunplayed") || q.isplayed === "false") out = out.filter((t) => !prog(t)?.watched);
   if (q.searchterm) {
     const s = q.searchterm.toLowerCase();
-    out = out.filter((t) => t.t === "row" && t.row.title.toLowerCase().includes(s));
+    out = out.filter((t) => !!facts(t)?.title.toLowerCase().includes(s));
   }
-  if (q.namestartswith) out = out.filter((t) => t.t === "row" && t.row.sort.startsWith(q.namestartswith.toLowerCase()));
-  if (q.namelessthan) out = out.filter((t) => t.t === "row" && t.row.sort < q.namelessthan.toLowerCase());
+  if (q.namestartswith) out = out.filter((t) => !!facts(t)?.sort.startsWith(q.namestartswith.toLowerCase()));
+  if (q.namelessthan) out = out.filter((t) => { const f = facts(t); return !!f && f.sort < q.namelessthan.toLowerCase(); });
   const genres = list(q.genres).map((g) => g.toLowerCase());
   const genreIds = list(q.genreids).map((g) => kid(g)?.replace(/^genre:/, "")).filter(Boolean);
   const wantGenres = [...genres, ...genreIds];
-  if (wantGenres.length) out = out.filter((t) => t.t === "row" && (lib.data(t.row).genres ?? []).some((g: string) => wantGenres.includes(g.toLowerCase())));
+  if (wantGenres.length) out = out.filter((t) => (facts(t)?.genres ?? []).some((g: string) => wantGenres.includes(g.toLowerCase())));
   const years = list(q.years);
-  if (years.length) out = out.filter((t) => t.t === "row" && years.includes(t.row.year));
+  if (years.length) out = out.filter((t) => years.includes(facts(t)?.year ?? ""));
   const sortBy = list(q.sortby).map((s) => s.toLowerCase());
   const desc = list(q.sortorder)[0]?.toLowerCase() === "descending";
   const val = (t: Thing, s: string): number | string => {
-    if (t.t !== "row") return t.t === "season" ? t.n : 0;
+    if (t.t === "aitem") {
+      const a = t.a;
+      if (s === "premieredate" || s === "productionyear") return Number(a.year) || 0;
+      if (s === "communityrating") return a.rating || 0;
+      if (s === "runtime") return a.runtime || 0;
+      if (s === "random") return Math.random();
+      if (s === "indexnumber") return Number((a as { episode?: number }).episode) || 0;
+      if (s === "datecreated" || s === "dateplayed" || s === "datelastcontentadded") return views.progressOf(p.id, a.id)?.updated ?? 0;
+      return facts(t)!.sort;
+    }
+    if (t.t !== "row") return t.t === "season" || t.t === "aseason" ? t.n : 0;
     const r = t.row;
     switch (s) {
       case "datecreated": return r.added;
@@ -378,9 +586,23 @@ function page(p: P, items: Thing[], q: Record<string, string>): Record<string, u
 function resumable(p: P, q: Record<string, string>): Thing[] {
   const rows = db.prepare(`SELECT item FROM progress WHERE person = ? AND watched = 0 AND position > 0 ORDER BY updated DESC LIMIT 100`).all(p.id) as { item: string }[];
   const types = list(q.includeitemtypes).map((t) => t.toLowerCase());
-  return rows.map((r) => lib.getRow(r.item)).filter((r): r is lib.Row => !!r && !lib.isHidden(r) && (r.kind === "film" || r.kind === "episode") && views.may(p, r))
-    .filter((r) => !types.length || types.includes(r.kind === "film" ? "movie" : "episode"))
-    .map((r) => ({ t: "row", row: r }));
+  const out: Thing[] = [];
+  for (const { item } of rows) {
+    const r = lib.getRow(item);
+    let kind = "";
+    if (r) {
+      if (lib.isHidden(r) || (r.kind !== "film" && r.kind !== "episode") || !views.may(p, r)) continue;
+      kind = r.kind;
+      if (!types.length || types.includes(kind === "film" ? "movie" : "episode")) out.push({ t: "row", row: r });
+      continue;
+    }
+    // an add-on's film or episode (known again from the progress' snapshot after a restart)
+    if (!browse.get(item)) fromSnapshot(item);
+    const a = browse.get(item);
+    if (!a || (a.kind !== "film" && a.kind !== "episode") || !mayA(p, a)) continue;
+    if (!types.length || types.includes(a.kind === "film" ? "movie" : "episode")) out.push({ t: "aitem", a });
+  }
+  return out;
 }
 
 function nextUp(p: P, seriesId: string | null): Thing[] {
@@ -531,10 +753,69 @@ function vttEvents(vtt: string): { Id: string; StartPositionTicks: number; EndPo
   return out;
 }
 
+/** Where an add-on's film, episode or channel plays from, as Jellyfin's media source. The add-on
+ *  is asked for the address now (they expire); Korie repackages it as it plays, so headers the
+ *  source needs and streams in formats the apps can't open (HLS with odd codecs) work everywhere. */
+async function addonMediaSource(a: browse.AItem, body: Record<string, any>): Promise<Record<string, unknown>> {
+  let ans: browse.PlayAnswer;
+  try {
+    ans = await browse.play(a.id);
+  } catch (e) {
+    throw new JfError(502, `The add-on couldn't start "${a.title}": ${e instanceof Error ? e.message : e}`);
+  }
+  if (ans.web || !ans.url) throw new JfError(400, `"${a.title}" plays in a web browser, which Jellyfin's apps can't open.`);
+  const src: playback.Source = { url: ans.url, headers: ans.headers, live: ans.live };
+  const probe = await playback.probe(src).catch(() => null);
+  const id = jid(a.id);
+  const video = probe?.streams.find((x) => x.type === "video");
+  const audios = probe?.streams.filter((x) => x.type === "audio") ?? [];
+  const audio = audios.find((x) => body.AudioStreamIndex != null && x.index === Number(body.AudioStreamIndex)) ?? audios.find((x) => x.isDefault) ?? audios[0];
+  const streams: Record<string, unknown>[] = (probe?.streams ?? []).filter((x) => x.type !== "subtitle").map((x) => ({
+    Index: x.index, Codec: x.codec, Language: x.lang || undefined, Title: x.title || undefined, IsDefault: x.type === "audio" ? x.index === audio?.index : x.isDefault,
+    IsForced: x.forced, IsHearingImpaired: false, IsInterlaced: false, IsExternal: false, IsAVC: x.codec === "h264", Level: 0, IsAnamorphic: false,
+    Type: x.type === "video" ? "Video" : "Audio", SupportsExternalStream: false, IsTextSubtitleStream: false, AudioSpatialFormat: "None",
+    VideoRange: x.type === "video" ? "SDR" : "Unknown", VideoRangeType: x.type === "video" ? "SDR" : "Unknown",
+    ...(x.type === "video" ? { Width: x.width, Height: x.height, DisplayTitle: `${x.height ? x.height + "p " : ""}${x.codec.toUpperCase()}` } : {}),
+    ...(x.type === "audio" ? { Channels: x.channels, DisplayTitle: [playback.langName(x.lang) || "Unknown", x.codec.toUpperCase()].join(" - ") } : {}),
+  }));
+  // the add-on's subtitle files, as WebVTT through Korie
+  const first = (probe?.streams.length ?? 0) + 100;
+  ans.subtitles.forEach((sub, i) => {
+    const tok = playback.token({ url: sub.url, headers: ans.headers });
+    streams.push({
+      Index: first + i, Codec: "webvtt", Language: sub.language || undefined, Title: sub.title || undefined, DisplayTitle: [sub.title || playback.langName(sub.language) || "Subtitles", "External"].join(" - "),
+      IsDefault: sub.default, IsForced: false, IsHearingImpaired: false, IsInterlaced: false, IsExternal: true, Type: "Subtitle", IsTextSubtitleStream: true,
+      SupportsExternalStream: true, DeliveryMethod: "External", DeliveryUrl: `/Videos/${id}/${id}/Subtitles/${first + i}/0/Stream.vtt?k=${encodeURIComponent(tok)}`, IsExternalUrl: false,
+      IsAVC: false, Level: 0, IsAnamorphic: false, AudioSpatialFormat: "None", VideoRange: "Unknown", VideoRangeType: "Unknown",
+    });
+  });
+  const start = ans.live ? 0 : Number(body.StartTimeTicks ?? 0) / TICKS || 0;
+  const q = new URLSearchParams({ v: video?.codec === "h264" ? "copy" : "x264", ...(audio ? { audio: String(audio.index) } : {}) });
+  const def = streams.find((x) => x.Type === "Subtitle" && x.IsDefault);
+  return {
+    Protocol: "Http", Id: id, Type: "Default", Container: "mp4", Name: a.title, IsRemote: true, ETag: tag(a.id),
+    RunTimeTicks: !ans.live && probe?.duration ? Math.round(probe.duration * TICKS) : undefined, ReadAtNativeFramerate: false, IgnoreDts: false, IgnoreIndex: false,
+    GenPtsInput: false, SupportsTranscoding: true, SupportsDirectStream: false, SupportsDirectPlay: false, IsInfiniteStream: ans.live,
+    UseMostCompatibleTranscodingProfile: false, RequiresOpening: false, RequiresClosing: false, RequiresLooping: false, SupportsProbing: false,
+    MediaStreams: streams, MediaAttachments: [], Formats: [], RequiredHttpHeaders: {}, HasSegments: false,
+    DefaultAudioStreamIndex: audio?.index, DefaultSubtitleStreamIndex: def ? def.Index : -1,
+    TranscodingUrl: `/Videos/${id}/stream.mp4?k=${encodeURIComponent(playback.token(src))}&start=${start}&${q}`, TranscodingSubProtocol: "http", TranscodingContainer: "mp4",
+  };
+}
+
 /** How long each played thing is (from PlaybackInfo), for progress reports that don't say. */
 const lengths = new Map<string, number>();
 
 // --- routes --------------------------------------------------------------------------------------
+
+/** Whether a person may see a thing (age limits; add-ons they may use). */
+function allowed(p: P, t: Thing): boolean {
+  if (t.t === "row") return views.may(p, t.row);
+  if (t.t === "season") return views.may(p, t.series);
+  if (t.t === "aitem") return mayA(p, t.a);
+  if (t.t === "aseason") return mayA(p, t.series);
+  return true;
+}
 
 /** Jellyfin's addresses are case-insensitive (its web app asks for /users/public): the words of
  *  every Jellyfin route, by their lower-case form, to put a request's words back in their case. */
@@ -635,8 +916,22 @@ export async function register(app: FastifyInstance, webDir: string | null): Pro
   app.get("/Branding/Css.css", async (_req, reply) => reply.header("Content-Type", "text/css").send(""));
   r("GET", ["/QuickConnect/Enabled"], () => false);
   r("GET", ["/Localization/Countries", "/Localization/Cultures", "/Localization/ParentalRatings", "/Localization/Options"], () => []);
-  r("GET", ["/Plugins", "/Packages", "/ScheduledTasks", "/Sessions", "/Notifications/Services", "/LiveTv/Channels"], (req) => (req.url.startsWith("/LiveTv") ? { Items: [], TotalRecordCount: 0, StartIndex: 0 } : []));
-  r("GET", ["/LiveTv/Info"], () => ({ Services: [], IsEnabled: false, EnabledUsers: [] }));
+  r("GET", ["/Plugins", "/Packages", "/ScheduledTasks", "/Sessions", "/Notifications/Services"], () => []);
+  // Live TV: the add-ons' channels (no programme guide yet)
+  r("GET", ["/LiveTv/Info"], () => ({ Services: [{ Name: "Korie", HomePageUrl: "", Status: "Ok", StatusMessage: "", Version: VERSION, HasUpdateAvailable: false, IsVisible: false, Tuners: [] }],
+    IsEnabled: true, EnabledUsers: people.list().map((x) => jid("person:" + x.id)) }));
+  r("GET", ["/LiveTv/GuideInfo"], () => ({ StartDate: new Date().toISOString(), EndDate: new Date(Date.now() + 86400000).toISOString() }));
+  r("GET", ["/LiveTv/Channels"], (req) => {
+    const p = who(req);
+    const q = qs(req);
+    let chans: Thing[] = addonItems(p, "live").map((a) => ({ t: "aitem", a }) as Thing);
+    if (q.isfavorite === "true") chans = chans.filter((t) => views.isFavourite(p, keyOf(t)));
+    return page(p, chans, q);
+  });
+  r("GET", ["/LiveTv/Channels/:channelId"], async (req) => {
+    const { p, th } = await one(req);
+    return dto(p, th);
+  });
   r("POST", ["/Sessions/Capabilities", "/Sessions/Capabilities/Full", "/ClientLog/Document"], () => undefined);
   app.get("/Playback/BitrateTest", async (req, reply) => {
     const size = Math.min(10_000_000, Number((req.query as any).size ?? (req.query as any).Size ?? 500000) || 500000);
@@ -701,9 +996,9 @@ export async function register(app: FastifyInstance, webDir: string | null): Pro
   const viewsOf = (p: P): Thing[] => {
     const kinds = new Set(lib.folders().map((f) => f.kind));
     const out: Thing[] = [];
-    if (kinds.has("films")) out.push({ t: "view", kind: "films" });
-    if (kinds.has("series")) out.push({ t: "view", kind: "series" });
-    void p;
+    if (kinds.has("films") || addonItems(p, "films").length) out.push({ t: "view", kind: "films" });
+    if (kinds.has("series") || addonItems(p, "series").length) out.push({ t: "view", kind: "series" });
+    if (addonItems(p, "live").length) out.push({ t: "view", kind: "live" });
     return out;
   };
   r("GET", ["/UserViews", "/Users/:userId/Views"], (req) => {
@@ -725,36 +1020,45 @@ export async function register(app: FastifyInstance, webDir: string | null): Pro
     return lib.folders().map((f) => ({ Name: path.basename(f.path), Locations: [f.path], CollectionType: f.kind === "films" ? "movies" : f.kind === "series" ? "tvshows" : "music", ItemId: jid("view:" + f.kind) }));
   });
 
-  r("GET", ["/Items", "/Users/:userId/Items"], (req) => {
+  r("GET", ["/Items", "/Users/:userId/Items"], async (req) => {
     const p = who(req);
     const q = qs(req);
     const ids = list(q.ids);
     if (ids.length) {
-      const ths = ids.map((i) => thing(i)).filter((t): t is Thing => !!t && (t.t !== "row" || views.may(p, t.row)));
+      const ths = (await Promise.all(ids.map((i) => resolve(i)))).filter((t): t is Thing => !!t && allowed(p, t));
       return page(p, ths, { ...q, limit: "" });
     }
-    const parent = q.parentid ? thing(q.parentid) : null;
+    const parent = q.parentid ? await resolve(q.parentid) : null;
     if (q.parentid && !parent) return { Items: [], TotalRecordCount: 0, StartIndex: 0 };
     const types = list(q.includeitemtypes);
     const exclude = list(q.excludeitemtypes).map((t) => t.toLowerCase());
     // what Jellyfin lists without IncludeItemTypes and without Recursive: a library's own things
-    let items = children(p, parent, q.recursive === "true" || (!parent && !!types.length) || !!q.searchterm, types);
+    let items = await children(p, parent, q.recursive === "true" || (!parent && !!types.length) || !!q.searchterm, types);
+    // searching: the add-ons are asked too
+    if (q.searchterm && (!parent || parent.t === "view")) {
+      const have = new Set(items.map(keyOf));
+      for (const a of await addonSearch(p, q.searchterm)) {
+        const t: Thing = { t: "aitem", a };
+        const want = !types.length || types.some((x) => x.toLowerCase() === String(aDto(p, a).Type).toLowerCase());
+        if (want && !have.has(a.id) && (!parent || parent.t !== "view" || (parent.kind === "films" ? a.kind === "film" : parent.kind === "series" ? a.kind === "series" : a.kind === "live"))) items.push(t);
+      }
+    }
     if (exclude.length) items = items.filter((t) => !exclude.includes(String(dto(p, t).Type).toLowerCase()));
     if (list(q.mediatypes).length) items = items.filter((t) => list(q.mediatypes).some((m) => m.toLowerCase() === String(dto(p, t).MediaType).toLowerCase()));
-    if (q.isfolder === "false") items = items.filter((t) => t.t === "row" && (t.row.kind === "film" || t.row.kind === "episode"));
-    if (q.isfolder === "true") items = items.filter((t) => t.t !== "row" || t.row.kind === "series");
-    if (!q.sortby && parent?.t !== "season" && !(parent?.t === "row")) q.sortby = "SortName";
+    if (q.isfolder === "false") items = items.filter((t) => dto(p, t).IsFolder === false);
+    if (q.isfolder === "true") items = items.filter((t) => dto(p, t).IsFolder === true);
+    if (!q.sortby && parent?.t !== "season" && parent?.t !== "aseason" && parent?.t !== "row" && !(parent?.t === "aitem" && parent.a.kind === "page")) q.sortby = "SortName";
     return page(p, filterSort(p, items, q), q);
   });
 
-  const one = (req: Req) => {
+  const one = async (req: Req) => {
     const p = who(req);
-    const th = thing(req.params.itemId);
-    if (!th || (th.t === "row" && !views.may(p, th.row)) || (th.t === "season" && !views.may(p, th.series))) throw new JfError(404, "Item not found");
+    const th = await resolve(req.params.itemId ?? req.params.channelId);
+    if (!th || !allowed(p, th)) throw new JfError(404, "Item not found");
     return { p, th };
   };
   r("GET", ["/Items/:itemId", "/Users/:userId/Items/:itemId"], async (req) => {
-    const { p, th } = one(req);
+    const { p, th } = await one(req);
     const o = dto(p, th);
     if (th.t === "row" && (th.row.kind === "film" || th.row.kind === "episode") && th.row.file && !lib.data(th.row).disc) {
       // the file is looked into only when someone opens it (not while adding the folder)
@@ -770,14 +1074,21 @@ export async function register(app: FastifyInstance, webDir: string | null): Pro
     }
     return o;
   });
-  r("GET", ["/Items/:itemId/Ancestors"], (req) => {
-    const { p, th } = one(req);
+  r("GET", ["/Items/:itemId/Ancestors"], async (req) => {
+    const { p, th } = await one(req);
     const out: Thing[] = [];
     if (th.t === "row" && th.row.kind === "episode") {
       const s = lib.getRow(th.row.parent ?? "");
       if (s) out.push({ t: "season", series: s, n: Number(lib.data(th.row).season) || 0 }, { t: "row", row: s }, { t: "view", kind: "series" });
     } else if (th.t === "season") out.push({ t: "row", row: th.series }, { t: "view", kind: "series" });
     else if (th.t === "row") out.push({ t: "view", kind: th.row.kind === "film" ? "films" : "series" });
+    else if (th.t === "aseason") out.push({ t: "aitem", a: th.series }, { t: "view", kind: "series" });
+    else if (th.t === "aitem") {
+      const a = th.a;
+      const s = a.kind === "episode" && a.series ? browse.get(a.series) : null;
+      if (s) out.push({ t: "aseason", series: s, n: Number((a as { season?: number }).season) || 0 }, { t: "aitem", a: s }, { t: "view", kind: "series" });
+      else out.push({ t: "view", kind: a.kind === "film" ? "films" : a.kind === "live" ? "live" : "series" });
+    }
     return out.map((t) => dto(p, t));
   });
   r("GET", ["/Items/Latest", "/Users/:userId/Items/Latest"], (req) => {
@@ -807,16 +1118,31 @@ export async function register(app: FastifyInstance, webDir: string | null): Pro
     const s = q.seriesid ? kid(q.seriesid) : null;
     return page(p, nextUp(p, s), q);
   });
-  r("GET", ["/Shows/:itemId/Seasons"], (req) => {
-    const { p, th } = one(req);
+  r("GET", ["/Shows/:itemId/Seasons"], async (req) => {
+    const { p, th } = await one(req);
+    if (th.t === "aitem" && th.a.kind === "series") {
+      const s = await openSeries(th.a);
+      return page(p, (s.seasons ?? []).map((sn) => ({ t: "aseason", series: s, n: sn.n }) as Thing), { ...qs(req), limit: "" });
+    }
     if (th.t !== "row" || th.row.kind !== "series") throw new JfError(404, "Not a series");
     const ths: Thing[] = seasonsOf(th.row).map((n) => ({ t: "season", series: th.row, n }));
     return page(p, ths, { ...qs(req), limit: "" });
   });
-  r("GET", ["/Shows/:itemId/Episodes"], (req) => {
-    const { p, th } = one(req);
-    if (th.t !== "row" || th.row.kind !== "series") throw new JfError(404, "Not a series");
+  r("GET", ["/Shows/:itemId/Episodes"], async (req) => {
+    const { p, th } = await one(req);
     const q = qs(req);
+    if (th.t === "aitem" && th.a.kind === "series") {
+      const s = await openSeries(th.a);
+      const season = q.seasonid ? thing(q.seasonid) : null;
+      const n = season?.t === "aseason" ? season.n : q.season ? Number(q.season) : null;
+      let eps = (s.seasons ?? []).filter((sn) => n === null || sn.n === n).flatMap((sn) => sn.episodes);
+      if (q.startitemid) {
+        const i = eps.findIndex((e) => jid(e.id) === q.startitemid.replace(/-/g, ""));
+        if (i > 0) eps = eps.slice(i);
+      }
+      return page(p, eps.map((a) => ({ t: "aitem", a }) as Thing), q);
+    }
+    if (th.t !== "row" || th.row.kind !== "series") throw new JfError(404, "Not a series");
     let eps = lib.rows("episode", th.row.id);
     const season = q.seasonid ? thing(q.seasonid) : null;
     if (season?.t === "season") eps = eps.filter((e) => (Number(lib.data(e).season) || 0) === season.n);
@@ -827,8 +1153,8 @@ export async function register(app: FastifyInstance, webDir: string | null): Pro
     }
     return page(p, eps.map((row) => ({ t: "row", row }) as Thing), q);
   });
-  r("GET", ["/Items/:itemId/Similar"], (req) => {
-    const { p, th } = one(req);
+  r("GET", ["/Items/:itemId/Similar"], async (req) => {
+    const { p, th } = await one(req);
     if (th.t !== "row") return { Items: [], TotalRecordCount: 0, StartIndex: 0 };
     const g = new Set((lib.data(th.row).genres ?? []).map((x: string) => x.toLowerCase()));
     const same = lib.rows(th.row.kind === "series" ? "series" : "film").filter((r) => r.id !== th.row.id && views.may(p, r) && (lib.data(r).genres ?? []).some((x: string) => g.has(x.toLowerCase())));
@@ -875,9 +1201,15 @@ export async function register(app: FastifyInstance, webDir: string | null): Pro
   // --- pictures ---
   const imageRoute = async (req: Req, reply: FastifyReply) => {
     const q = qs(req);
-    const th = thing(req.params.itemId);
+    const th = await resolve(req.params.itemId);
     const type = req.params.imageType.toLowerCase();
     let src = "";
+    if (th?.t === "aitem") {
+      const a = th.a;
+      src = type === "primary" ? (a.kind === "episode" ? a.thumb || a.backdrop : a.poster || a.thumb) : type === "backdrop" || type === "thumb" ? a.backdrop || a.thumb : "";
+    } else if (th?.t === "aseason") {
+      src = type === "primary" ? th.series.poster : type === "backdrop" ? th.series.backdrop : "";
+    }
     if (th?.t === "row") {
       const s = sources(th.row);
       src = type === "primary" ? (th.row.kind === "episode" ? s.thumb : s.poster) : type === "backdrop" || type === "thumb" ? s.backdrop || s.thumb : "";
@@ -895,11 +1227,16 @@ export async function register(app: FastifyInstance, webDir: string | null): Pro
 
   // --- playing ---
   const playbackInfo = async (req: Req) => {
-    const { p, th } = one(req);
-    if (th.t !== "row" || !th.row.file || (th.row.kind !== "film" && th.row.kind !== "episode")) throw new JfError(404, "Nothing to play");
+    const { p, th } = await one(req);
     const b = bodyOf(req);
     const q = qs(req);
     for (const k of ["AudioStreamIndex", "SubtitleStreamIndex", "StartTimeTicks"]) if (b[k] == null && q[k.toLowerCase()] != null) b[k] = q[k.toLowerCase()];
+    if (th.t === "aitem" && ["film", "episode", "live"].includes(th.a.kind)) {
+      const ms = await addonMediaSource(th.a, b);
+      lengths.set(th.a.id, Number(ms.RunTimeTicks ?? 0) / TICKS || th.a.runtime * 60);
+      return { MediaSources: [ms], PlaySessionId: crypto.randomBytes(16).toString("hex") };
+    }
+    if (th.t !== "row" || !th.row.file || (th.row.kind !== "film" && th.row.kind !== "episode")) throw new JfError(404, "Nothing to play");
     const ms = await mediaSource(p, th.row, b, host(req));
     lengths.set(th.row.id, Number(ms.RunTimeTicks ?? 0) / TICKS);
     return { MediaSources: [ms], PlaySessionId: crypto.randomBytes(16).toString("hex") };
@@ -947,6 +1284,15 @@ export async function register(app: FastifyInstance, webDir: string | null): Pro
     app.get(u, videoStream as any);
   }
   app.get("/Videos/:itemId/:msId/Subtitles/:index/:start/Stream.:fmt", async (req: any, reply) => {
+    // an add-on's subtitles: the address it gave, signed by Korie (?k=)
+    const tok = (req.query as Record<string, string>).k;
+    if (tok) {
+      const src = playback.source(tok);
+      if (!src?.url) return reply.code(404).send();
+      const text = await playback.subtitles(src, null);
+      if (req.params.fmt === "js") return reply.header("Content-Type", "application/json").send(JSON.stringify({ TrackEvents: vttEvents(text) }));
+      return reply.header("Content-Type", "text/vtt; charset=utf-8").send(text);
+    }
     const k = kid(req.params.itemId);
     const row = k ? lib.getRow(k) : null;
     if (!row?.file) return reply.code(404).send();
@@ -960,7 +1306,10 @@ export async function register(app: FastifyInstance, webDir: string | null): Pro
     if (req.params.fmt === "js") return reply.header("Content-Type", "application/json").send(JSON.stringify({ TrackEvents: vttEvents(text) }));
     return reply.header("Content-Type", "text/vtt; charset=utf-8").send(text);
   });
-  app.get("/Videos/:itemId/:msId/Subtitles/:index/Stream.:fmt", async (req: any, reply) => reply.redirect(`/Videos/${req.params.itemId}/${req.params.msId}/Subtitles/${req.params.index}/0/Stream.${req.params.fmt}`));
+  app.get("/Videos/:itemId/:msId/Subtitles/:index/Stream.:fmt", async (req: any, reply) => {
+    const q = req.url.includes("?") ? req.url.slice(req.url.indexOf("?")) : "";
+    return reply.redirect(`/Videos/${req.params.itemId}/${req.params.msId}/Subtitles/${req.params.index}/0/Stream.${req.params.fmt}${q}`);
+  });
 
   // progress: Korie's own, so it's the same in every app
   const report = (req: Req, stopped: boolean) => {
@@ -969,7 +1318,9 @@ export async function register(app: FastifyInstance, webDir: string | null): Pro
     const k = kid(String(b.ItemId ?? ""));
     if (!k) return undefined;
     const pos = Number(b.PositionTicks ?? 0) / TICKS;
-    const len = lengths.get(k) || runtimeOf(lib.getRow(k) ?? ({ data: "{}" } as lib.Row));
+    const len = lengths.get(k) || (lib.getRow(k) ? runtimeOf(lib.getRow(k)!) : (browse.get(k)?.runtime ?? 0) * 60);
+    // a live channel has no place to come back to
+    if (browse.get(k)?.kind === "live") return undefined;
     if (pos > 0 || stopped) views.setProgress(p, k, pos, len, false);
     return undefined;
   };
