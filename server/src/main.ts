@@ -22,9 +22,21 @@ import { img, picture, valid } from "./images.ts";
 import { subscribe } from "./events.ts";
 import { serverId } from "./ident.ts";
 import { startDiscovery } from "./discovery.ts";
-import * as kodi from "./kodi.ts";
+import * as jellyfin from "./jellyfin.ts";
 
-const app = Fastify({ logger: false, bodyLimit: 1024 * 1024, routerOptions: { maxParamLength: 8192 } });
+const app = Fastify({ logger: false, bodyLimit: 1024 * 1024, routerOptions: { maxParamLength: 8192 }, rewriteUrl: (req) => jellyfin.rewrite(req.url ?? "/") });
+
+// Jellyfin's apps send JSON bodies that can be empty, and some with other content types
+app.removeContentTypeParser("application/json");
+app.addContentTypeParser(["application/json", "text/plain", "application/x-www-form-urlencoded"], { parseAs: "string" }, (_req, b, done) => {
+  const text = String(b ?? "").trim();
+  if (!text) return done(null, {});
+  try {
+    done(null, JSON.parse(text));
+  } catch {
+    done(null, {});
+  }
+});
 
 type Req = FastifyRequest<{ Querystring: Record<string, string>; Params: Record<string, string>; Body: any }>;
 
@@ -76,25 +88,6 @@ const allowed = (p: people.Person) => (aid: string) => people.mayUseAddon(p, aid
 
 if (process.env.KORIE_DEBUG_HTTP) app.addHook("onResponse", async (req, reply) => log("http", `${req.method} ${req.url} ${req.headers.range ?? ""} -> ${reply.statusCode}`));
 
-// the Kodi repository (see kodi.ts)
-app.get("/kodi", async (_req, reply: FastifyReply) => reply.redirect("/kodi/"));
-app.get("/kodi/*", async (req: Req, reply: FastifyReply) => {
-  const rel = decodeURIComponent((req.params as any)["*"] ?? "");
-  const f = await kodi.serve(rel, kodi.baseOf(req.headers.host));
-  if (!f) throw new HttpError(404, "Not found.");
-  const buf = typeof f.body === "string" ? Buffer.from(f.body) : f.body;
-  reply.header("Content-Type", f.type).header("Cache-Control", "no-cache").header("Accept-Ranges", "bytes");
-  // Kodi reads zip files in pieces (it jumps to the zip's index at the end first)
-  const range = req.headers.range?.match(/bytes=(\d*)-(\d*)/);
-  if (range) {
-    let start = range[1] ? Number(range[1]) : buf.length - Number(range[2] || 0);
-    let end = range[1] && range[2] ? Math.min(Number(range[2]), buf.length - 1) : buf.length - 1;
-    if (!range[1]) start = Math.max(0, start);
-    if (start >= buf.length || start > end) return reply.code(416).header("Content-Range", `bytes */${buf.length}`).send();
-    return reply.code(206).header("Content-Range", `bytes ${start}-${end}/${buf.length}`).header("Content-Length", end - start + 1).send(buf.subarray(start, end + 1));
-  }
-  return reply.header("Content-Length", buf.length).send(buf);
-});
 
 app.get("/api/hello", async () => ({ korie: true, id: serverId(), name: setting("server_name"), version: VERSION }));
 
@@ -440,20 +433,6 @@ app.post("/api/play", async (req: Req) => {
   // an episode's intro (found by intros.ts) and what this person wants done with it
   const intro = row?.kind === "episode" && p.skipIntro !== "off" ? (lib.data(row).intro as { start: number; end: number } | null) ?? null : null;
   const skip = intro ? { ...intro, auto: p.skipIntro === "auto" } : null;
-  // Kodi plays nearly everything itself: hand it the original file or stream, nothing probed or converted
-  // a DVD with "Play the film only": the server sends the main title, as it does for every other screen
-  const filmOnly = body(req).menu === false && src.disc === "dvd";
-  if (body(req).kodi && !filmOnly) {
-    const k = kodiSource(src, req.headers.host);
-    if (k) {
-      const subs = [
-        ...subFiles.map((f) => `http://${req.headers.host}/api/raw/${playback.token({ file: f })}/${encodeURIComponent(path.basename(f))}`),
-        ...extra.map((x) => x.url),
-      ];
-      // Kodi picks the tracks itself, after it starts: it gets the person's languages to pick by
-      return { mode: "kodi", url: k, subs, id, title, subtitle, episode, resume, next, live: !!src.live, languages: { audio: p.audio, subs: p.subs }, discMenu: src.disc === "dvd", intro: skip };
-    }
-  }
   let pl: playback.Plan;
   try {
     pl = await playback.plan(src, caps, audio, burn, subFiles, extra, { audio: p.audio, subs: p.subs });
@@ -464,68 +443,9 @@ app.post("/api/play", async (req: Req) => {
   return { ...pl, id, title, subtitle, episode, resume: prog && !prog.watched ? prog.position : 0, next, intro: skip };
 });
 
-/** The address Kodi should open for a source, or null when the server has to convert it (disc folders). */
-function kodiSource(src: playback.Source, host: string | undefined): string | null {
-  const media = (f: string) => `http://${host}/api/media/${playback.token({ file: f })}/${encodeURIComponent(path.basename(f))}`;
-  if (src.url) {
-    // Kodi's way of sending request headers: url|Name=value&Name=value
-    const h = Object.entries(src.headers ?? {}).map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join("&");
-    return h ? `${src.url}|${h}` : src.url;
-  }
-  // a DVD folder: Kodi plays it with its own DVD player (and the disc's menus), reading the folder's
-  // files from /api/disc
-  if (src.file && src.disc === "dvd") return `http://${host}/api/disc/${playback.token({ file: src.file })}/VIDEO_TS/VIDEO_TS.IFO`;
-  if (!src.file || src.disc === "bluray") return null;
-  // one film in several files: Kodi plays them as one
-  if (src.parts && src.parts.length > 1) return "stack://" + src.parts.map((f) => media(f).replace(/,/g, ",,")).join(" , ");
-  return media(src.file);
-}
-
-// a subtitle file as it is (Kodi reads .srt/.ass itself)
-app.get("/api/raw/:tok/:name", async (req: Req, reply: FastifyReply) => {
-  const src = playback.source(req.params.tok);
-  if (!src?.file || !fs.existsSync(src.file)) throw new HttpError(404, "Not found.");
-  return reply.header("Content-Type", "application/octet-stream").send(fs.createReadStream(src.file));
-});
 
 app.get("/api/media/:tok/:name", async (req: Req, reply: FastifyReply) => mediaFile(req, reply));
 
-// the files of a DVD folder, for Kodi's DVD player: it opens VIDEO_TS.IFO, lists the folder (as a
-// web server's folder listing) and reads the files beside it
-/** A path under root, matched part by part without regard to case (VIDEO_TS / video_ts); null when
- *  it isn't there or would leave root. */
-function underRoot(root: string, rel: string): string | null {
-  let cur = root;
-  for (const part of rel.split("/").filter(Boolean)) {
-    if (part === "." || part === "..") return null;
-    const exact = path.join(cur, part);
-    if (fs.existsSync(exact)) { cur = exact; continue; }
-    if (!fs.existsSync(cur) || !fs.statSync(cur).isDirectory()) return null;
-    const hit = fs.readdirSync(cur).find((n) => n.toUpperCase() === part.toUpperCase());
-    if (!hit) return null;
-    cur = path.join(cur, hit);
-  }
-  return cur;
-}
-
-const discFile = async (req: Req, reply: FastifyReply) => {
-  const src = playback.source(req.params.tok);
-  if (!src?.file) throw new HttpError(404, "Not found.");
-  const root = path.resolve(src.file);
-  const rel = String((req.params as Record<string, string>)["*"] ?? "");
-  const full = underRoot(root, rel);
-  if (!full) throw new HttpError(404, "Not found.");
-  if (fs.statSync(full).isDirectory()) {
-    const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
-    const rows = fs.readdirSync(full, { withFileTypes: true }).filter((e) => !e.name.startsWith("."))
-      .map((e) => `<a href="${encodeURIComponent(e.name)}${e.isDirectory() ? "/" : ""}">${esc(e.name)}${e.isDirectory() ? "/" : ""}</a>`);
-    return reply.header("Content-Type", "text/html; charset=utf-8")
-      .send(`<html><head><title>Index of /${esc(rel)}</title></head><body><h1>Index of /${esc(rel)}</h1><pre>\n${rows.join("\n")}\n</pre></body></html>`);
-  }
-  return mediaFile(req, reply, full);
-};
-app.get("/api/disc/:tok", discFile);
-app.get("/api/disc/:tok/*", discFile);
 app.get("/api/media/:tok", async (req: Req, reply: FastifyReply) => mediaFile(req, reply));
 
 async function mediaFile(req: Req, reply: FastifyReply, file?: string) {
@@ -859,6 +779,10 @@ app.post("/api/theme/:action", async (req: Req) => {
   throw new HttpError(404, "Unknown action.");
 });
 
+// --- Jellyfin's apps (jellyfin.ts) --------------------------------------------------------------
+
+await jellyfin.register(app, process.env.KORIE_JELLYFIN_WEB ?? null);
+
 // --- the web client ---------------------------------------------------------------------------
 
 if (fs.existsSync(CLIENT_DIR)) {
@@ -869,6 +793,11 @@ if (fs.existsSync(CLIENT_DIR)) {
   } });
   app.setNotFoundHandler((req, reply) => {
     if (req.url.startsWith("/api/") || req.url.startsWith("/img/")) return reply.code(404).send({ error: "Not found." });
+    // a Jellyfin address Korie doesn't answer (yet): noted, so it's known what the apps ask for
+    if (/^\/[A-Z]/.test(req.url)) {
+      log("jellyfin", `not answered: ${req.method} ${req.url.split("?")[0]}`);
+      return reply.code(404).send();
+    }
     return reply.header("Cache-Control", "no-cache").sendFile("index.html");
   });
 } else {

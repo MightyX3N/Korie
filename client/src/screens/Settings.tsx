@@ -122,7 +122,7 @@ function Look() {
   const nav = useNav();
   return (
     <div className="srows">
-      <Row fk="look-theme" label="Theme on the TVs" help="Colours and fonts of Korie in Kodi. Each TV picks its own in its settings." words="colours fonts" onEnter={() => nav.push("store", { tab: "themes" })}>
+      <Row fk="look-theme" label="Theme" help="Colours and fonts of Korie's own pages. (Jellyfin's apps on the TVs draw their own screens.)" words="colours fonts" onEnter={() => nav.push("store", { tab: "themes" })}>
         <Sel text="Themes" />
       </Row>
     </div>
@@ -156,7 +156,7 @@ function Playback({ me, refresh }: { me: Me; refresh: () => void }) {
         const v = await ui.menu("Skip intros", SKIPS.map(([id, label]) => ({ label: (id === now ? "✓ " : "") + label, value: id })));
         if (v) await save({ skipIntro: v });
       }}><Sel text={SKIPS.find(([id]) => id === (me.person.skipIntro ?? "button"))?.[1] ?? "Show a Skip button"} /></Row>
-      {!q && <p className="note">Yours, on every screen. DVD menus, frame rate and hardware decoding are set on each TV (Korie in Kodi: Settings, Playback).</p>}
+      {!q && <p className="note">Yours, on every screen.</p>}
     </div>
   );
 }

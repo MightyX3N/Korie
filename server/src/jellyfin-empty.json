@@ -1,0 +1,261 @@
+{
+"/Albums/:itemId/InstantMix": {
+"GET": "qr"
+},
+"/Albums/:itemId/Similar": {
+"GET": "qr"
+},
+"/Artists": {
+"GET": "qr"
+},
+"/Artists/:itemId/InstantMix": {
+"GET": "qr"
+},
+"/Artists/:itemId/Similar": {
+"GET": "qr"
+},
+"/Artists/AlbumArtists": {
+"GET": "qr"
+},
+"/Audio/:itemId/RemoteSearch/Lyrics": {
+"GET": "list"
+},
+"/Auth/Keys": {
+"GET": "qr"
+},
+"/Auth/PasswordResetProviders": {
+"GET": "list"
+},
+"/Auth/Providers": {
+"GET": "list"
+},
+"/Backup": {
+"GET": "list"
+},
+"/Channels": {
+"GET": "qr"
+},
+"/Channels/:channelId/Items": {
+"GET": "qr"
+},
+"/Channels/Features": {
+"GET": "list"
+},
+"/Channels/Items/Latest": {
+"GET": "qr"
+},
+"/Devices": {
+"GET": "qr"
+},
+"/Environment/DirectoryContents": {
+"GET": "list"
+},
+"/Environment/Drives": {
+"GET": "list"
+},
+"/FallbackFont/Fonts": {
+"GET": "list"
+},
+"/Genres": {
+"GET": "qr"
+},
+"/Items": {
+"GET": "qr"
+},
+"/Items/:itemId/Ancestors": {
+"GET": "list"
+},
+"/Items/:itemId/Collections": {
+"GET": "qr"
+},
+"/Items/:itemId/ExternalIdInfos": {
+"GET": "list"
+},
+"/Items/:itemId/Images": {
+"GET": "list"
+},
+"/Items/:itemId/InstantMix": {
+"GET": "qr"
+},
+"/Items/:itemId/Intros": {
+"GET": "qr"
+},
+"/Items/:itemId/LocalTrailers": {
+"GET": "list"
+},
+"/Items/:itemId/RemoteImages/Providers": {
+"GET": "list"
+},
+"/Items/:itemId/RemoteSearch/Subtitles/:language": {
+"GET": "list"
+},
+"/Items/:itemId/Similar": {
+"GET": "qr"
+},
+"/Items/:itemId/SpecialFeatures": {
+"GET": "list"
+},
+"/Items/Latest": {
+"GET": "list"
+},
+"/Items/Suggestions": {
+"GET": "qr"
+},
+"/Library/MediaFolders": {
+"GET": "qr"
+},
+"/Library/PhysicalPaths": {
+"GET": "list"
+},
+"/Library/VirtualFolders": {
+"GET": "list"
+},
+"/LiveTv/Channels": {
+"GET": "qr"
+},
+"/LiveTv/ListingProviders/Lineups": {
+"GET": "list"
+},
+"/LiveTv/Programs": {
+"GET": "qr",
+"POST": "qr"
+},
+"/LiveTv/Programs/Recommended": {
+"GET": "qr"
+},
+"/LiveTv/Recordings": {
+"GET": "qr"
+},
+"/LiveTv/Recordings/Folders": {
+"GET": "qr"
+},
+"/LiveTv/SeriesTimers": {
+"GET": "qr"
+},
+"/LiveTv/Timers": {
+"GET": "qr"
+},
+"/LiveTv/TunerHosts/Types": {
+"GET": "list"
+},
+"/LiveTv/Tuners/Discover": {
+"GET": "list"
+},
+"/LiveTv/Tuners/Discvover": {
+"GET": "list"
+},
+"/Localization/Countries": {
+"GET": "list"
+},
+"/Localization/Cultures": {
+"GET": "list"
+},
+"/Localization/Options": {
+"GET": "list"
+},
+"/Localization/ParentalRatings": {
+"GET": "list"
+},
+"/MediaSegments/:itemId": {
+"GET": "qr"
+},
+"/Movies/:itemId/Similar": {
+"GET": "qr"
+},
+"/Movies/Recommendations": {
+"GET": "list"
+},
+"/MusicGenres/:name/InstantMix": {
+"GET": "qr"
+},
+"/MusicGenres/InstantMix": {
+"GET": "qr"
+},
+"/Packages": {
+"GET": "list"
+},
+"/Persons": {
+"GET": "qr"
+},
+"/Playlists/:itemId/InstantMix": {
+"GET": "qr"
+},
+"/Playlists/:playlistId/Items": {
+"GET": "qr"
+},
+"/Playlists/:playlistId/Users": {
+"GET": "list"
+},
+"/Plugins": {
+"GET": "list"
+},
+"/Repositories": {
+"GET": "list"
+},
+"/ScheduledTasks": {
+"GET": "list"
+},
+"/Sessions": {
+"GET": "list"
+},
+"/Shows/:itemId/Similar": {
+"GET": "qr"
+},
+"/Shows/:seriesId/Episodes": {
+"GET": "qr"
+},
+"/Shows/:seriesId/Seasons": {
+"GET": "qr"
+},
+"/Shows/NextUp": {
+"GET": "qr"
+},
+"/Shows/Upcoming": {
+"GET": "qr"
+},
+"/Songs/:itemId/InstantMix": {
+"GET": "qr"
+},
+"/Studios": {
+"GET": "qr"
+},
+"/SyncPlay/List": {
+"GET": "list"
+},
+"/System/ActivityLog/Entries": {
+"GET": "qr"
+},
+"/System/Logs": {
+"GET": "list"
+},
+"/Trailers": {
+"GET": "qr"
+},
+"/Trailers/:itemId/Similar": {
+"GET": "qr"
+},
+"/UserItems/Resume": {
+"GET": "qr"
+},
+"/UserViews": {
+"GET": "qr"
+},
+"/UserViews/GroupingOptions": {
+"GET": "list"
+},
+"/Users": {
+"GET": "list"
+},
+"/Users/Public": {
+"GET": "list"
+},
+"/Videos/:itemId/AdditionalParts": {
+"GET": "qr"
+},
+"/Years": {
+"GET": "qr"
+},
+"/web/ConfigurationPages": {
+"GET": "list"
+}
+}

@@ -146,7 +146,8 @@ function episodeOf(name: string, seasonFromDir: number | null): { season: number
     const season = r.seasons?.[0] ?? seasonFromDir ?? 1;
     const eps = r.episodeNumbers;
     // an episode title after the code: "Show - S01E02 - The Title"
-    const after = base.split(/s\d{1,3}[\s._-]*e\d{1,3}(?:[\s._-]*e?\d{1,3})*|\d{1,2}x\d{2,3}/i)[1] ?? "";
+    // (a second episode number, as in S01E01E02 or S01E01-02, but not the 1080 of 1080p)
+    const after = base.split(/s\d{1,3}[\s._-]*e\d{1,3}(?:[\s._-]*e?\d{1,3}(?![\dpi]))*|\d{1,2}x\d{2,3}/i)[1] ?? "";
     const words: string[] = [];
     for (const w of after.replace(/[._]/g, " ").split(/\s+/).filter(Boolean)) {
       if (/^(\d{3,4}p|4k|uhd|web(-?dl|rip)?|blu-?ray|bdrip|brrip|hdtv|dvdrip|x26[45]|h\.?26[45]|hevc|avc|aac|ac3|dts|hdr\d*|remux|proper|repack|10bit|multi|nordic|danish|dansk)$/i.test(w)) break;

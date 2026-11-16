@@ -1,15 +1,14 @@
-// Themes: how Korie looks on the TVs (Kodi). A theme is a folder with a theme.json (colours, fonts)
-// and maybe fonts and a background picture. Korie Classic and Ember come with Korie (kodi/themes);
-// more come from the Store (entries of type "theme") into the data folder. The TVs ask the server
-// which themes there are and fetch the ones they don't have yet.
+// Themes: a folder with a theme.json (colours, fonts) and maybe fonts and a background picture,
+// installed from the Store (entries of type "theme") into the data folder. (The TVs use Jellyfin's
+// apps now, which draw their own screens: themes are for Korie's own web pages.)
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
-import { DATA, KODI_DIR } from "./config.ts";
+import { DATA } from "./config.ts";
 import { emit } from "./events.ts";
 
 export const USER_DIR = path.join(DATA, "themes");
-const BUILTIN_DIR = path.join(KODI_DIR, "themes");
+const BUILTIN_DIR = path.join(import.meta.dirname, "../themes"); // none come with Korie now
 const ID = /^[a-z0-9][a-z0-9_-]{0,40}$/;
 const FILE = /^[A-Za-z0-9][A-Za-z0-9 ._-]{0,80}\.(json|ttf|otf|png|jpg|jpeg|webp)$/;
 

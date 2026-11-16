@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<!-- Korie: Estuary's top bar while a film plays. Korie's player (DialogSeekBar.xml) shows the
-     title, the chapter, the clock and when it ends, so this stays empty. -->
-<window type="dialog" id="1109">
-	<visible>false</visible>
-	<controls />
-</window>

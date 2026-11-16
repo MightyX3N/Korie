@@ -15,3 +15,8 @@ android/local.properties
 .DS_Store
 __pycache__/
 *.pyc
+
+# the Jellyfin SDK the checks download
+tools/jellyfin-check/sdk/
+tools/jellyfin-check/out*/
+tools/jellyfin-check/shots/

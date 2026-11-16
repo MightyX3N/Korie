@@ -6,7 +6,7 @@ services:
     image: ghcr.io/mightyx3n/korie:latest
     container_name: korie
     restart: unless-stopped
-    # host networking lets TVs and PCs find Korie by themselves (UDP 7361);
+    # host networking lets TVs find Korie by themselves (UDP 7359 for Jellyfin's apps, 7361);
     # Korie uses port 8100, so it doesn't clash with Jellyfin
     network_mode: host
     environment:

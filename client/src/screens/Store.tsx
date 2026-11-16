@@ -64,7 +64,7 @@ export function Store({ me }: { me: Me }) {
 
 interface ThemeView { id: string; name: string; version: string; author: string; description: string; builtin?: boolean; installed: boolean; update?: boolean }
 
-/** Themes: how Korie looks on the TVs (in Kodi). Each TV chooses its own in its settings. */
+/** Themes: how Korie's own pages look. */
 function Themes({ me }: { me: Me }) {
   const ui = useUI();
   const { data, reload } = useData<{ themes: ThemeView[]; store: ThemeView[] }>("/api/themes", ["themes", "store"]);
