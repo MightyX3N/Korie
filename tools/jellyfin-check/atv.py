@@ -2,7 +2,7 @@
 """Drives the real Jellyfin Android TV app in the emulator with remote-control keys only, and after
 every press writes down which element has focus (from Android's own accessibility tree, not from
 looking at pictures). Usage: atv.py <outdir> <step> [<step> ...] where a step is a key name
-(UP DOWN LEFT RIGHT OK BACK HOME), "text:<words>", "wait:<seconds>", or "shot:<name>"."""
+(UP DOWN LEFT RIGHT OK BACK HOME; "!KEY" presses it without waiting or reading the focus), "text:<words>", "wait:<seconds>", or "shot:<name>"."""
 import os, re, subprocess, sys, time
 
 ADB = os.environ.get("ADB", "adb")
@@ -89,6 +89,12 @@ for step in sys.argv[2:]:
         sh("shell", "input", "text", step[5:].replace(" ", "%s"))
         time.sleep(2)
         note(f"typed {step[5:]!r:<24} -> focus {focus()}")
+        continue
+    if step.startswith("!"):
+        # quick: press and move on, no focus dump (for things that hide again, like a player's controls)
+        sh("shell", "input", "keyevent", str(KEYS[step[1:]]))
+        time.sleep(0.6)
+        note(f"{step:<6} (quick)")
         continue
     t0 = time.time()
     sh("shell", "input", "keyevent", str(KEYS[step]))

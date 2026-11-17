@@ -237,7 +237,9 @@ export async function plan(src: Source, caps: Caps, audio: number | null, burn: 
 
   const audioTracks: Track[] = auds.map((a) => ({ id: String(a.index), label: audioLabel(a), lang: a.lang, isDefault: a === chosenAudio }));
   const container = p.container;
-  const containerOk = (MP4ISH.test(container) && caps.containers.includes("mp4")) || (container.startsWith("matroska,webm") && caps.containers.includes("webm") && (!v || ["vp8", "vp9", "av1"].includes(v.codec)));
+  const containerOk = (MP4ISH.test(container) && caps.containers.includes("mp4")) || (container.startsWith("matroska,webm") && caps.containers.includes("webm") && (!v || ["vp8", "vp9", "av1"].includes(v.codec)))
+    // Korie's TV app (ExoPlayer) opens any Matroska file
+    || (container.startsWith("matroska") && caps.containers.includes("mkv"));
   const videoOk = !v || codecOk(v.codec, caps.video);
   const audioOk = !chosenAudio || codecOk(chosenAudio.codec, caps.audio);
   const firstAudio = audio === null || auds[0] === chosenAudio;
