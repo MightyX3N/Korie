@@ -57,6 +57,13 @@ age limit then only see what's rated for them. Items without one are shown to ev
 use the add-on. Korie checks everything an
 add-on returns: wrong shapes are left out and noted in the add-on's log (Store → the add-on).
 
+Rows and pages are your categories. Each row of films or series ("Julefilm", "Krimi") and each
+page ("Dokumentar") becomes a genre in Jellyfin's apps, a row of its own under Genres; Korie reads
+your pages one after the other in the background to learn what's in them, so the films and series
+only found inside a page are in Films and Series too. A row that's a taste of a bigger category
+gives way to it, and an A-Z index or a row with nearly everything in it is left out. Without any
+categories, an item's own `genres` are used.
+
 Streams play through the server: it repackages or converts them with FFmpeg when a device
 can't play them as they are, so an add-on only says where the stream is.
 

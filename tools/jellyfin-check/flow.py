@@ -66,7 +66,10 @@ vid = {v["CollectionType"]: v["Id"] for v in views["Items"]}
 for ct, i in vid.items():
     step(f"09_latest_{ct}", "GET", f"/Items/Latest?userId={i and uid}&parentId={i}&limit=50&fields=Overview&imageTypeLimit=1&enableImageTypes=Primary,Backdrop,Thumb&groupItems=true", "List<BaseItemDto>")
 films = step("10_films", "GET", f"/Items?userId={uid}&parentId={vid['movies']}&includeItemTypes=Movie&recursive=true&sortBy=SortName&sortOrder=Ascending&fields=Overview,PrimaryImageAspectRatio,ChildCount&imageTypeLimit=1&enableImageTypes=Primary,Backdrop,Thumb&startIndex=0&limit=100", "BaseItemDtoQueryResult")
-movie = next(x for x in films["Items"] if x["Name"].startswith("Sintel") or "sintel" in x["Name"].lower())
+movie = next((x for x in films["Items"] if "sintel" in x["Name"].lower() and x.get("LocationType") != "Remote"), None)
+if movie is None:  # further down a big library: search, as the app does
+    found = step("10b_search_film", "GET", f"/Items?userId={uid}&searchTerm=Sintel&includeItemTypes=Movie&recursive=true&limit=20", "BaseItemDtoQueryResult")
+    movie = next(x for x in found["Items"] if x.get("LocationType") != "Remote")
 step("11_movie", "GET", f"/Items/{movie['Id']}?userId={uid}", "BaseItemDto")
 step("11b_similar", "GET", f"/Items/{movie['Id']}/Similar?userId={uid}&limit=10", "BaseItemDtoQueryResult")
 step("11c_trailers", "GET", f"/Items/{movie['Id']}/LocalTrailers?userId={uid}", "List<BaseItemDto>")
@@ -87,7 +90,10 @@ res = step("18_resume_after", "GET", f"/UserItems/Resume?userId={uid}&limit=50&m
 steps.append(["18b_resume_has_movie", "-", None, None, str(any(x["Id"] == movie["Id"] for x in res["Items"]))])
 # series
 ser = step("19_series", "GET", f"/Items?userId={uid}&parentId={vid['tvshows']}&includeItemTypes=Series&recursive=true&sortBy=SortName&fields=Overview,PrimaryImageAspectRatio,ChildCount&imageTypeLimit=1&enableImageTypes=Primary,Backdrop,Thumb", "BaseItemDtoQueryResult")
-arc = next(x for x in ser["Items"] if x["Name"] == "Arcane")
+arc = next((x for x in ser["Items"] if x["Name"] == "Arcane"), None)
+if arc is None:
+    found = step("19b_search_series", "GET", f"/Items?userId={uid}&searchTerm=Arcane&includeItemTypes=Series&recursive=true&limit=20", "BaseItemDtoQueryResult")
+    arc = next(x for x in found["Items"] if x["Name"] == "Arcane")
 step("20_series_item", "GET", f"/Items/{arc['Id']}?userId={uid}", "BaseItemDto")
 seasons = step("21_seasons", "GET", f"/Shows/{arc['Id']}/Seasons?userId={uid}&fields=Overview", "BaseItemDtoQueryResult")
 s1 = seasons["Items"][0]

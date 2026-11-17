@@ -101,6 +101,24 @@ export function state(id: string): State {
   return { enabled: !!r?.enabled, internet: !!r?.internet, settings: json(r?.settings, {}) };
 }
 
+// where an add-on's films and series show in Jellyfin's apps: among the library's own ("mixed"),
+// or on a tile of their own ("own")
+try {
+  db.exec("ALTER TABLE addons ADD COLUMN place TEXT NOT NULL DEFAULT 'mixed'");
+} catch {
+  /* there already */
+}
+
+export function place(id: string): "mixed" | "own" {
+  const r = db.prepare("SELECT place FROM addons WHERE id = ?").get(id) as { place: string } | undefined;
+  return r?.place === "own" ? "own" : "mixed";
+}
+
+export function setPlace(id: string, where: string): boolean {
+  if (where !== "mixed" && where !== "own") return false;
+  return db.prepare("UPDATE addons SET place = ? WHERE id = ?").run(where, id).changes > 0;
+}
+
 export function enabledIds(): string[] {
   return [...manifests.values()].filter((m) => !m.error && state(m.id).enabled).map((m) => m.id);
 }

@@ -5,7 +5,7 @@ Every answer is read with the real Jellyfin SDK (Check.java), like flow.py.
 
     addons.py <url> <user> <password> <outdir>
 """
-import json, os, subprocess, sys, time, urllib.error, urllib.request
+import json, os, subprocess, sys, time, urllib.error, urllib.parse, urllib.request
 
 BASE, USER, PW, OUT = sys.argv[1].rstrip("/"), sys.argv[2], sys.argv[3], sys.argv[4]
 os.makedirs(OUT, exist_ok=True)
@@ -79,11 +79,30 @@ if aseries:
             note("09b_episode_picture", f"{st} {h.get('Content-Type')} {len(b)} bytes", st == 200)
     else:
         note("07b_seasons", "no seasons came back", False)
-cats = [i for i in ser["Items"] if i["Type"] == "BoxSet"]
-if cats:
-    c = cats[0]
-    inside = step("10_category", "GET", f"/Items?userId={uid}&parentId={c['Id']}", "BaseItemDtoQueryResult")
-    note("10b_category", f"{c['Name']}: {inside['TotalRecordCount']} things inside", inside["TotalRecordCount"] > 0)
+note("10_no_category_folders", "Series holds series only (categories are genres now)", kinds.get("BoxSet", 0) == 0)
+# Films and Series open with rows in the Android TV app (its "smart screen"), Genres a row each
+for kind, typ in (("movies", "Movie"), ("tvshows", "Series")):
+    dp = step(f"10a_prefs_{kind}", "GET", f"/DisplayPreferences/{vid[kind]}?userId={uid}&client=androidtv", "DisplayPreferencesDto")
+    note(f"10b_rows_first_{kind}", f"SmartScreen = {dp.get('CustomPrefs', {}).get('SmartScreen')}", dp.get("CustomPrefs", {}).get("SmartScreen") == "true")
+    gen = step(f"10c_genres_{kind}", "GET", f"/Genres?parentId={vid[kind]}&sortBy=SortName&userId={uid}", "BaseItemDtoQueryResult")
+    names = [g["Name"] for g in gen["Items"]]
+    lst = films if kind == "movies" else ser
+    has_addon = any(i.get("LocationType") == "Remote" for i in lst["Items"])
+    note(f"10d_genres_{kind}", f"{len(names)}: " + ", ".join(names[:12]), len(names) > 0 or not has_addon)
+    if names:
+        g = names[len(names) // 2]
+        row = step(f"10e_genre_row_{kind}", "GET", f"/Items?userId={uid}&parentId={vid[kind]}&genres={urllib.parse.quote(g)}&includeItemTypes={typ}&recursive=true&sortBy=SortName&limit=40", "BaseItemDtoQueryResult")
+        note(f"10f_genre_row_{kind}", f"{g}: {row['TotalRecordCount']} — " + ", ".join(i["Name"] for i in row["Items"][:4]), row["TotalRecordCount"] > 0)
+# an add-on on a tile of its own: its categories as folders
+for v in views["Items"]:
+    if v.get("CollectionType") in (None, "folders"):
+        fl = step("10g_own_tile", "GET", f"/Items?userId={uid}&parentId={v['Id']}&sortBy=SortName", "BaseItemDtoQueryResult")
+        note("10h_own_tile", f"{v['Name']}: " + ", ".join(f"{f['Name']} ({f.get('ChildCount')})" for f in fl["Items"][:8]), fl["TotalRecordCount"] > 0)
+        if fl["Items"]:
+            inside = step("10i_own_folder", "GET", f"/Items?userId={uid}&parentId={fl['Items'][2 if len(fl['Items']) > 2 else 0]['Id']}&sortBy=SortName", "BaseItemDtoQueryResult")
+            note("10j_own_folder", f"{inside['TotalRecordCount']} inside", inside["TotalRecordCount"] > 0)
+            st, b, h, dt = call("GET", f"/Items/{fl['Items'][0]['Id']}/Images/Primary?fillWidth=400", raw=200000)
+            note("10k_folder_picture", f"{st} {h.get('Content-Type')} {len(b)} bytes", st == 200)
 
 if "livetv" in vid:
     step("11_livetv_info", "GET", "/LiveTv/Info", "LiveTvInfo")
@@ -101,7 +120,9 @@ if "livetv" in vid:
 # play an add-on film
 sintel = next((f for f in remote if f["Name"] == "Sintel"), remote[0] if remote else None)
 if sintel:
-    step("14_addon_film", "GET", f"/Items/{sintel['Id']}?userId={uid}", "BaseItemDto")
+    fd = step("14_addon_film", "GET", f"/Items/{sintel['Id']}?userId={uid}", "BaseItemDto")
+    # the Android TV app crashes starting an item that doesn't say how it plays
+    note("14a_how_it_plays", f"{len(fd.get('MediaSources') or [])} source(s)", bool(fd.get("MediaSources")))
     st, b, h, dt = call("GET", f"/Items/{sintel['Id']}/Images/Primary?fillHeight=600", raw=300000)
     note("14b_poster", f"{st} {h.get('Content-Type')} {len(b)} bytes", st == 200 and len(b) > 5000)
     pi = step("15_film_playbackinfo", "POST", f"/Items/{sintel['Id']}/PlaybackInfo?userId={uid}", "PlaybackInfoResponse", {"DeviceProfile": PROFILE})

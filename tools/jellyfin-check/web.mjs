@@ -17,6 +17,14 @@ page.on("pageerror", (e) => bad.push("script error: " + e.message.split("\n")[0]
 let n = 0;
 const shot = async (name) => { await new Promise((r) => setTimeout(r, 1500)); await page.screenshot({ path: `${out}/${String(++n).padStart(2, "0")}_${name}.png` }); };
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const openByName = async (name) => {
+  const here = await page.evaluate((n) => [...document.querySelectorAll(".cardText-first a, .cardText a, .card a")].some((e) => e.textContent.trim().startsWith(n)), name);
+  if (!here) {
+    await page.goto(base + "/web/#/search?query=" + encodeURIComponent(name), { waitUntil: "networkidle2" });
+    await wait(4000);
+  }
+  await clickText(".cardText-first a, .cardText a, .card a", name);
+};
 const clickText = async (sel, text) => {
   const ok = await page.evaluate((sel, text) => {
     const el = [...document.querySelectorAll(sel)].find((e) => e.offsetParent !== null && e.textContent.trim().toLowerCase().includes(text.toLowerCase()));
@@ -53,7 +61,8 @@ try {
   await shot("films");
   const films = await page.evaluate(() => [...document.querySelectorAll(".cardText-first, .cardText")].map((e) => e.textContent.trim()).filter(Boolean));
   note("films listed: " + JSON.stringify([...new Set(films)]));
-  await clickText(".cardText-first a, .cardText a, .card a", "Sintel");
+  // a big library doesn't show it on the first screen: find it through search, like a person would
+  await openByName("Sintel");
   await wait(4000);
   await shot("film_page");
   const title = await page.evaluate(() => document.querySelector(".itemName, h1, h3.itemName-primary")?.textContent?.trim());
@@ -71,7 +80,7 @@ try {
   await clickText("a, button", "Series");
   await wait(4000);
   await shot("series");
-  await clickText(".cardText-first a, .cardText a, .card a", "Arcane");
+  await openByName("Arcane");
   await wait(4000);
   await shot("series_page");
   const seasons = await page.evaluate(() => [...document.querySelectorAll(".cardText-first, .cardText")].map((e) => e.textContent.trim()).filter(Boolean));

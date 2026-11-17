@@ -19,6 +19,7 @@ import * as views from "./views.ts";
 import * as playback from "./playback.ts";
 import { picture } from "./images.ts";
 import * as browse from "./addons/browse.ts";
+import * as addonMgr from "./addons/manager.ts";
 import { serverId } from "./ident.ts";
 import EMPTY from "./jellyfin-empty.json" with { type: "json" };
 import websocket from "@fastify/websocket";
@@ -129,12 +130,20 @@ type Thing =
   | { t: "season"; series: lib.Row; n: number }
   // what add-ons offer: films, series, their episodes, categories (pages) and live channels
   | { t: "aitem"; a: browse.AItem }
-  | { t: "aseason"; series: browse.AItem; n: number };
+  | { t: "aseason"; series: browse.AItem; n: number }
+  // an add-on on a tile of its own, and its categories as folders inside it
+  | { t: "aview"; aid: string }
+  | { t: "acat"; aid: string; name: string };
 
 function thing(j: string | undefined | null): Thing | null {
   const k = kid(j);
   if (!k) return null;
   if (k === "view:films" || k === "view:series" || k === "view:live") return { t: "view", kind: k.slice(5) as "films" | "series" | "live" };
+  if (k.startsWith("aview:")) return addonMgr.manifests.has(k.slice(6)) ? { t: "aview", aid: k.slice(6) } : null;
+  if (k.startsWith("acat:")) {
+    const m = k.match(/^acat:([^:]+):(.*)$/);
+    return m && addonMgr.manifests.has(m[1]) ? { t: "acat", aid: m[1], name: m[2] } : null;
+  }
   if (k.startsWith("aseason:")) {
     const m = k.match(/^aseason:(.+):(\d+)$/);
     const a = m ? browse.get(m[1]) : null;
@@ -197,22 +206,56 @@ function mayA(p: P, a: browse.AItem): boolean {
   return people.mayUseAddon(p, a.source) && views.mayItem(p, a);
 }
 
-/** What the add-ons this person may use offer for a section (films: films and categories; series:
- *  series and categories; live: channels), each once. */
-function addonItems(p: P, sec: "films" | "series" | "live"): browse.AItem[] {
-  const kinds = sec === "films" ? ["film", "page"] : sec === "series" ? ["series", "page"] : ["live"];
+/** What the add-ons this person may use offer for a section, each once: films, series (all of
+ *  them, also those only inside an add-on's categories) or live channels. Add-ons on a tile of
+ *  their own are left out of Films and Series unless asked for ("all"). */
+function addonItems(p: P, sec: "films" | "series" | "live", which: "mixed" | "all" = "mixed"): browse.AItem[] {
   const seen = new Set<string>();
   const out: browse.AItem[] = [];
-  for (const v of browse.section(sec, (aid) => people.mayUseAddon(p, aid))) {
-    for (const row of v.rows) {
-      for (const a of row.items) {
-        if (seen.has(a.id) || !kinds.includes(a.kind) || !mayA(p, a)) continue;
-        seen.add(a.id);
-        out.push(a);
-      }
-    }
+  const add = (a: browse.AItem) => {
+    if (seen.has(a.id) || !mayA(p, a)) return;
+    seen.add(a.id);
+    out.push(a);
+  };
+  if (sec === "live") {
+    for (const v of browse.section("live", (aid) => people.mayUseAddon(p, aid))) for (const row of v.rows) for (const a of row.items) if (a.kind === "live") add(a);
+    return out;
+  }
+  for (const v of browse.section(sec, (aid) => people.mayUseAddon(p, aid) && (which === "all" || addonMgr.place(aid) === "mixed"))) {
+    for (const a of browse.catalogue(v.addon, sec === "films" ? "film" : "series")) add(a);
   }
   return out;
+}
+
+/** Add-ons this person may use that sit on a tile of their own. */
+function ownTiles(p: P): string[] {
+  return addonMgr.enabledIds().filter((aid) => addonMgr.place(aid) === "own" && people.mayUseAddon(p, aid) && (browse.catalogue(aid, "film").length || browse.catalogue(aid, "series").length));
+}
+
+/** The picture on each of an own tile's folders: a different film or series for each, where it can. */
+function folderCovers(aid: string): Map<string, string> {
+  const lists: [string, browse.AItem[]][] = [["*films", browse.catalogue(aid, "film")], ["*series", browse.catalogue(aid, "series")], ...browse.categories(aid).map((c) => [c.name, c.items] as [string, browse.AItem[]])];
+  const used = new Set<string>();
+  const out = new Map<string, string>();
+  for (const [name, items] of lists) {
+    const withPic = items.filter((a) => a.backdrop || a.poster);
+    const a = withPic.find((x) => !used.has(x.id)) ?? withPic[0];
+    if (!a) continue;
+    used.add(a.id);
+    out.set(name, a.backdrop || a.poster);
+  }
+  return out;
+}
+
+/** An own tile's folders: all its films, all its series, then its categories. */
+function tileFolders(p: P, aid: string): { name: string; label: string; items: browse.AItem[] }[] {
+  const ok = (list: browse.AItem[]) => list.filter((a) => mayA(p, a));
+  const out = [
+    { name: "*films", label: "Films", items: ok(browse.catalogue(aid, "film")) },
+    { name: "*series", label: "Series", items: ok(browse.catalogue(aid, "series")) },
+    ...browse.categories(aid).map((c) => ({ name: c.name, label: c.name, items: ok(c.items) })),
+  ];
+  return out.filter((f) => f.items.length);
 }
 
 /** Add-on search results (add-ons answer in their own time: a few seconds at most). */
@@ -278,10 +321,28 @@ function common(name: string, k: string, type: string): Record<string, unknown> 
 }
 
 /** An add-on's film, series, episode, category or channel, in Jellyfin's shape. */
+/** How an add-on's film, episode or channel plays, before it's asked to (no tracks read yet). */
+function stubSource(a: browse.AItem): Record<string, unknown> {
+  const live = a.kind === "live";
+  const base = { IsForced: false, IsHearingImpaired: false, IsInterlaced: false, IsExternal: false, Level: 0, IsAnamorphic: false, SupportsExternalStream: false, IsTextSubtitleStream: false, AudioSpatialFormat: "None" };
+  return {
+    Protocol: "Http", Id: jid(a.id), Type: "Default", Container: "mp4", Name: a.title, IsRemote: true, ETag: tag(a.id),
+    RunTimeTicks: !live && a.runtime ? Math.round(a.runtime * 60 * TICKS) : undefined, ReadAtNativeFramerate: false, IgnoreDts: false, IgnoreIndex: false,
+    GenPtsInput: false, SupportsTranscoding: true, SupportsDirectStream: false, SupportsDirectPlay: false, IsInfiniteStream: live,
+    UseMostCompatibleTranscodingProfile: false, RequiresOpening: false, RequiresClosing: false, RequiresLooping: false, SupportsProbing: false,
+    MediaStreams: [
+      { ...base, Index: 0, Codec: "h264", Type: "Video", IsDefault: true, IsAVC: true, VideoRange: "SDR", VideoRangeType: "SDR", DisplayTitle: "Video" },
+      { ...base, Index: 1, Codec: "aac", Type: "Audio", Channels: 2, IsDefault: true, IsAVC: false, VideoRange: "Unknown", VideoRangeType: "Unknown", DisplayTitle: "Audio" },
+    ],
+    MediaAttachments: [], Formats: [], RequiredHttpHeaders: {}, HasSegments: false, DefaultAudioStreamIndex: 1, DefaultSubtitleStreamIndex: -1,
+    TranscodingSubProtocol: "http", TranscodingContainer: "mp4",
+  };
+}
+
 function aDto(p: P, a: browse.AItem): Record<string, unknown> {
   const type = a.kind === "film" ? "Movie" : a.kind === "series" ? "Series" : a.kind === "episode" ? "Episode" : a.kind === "live" ? "TvChannel" : "BoxSet";
   const o = common(a.title, a.id, type);
-  const genres = a.genres ?? [];
+  const genres = a.kind === "film" || a.kind === "series" ? browse.genresOf(a) : (a.genres ?? []);
   const year = Number(a.year) || undefined;
   Object.assign(o, {
     SortName: a.title.toLowerCase(), LocationType: "Remote", CanDelete: false, CanDownload: false, PlayAccess: "Full",
@@ -292,11 +353,15 @@ function aDto(p: P, a: browse.AItem): Record<string, unknown> {
     Taglines: [], Tags: [], Studios: [], People: [], RemoteTrailers: [], LocalTrailerCount: 0, SpecialFeatureCount: 0,
     DisplayPreferencesId: jid(a.id), EnableMediaSourceDisplay: true, UserData: userData(p, a.id),
   });
+  // Jellyfin's apps expect a playable item to say how it plays: the Android TV app crashes when
+  // it starts one without (it looks up the audio language there). The real source, with the
+  // stream's own tracks, comes from PlaybackInfo when it's played.
+  if (a.kind === "film" || a.kind === "episode" || a.kind === "live") o.MediaSources = [stubSource(a)];
   if (a.kind === "film") {
-    Object.assign(o, { IsFolder: false, MediaType: "Video", VideoType: "VideoFile", ParentId: jid("view:films") });
+    Object.assign(o, { IsFolder: false, MediaType: "Video", VideoType: "VideoFile", ParentId: jid(addonMgr.place(a.source) === "own" ? "aview:" + a.source : "view:films") });
     images(o, a.poster || a.thumb, a.backdrop, 2 / 3);
   } else if (a.kind === "series") {
-    Object.assign(o, { IsFolder: true, MediaType: "Unknown", ParentId: jid("view:series"), ChildCount: a.seasons?.length, Status: "Continuing" });
+    Object.assign(o, { IsFolder: true, MediaType: "Unknown", ParentId: jid(addonMgr.place(a.source) === "own" ? "aview:" + a.source : "view:series"), ChildCount: a.seasons?.length, Status: "Continuing" });
     images(o, a.poster || a.thumb, a.backdrop, 2 / 3);
   } else if (a.kind === "page") {
     // an add-on's category ("Dokumentar", "Krimi" ...): a folder of its films and series
@@ -336,6 +401,25 @@ export function dto(p: P, th: Thing): Record<string, unknown> {
       ChildCount: lib.rows(th.kind === "films" ? "film" : "series").filter((r) => views.may(p, r)).length + addonItems(p, th.kind).length,
       DisplayPreferencesId: jid(k), UserData: userData(p, k), ImageTags: {}, BackdropImageTags: [], PlayAccess: "Full",
     });
+    return o;
+  }
+  if (th.t === "aview") {
+    const k = "aview:" + th.aid;
+    const o = common(addonMgr.manifests.get(th.aid)?.name ?? th.aid, k, "CollectionFolder");
+    // no collection type: the Android TV app hides "folders" libraries, and opens one without a
+    // type as a grid of its folders
+    Object.assign(o, { IsFolder: true, SortName: (addonMgr.manifests.get(th.aid)?.name ?? th.aid).toLowerCase(), MediaType: "Unknown",
+      ChildCount: tileFolders(p, th.aid).length, DisplayPreferencesId: jid(k), UserData: userData(p, k), PlayAccess: "Full", ImageTags: {}, BackdropImageTags: [] });
+    return o;
+  }
+  if (th.t === "acat") {
+    const k = `acat:${th.aid}:${th.name}`;
+    const f = tileFolders(p, th.aid).find((x) => x.name === th.name);
+    const cover = folderCovers(th.aid).get(th.name) ?? "";
+    const o = common(f?.label ?? th.name, k, "Folder");
+    Object.assign(o, { IsFolder: true, SortName: (f?.label ?? th.name).toLowerCase(), MediaType: "Unknown", ParentId: jid("aview:" + th.aid),
+      ChildCount: f?.items.length ?? 0, DisplayPreferencesId: jid(k), UserData: userData(p, k), PlayAccess: "Full" });
+    images(o, cover, "", 16 / 9);
     return o;
   }
   if (th.t === "aitem") return aDto(p, th.a);
@@ -449,7 +533,7 @@ async function children(p: P, parent: Thing | null, recursive: boolean, types: s
     if (want("Movie")) out.push(...lib.rows("film").filter(ok).map(rowThing));
     for (const s of lib.rows("series").filter(ok)) addSeries(s, recursive);
     // add-on films and series (not their categories, which aren't films or series themselves)
-    if (types.length) out.push(...[...addonItems(p, "films"), ...addonItems(p, "series")].filter((a) => a.kind !== "page" && wantA(a)).map(aThing));
+    if (types.length) out.push(...[...addonItems(p, "films", "all"), ...addonItems(p, "series", "all")].filter(wantA).map(aThing));
     return out;
   }
   if (parent.t === "view") {
@@ -459,10 +543,20 @@ async function children(p: P, parent: Thing | null, recursive: boolean, types: s
     } else {
       for (const s of lib.rows("series").filter(ok)) addSeries(s, recursive);
     }
-    // what the add-ons offer sits right among the library's own; their categories only when the
-    // app lists the library as it is (not when it asks for films or series only)
-    out.push(...addonItems(p, parent.kind).filter((a) => (a.kind === "page" ? !types.length && !recursive : wantA(a))).map(aThing));
+    // what the add-ons offer sits right among the library's own (their categories are genres)
+    out.push(...addonItems(p, parent.kind).filter(wantA).map(aThing));
     return out;
+  }
+  if (parent.t === "aview") {
+    const folders = tileFolders(p, parent.aid);
+    if (!recursive) return folders.map((f) => ({ t: "acat", aid: parent.aid, name: f.name }) as Thing);
+    const seen = new Set<string>();
+    for (const f of folders) for (const a of f.items) if (!seen.has(a.id) && wantA(a)) { seen.add(a.id); out.push(aThing(a)); }
+    return out;
+  }
+  if (parent.t === "acat") {
+    const f = tileFolders(p, parent.aid).find((x) => x.name === parent.name);
+    return (f?.items ?? []).filter(wantA).map(aThing);
   }
   if (parent.t === "aitem") {
     const a = parent.a;
@@ -506,6 +600,8 @@ async function children(p: P, parent: Thing | null, recursive: boolean, types: s
 
 function keyOf(th: Thing): string {
   if (th.t === "aitem") return th.a.id;
+  if (th.t === "aview") return "aview:" + th.aid;
+  if (th.t === "acat") return `acat:${th.aid}:${th.name}`;
   if (th.t === "aseason") return `aseason:${th.series.id}:${th.n}`;
   return th.t === "view" ? "view:" + th.kind : th.t === "season" ? `season:${th.series.id}:${th.n}` : th.row.id;
 }
@@ -513,7 +609,7 @@ function keyOf(th: Thing): string {
 /** Title, sort name, genres and year of a library or add-on thing (for searching, filtering, sorting). */
 function facts(t: Thing): { title: string; sort: string; genres: string[]; year: string } | null {
   if (t.t === "row") return { title: t.row.title, sort: t.row.sort, genres: lib.data(t.row).genres ?? [], year: t.row.year };
-  if (t.t === "aitem") return { title: t.a.title, sort: t.a.title.toLowerCase().replace(/^(the|a|an|den|det|de|en|et)\s+/, ""), genres: t.a.genres ?? [], year: t.a.year };
+  if (t.t === "aitem") return { title: t.a.title, sort: t.a.title.toLowerCase().replace(/^(the|a|an|den|det|de|en|et)\s+/, ""), genres: t.a.kind === "film" || t.a.kind === "series" ? browse.genresOf(t.a) : (t.a.genres ?? []), year: t.a.year };
   return null;
 }
 
@@ -767,10 +863,19 @@ async function addonMediaSource(a: browse.AItem, body: Record<string, any>): Pro
   const src: playback.Source = { url: ans.url, headers: ans.headers, live: ans.live };
   const probe = await playback.probe(src).catch(() => null);
   const id = jid(a.id);
-  const video = probe?.streams.find((x) => x.type === "video");
-  const audios = probe?.streams.filter((x) => x.type === "audio") ?? [];
+  // a stream with several qualities (HLS from DRTV and most services) lists one picture per
+  // quality: offer the best up to 1080p as the only picture, so apps see one film, not five
+  const videos = probe?.streams.filter((x) => x.type === "video") ?? [];
+  const fits = videos.filter((x) => !x.height || x.height <= 1080);
+  const video = (fits.length ? fits : videos).reduce<(typeof videos)[number] | undefined>((b, x) => (!b || x.height * x.width > b.height * b.width ? x : b), undefined);
+  const seen = new Set<string>();
+  const audios = (probe?.streams.filter((x) => x.type === "audio") ?? []).filter((x) => {
+    const k = `${x.lang}|${x.title}|${x.codec}|${x.channels}`;
+    return seen.has(k) ? false : (seen.add(k), true);
+  });
   const audio = audios.find((x) => body.AudioStreamIndex != null && x.index === Number(body.AudioStreamIndex)) ?? audios.find((x) => x.isDefault) ?? audios[0];
-  const streams: Record<string, unknown>[] = (probe?.streams ?? []).filter((x) => x.type !== "subtitle").map((x) => ({
+  const picked = [...(video ? [video] : []), ...audios].sort((x, y) => x.index - y.index);
+  const streams: Record<string, unknown>[] = picked.map((x) => ({
     Index: x.index, Codec: x.codec, Language: x.lang || undefined, Title: x.title || undefined, IsDefault: x.type === "audio" ? x.index === audio?.index : x.isDefault,
     IsForced: x.forced, IsHearingImpaired: false, IsInterlaced: false, IsExternal: false, IsAVC: x.codec === "h264", Level: 0, IsAnamorphic: false,
     Type: x.type === "video" ? "Video" : "Audio", SupportsExternalStream: false, IsTextSubtitleStream: false, AudioSpatialFormat: "None",
@@ -778,8 +883,18 @@ async function addonMediaSource(a: browse.AItem, body: Record<string, any>): Pro
     ...(x.type === "video" ? { Width: x.width, Height: x.height, DisplayTitle: `${x.height ? x.height + "p " : ""}${x.codec.toUpperCase()}` } : {}),
     ...(x.type === "audio" ? { Channels: x.channels, DisplayTitle: [playback.langName(x.lang) || "Unknown", x.codec.toUpperCase()].join(" - ") } : {}),
   }));
+  // the source couldn't be read (yet): still describe a film with a picture and sound, as every
+  // Jellyfin app expects one; the stream itself then says whether it plays
+  if (!video && !audios.length) {
+    streams.push(
+      { Index: 0, Codec: "h264", Type: "Video", IsDefault: true, IsForced: false, IsHearingImpaired: false, IsInterlaced: false, IsExternal: false, IsAVC: true, Level: 0, IsAnamorphic: false,
+        SupportsExternalStream: false, IsTextSubtitleStream: false, AudioSpatialFormat: "None", VideoRange: "SDR", VideoRangeType: "SDR", DisplayTitle: "Video" },
+      { Index: 1, Codec: "aac", Type: "Audio", Channels: 2, IsDefault: true, IsForced: false, IsHearingImpaired: false, IsInterlaced: false, IsExternal: false, IsAVC: false, Level: 0, IsAnamorphic: false,
+        SupportsExternalStream: false, IsTextSubtitleStream: false, AudioSpatialFormat: "None", VideoRange: "Unknown", VideoRangeType: "Unknown", DisplayTitle: "Audio" },
+    );
+  }
   // the add-on's subtitle files, as WebVTT through Korie
-  const first = (probe?.streams.length ?? 0) + 100;
+  const first = Math.max(2, ...(probe?.streams ?? []).map((x) => x.index + 1)) + 100;
   ans.subtitles.forEach((sub, i) => {
     const tok = playback.token({ url: sub.url, headers: ans.headers });
     streams.push({
@@ -790,15 +905,15 @@ async function addonMediaSource(a: browse.AItem, body: Record<string, any>): Pro
     });
   });
   const start = ans.live ? 0 : Number(body.StartTimeTicks ?? 0) / TICKS || 0;
-  const q = new URLSearchParams({ v: video?.codec === "h264" ? "copy" : "x264", ...(audio ? { audio: String(audio.index) } : {}) });
+  const q = new URLSearchParams({ v: video?.codec === "h264" ? "copy" : "x264", ...(videos.length > 1 && video ? { vi: String(video.index) } : {}), ...(audio ? { audio: String(audio.index) } : {}) });
   const def = streams.find((x) => x.Type === "Subtitle" && x.IsDefault);
   return {
     Protocol: "Http", Id: id, Type: "Default", Container: "mp4", Name: a.title, IsRemote: true, ETag: tag(a.id),
-    RunTimeTicks: !ans.live && probe?.duration ? Math.round(probe.duration * TICKS) : undefined, ReadAtNativeFramerate: false, IgnoreDts: false, IgnoreIndex: false,
+    RunTimeTicks: ans.live ? undefined : probe?.duration ? Math.round(probe.duration * TICKS) : a.runtime ? Math.round(a.runtime * 60 * TICKS) : undefined, ReadAtNativeFramerate: false, IgnoreDts: false, IgnoreIndex: false,
     GenPtsInput: false, SupportsTranscoding: true, SupportsDirectStream: false, SupportsDirectPlay: false, IsInfiniteStream: ans.live,
     UseMostCompatibleTranscodingProfile: false, RequiresOpening: false, RequiresClosing: false, RequiresLooping: false, SupportsProbing: false,
     MediaStreams: streams, MediaAttachments: [], Formats: [], RequiredHttpHeaders: {}, HasSegments: false,
-    DefaultAudioStreamIndex: audio?.index, DefaultSubtitleStreamIndex: def ? def.Index : -1,
+    DefaultAudioStreamIndex: audio?.index ?? (video ? undefined : 1), DefaultSubtitleStreamIndex: def ? def.Index : -1,
     TranscodingUrl: `/Videos/${id}/stream.mp4?k=${encodeURIComponent(playback.token(src))}&start=${start}&${q}`, TranscodingSubProtocol: "http", TranscodingContainer: "mp4",
   };
 }
@@ -814,6 +929,7 @@ function allowed(p: P, t: Thing): boolean {
   if (t.t === "season") return views.may(p, t.series);
   if (t.t === "aitem") return mayA(p, t.a);
   if (t.t === "aseason") return mayA(p, t.series);
+  if (t.t === "aview" || t.t === "acat") return people.mayUseAddon(p, t.aid) && addonMgr.place(t.aid) === "own";
   return true;
 }
 
@@ -981,9 +1097,14 @@ export async function register(app: FastifyInstance, webDir: string | null): Pro
     const p = who(req);
     const q = qs(req);
     const row = db.prepare("SELECT data FROM jf_prefs WHERE person = ? AND id = ? AND client = ?").get(p.id, req.params.id, q.client ?? "") as { data: string } | undefined;
+    // Films and Series open with rows (Continue watching, Latest, Favourites, then Genres with a
+    // row per category) in the Android TV app, unless someone turned that off there
+    const lists = kid(req.params.id);
+    const rowsFirst = lists === "view:films" || lists === "view:series" ? { SmartScreen: "true" } : {};
     const def = { Id: req.params.id.length === 32 ? dashed(req.params.id) : req.params.id, SortBy: "SortName", RememberIndexing: false, PrimaryImageHeight: 250, PrimaryImageWidth: 250,
-      CustomPrefs: {}, ScrollDirection: "Horizontal", ShowBackdrop: true, RememberSorting: false, SortOrder: "Ascending", ShowSidebar: false, Client: q.client ?? "" };
-    return row ? { ...def, ...json(row.data, {}) } : def;
+      CustomPrefs: rowsFirst, ScrollDirection: "Horizontal", ShowBackdrop: true, RememberSorting: false, SortOrder: "Ascending", ShowSidebar: false, Client: q.client ?? "" };
+    const saved = row ? json<Record<string, any>>(row.data, {}) : {};
+    return { ...def, ...saved, CustomPrefs: { ...rowsFirst, ...(saved.CustomPrefs ?? {}) } };
   });
   r("POST", ["/DisplayPreferences/:id"], (req) => {
     const p = who(req);
@@ -998,6 +1119,7 @@ export async function register(app: FastifyInstance, webDir: string | null): Pro
     const out: Thing[] = [];
     if (kinds.has("films") || addonItems(p, "films").length) out.push({ t: "view", kind: "films" });
     if (kinds.has("series") || addonItems(p, "series").length) out.push({ t: "view", kind: "series" });
+    for (const aid of ownTiles(p)) out.push({ t: "aview", aid });
     if (addonItems(p, "live").length) out.push({ t: "view", kind: "live" });
     return out;
   };
@@ -1174,9 +1296,13 @@ export async function register(app: FastifyInstance, webDir: string | null): Pro
     const p = who(req);
     const q = qs(req);
     const parent = q.parentid ? thing(q.parentid) : null;
-    const rows = parent?.t === "view" ? lib.rows(parent.kind === "films" ? "film" : "series") : [...lib.rows("film"), ...lib.rows("series")];
+    const kinds = parent?.t === "view" && parent.kind !== "live" ? [parent.kind] : parent ? [] : ["films", "series"] as const;
     const genres = new Map<string, string>();
-    for (const row of rows) if (views.may(p, row)) for (const g of lib.data(row).genres ?? []) genres.set(g.toLowerCase(), g);
+    for (const k of kinds) {
+      for (const row of lib.rows(k === "films" ? "film" : "series")) if (views.may(p, row)) for (const g of lib.data(row).genres ?? []) genres.set(g.toLowerCase(), g);
+      // the add-ons' categories ("Julefilm", "Krimi") are genres too: a row each in the apps' Genres
+      for (const a of addonItems(p, k)) for (const g of browse.genresOf(a)) if (!genres.has(g.toLowerCase())) genres.set(g.toLowerCase(), g);
+    }
     const items = [...genres.values()].sort().map((g) => ({ Name: g, ServerId: SID(), Id: jid("genre:" + g.toLowerCase()), Type: "Genre", IsFolder: true, ImageTags: {}, BackdropImageTags: [], LocationType: "Virtual", MediaType: "Unknown", ChannelId: null }));
     return { Items: items, TotalRecordCount: items.length, StartIndex: 0 };
   });
@@ -1210,6 +1336,7 @@ export async function register(app: FastifyInstance, webDir: string | null): Pro
     } else if (th?.t === "aseason") {
       src = type === "primary" ? th.series.poster : type === "backdrop" ? th.series.backdrop : "";
     }
+    if (th?.t === "acat") src = type === "primary" || type === "thumb" ? folderCovers(th.aid).get(th.name) ?? "" : "";
     if (th?.t === "row") {
       const s = sources(th.row);
       src = type === "primary" ? (th.row.kind === "episode" ? s.thumb : s.poster) : type === "backdrop" || type === "thumb" ? s.backdrop || s.thumb : "";
@@ -1254,7 +1381,7 @@ export async function register(app: FastifyInstance, webDir: string | null): Pro
       if (!src) return reply.code(404).send();
       reply.hijack();
       const start = Math.max(0, Number(q.start ?? 0) || 0);
-      playback.stream(src, start, { v: q.v === "copy" ? "copy" : undefined, audio: q.audio }, reply.raw, (fn) => req.raw.on("close", fn), q.k).catch((e) => {
+      playback.stream(src, start, { v: q.v === "copy" ? "copy" : undefined, audio: q.audio, vi: q.vi }, reply.raw, (fn) => req.raw.on("close", fn), q.k).catch((e) => {
         log("jellyfin", `stream: ${e?.message ?? e}`);
         if (!reply.raw.headersSent) reply.raw.writeHead(500);
         reply.raw.end();

@@ -125,6 +125,7 @@ export function load(): void {
       // rows kept by an older version of the add-on are fetched again at once
       const same = saved.version === addons.manifests.get(aid)?.version;
       sections.set(aid, { at: same ? saved.at ?? 0 : 0, loading: false, error: "", rows: sectionsFrom(aid, saved.res) });
+      void buildCatalogue(aid);
     } catch {
       /* first time */
     }
@@ -154,6 +155,7 @@ export function refresh(aid: string, force = false): void {
         st.error = "";
         fs.writeFileSync(file(aid), JSON.stringify({ at: st.at, version: addons.manifests.get(aid)?.version, res }));
         log("browse", `${aid}: fresh rows in ${Date.now() - t0} ms`);
+        void buildCatalogue(aid);
       } else {
         st.error = s(res?.error) || "nothing came back";
       }
@@ -173,6 +175,7 @@ export function refreshAll(force = false): void {
 
 export function forget(aid: string): void {
   sections.delete(aid);
+  catalogues.delete(aid);
   try {
     fs.unlinkSync(file(aid));
   } catch {
@@ -229,6 +232,118 @@ export async function page(id: string): Promise<{ title: string; rows: ARow[]; e
     if (p) return p; // old rows beat an error
     return { title: it.title, rows: [], error: e instanceof Error ? e.message : String(e) };
   }
+}
+
+// --- catalogue: everything an add-on has, and its categories --------------------------
+
+/** An add-on's films and series (from its rows and from inside its category pages) and which of
+ *  its categories each is in. A row of films or series is a category ("Julefilm", "Krimi"), and
+ *  so is a category page ("Dokumentar"). Jellyfin's apps get the categories as genres, so they
+ *  show as one row each under Genres. */
+interface Catalogue { films: AItem[]; series: AItem[]; cats: Map<string, string[]>; order: string[]; generic: Set<string>; building: boolean }
+const catalogues = new Map<string, Catalogue>();
+
+function addTo(c: Catalogue, a: AItem, cat: string, seen: Set<string>): void {
+  if (a.kind !== "film" && a.kind !== "series") return;
+  if (!seen.has(a.id)) {
+    seen.add(a.id);
+    (a.kind === "film" ? c.films : c.series).push(a);
+  }
+  if (!cat) return;
+  const list = c.cats.get(a.id) ?? [];
+  if (!list.includes(cat)) list.push(cat);
+  c.cats.set(a.id, list);
+  if (!c.order.includes(cat)) c.order.push(cat);
+}
+
+async function buildCatalogue(aid: string): Promise<void> {
+  const st = sections.get(aid);
+  const old = catalogues.get(aid);
+  if (!st || old?.building) return;
+  const c: Catalogue = { films: [], series: [], cats: new Map(), order: [], generic: new Set(), building: true };
+  if (!old) catalogues.set(aid, c);
+  const seen = new Set<string>();
+  const pagesToRead: AItem[] = [];
+  for (const sec of ["films", "series"] as const) {
+    for (const row of st.rows[sec] ?? []) {
+      const real = row.items.filter((a) => a.kind === "film" || a.kind === "series");
+      for (const a of real) addTo(c, a, row.title, seen);
+      for (const a of row.items) if (a.kind === "page" && !pagesToRead.some((x) => x.id === a.id)) pagesToRead.push(a);
+    }
+  }
+  // a category page's films and series: one page after the other, so the add-on isn't flooded
+  for (const pg of pagesToRead) {
+    try {
+      const res = await page(pg.id);
+      for (const row of res.rows) for (const a of row.items) addTo(c, a, pg.title, seen);
+    } catch {
+      /* this page stays out until next time */
+    }
+  }
+  // categories that sort nothing are left out: an A-Z index, one that holds nearly everything,
+  // or one with just a couple of things in it
+  const size = new Map<string, number>();
+  for (const list of c.cats.values()) for (const n of list) size.set(n, (size.get(n) ?? 0) + 1);
+  const total = c.films.length + c.series.length;
+  const useless = (n: string) => /^[a-zæøå0-9#](\s*[-–]\s*[a-zæøå0-9])?$/i.test(n.trim()) || (size.get(n) ?? 0) < 3 || (total >= 20 && (size.get(n) ?? 0) > total * 0.5);
+  // a front-page row that's a taste of a bigger category ("Danske film", 16 of "Danske") goes
+  // in favour of the whole category
+  const members = new Map<string, Set<string>>();
+  for (const [id, list] of c.cats) for (const n of list) (members.get(n) ?? members.set(n, new Set()).get(n)!).add(id);
+  const part = (n: string) => {
+    const a = members.get(n)!;
+    for (const [m, b] of members) {
+      if (m === n || b.size <= a.size || useless(m)) continue;
+      let both = 0;
+      for (const id of a) if (b.has(id)) both++;
+      if (both >= a.size * 0.9) return true;
+    }
+    return false;
+  };
+  const drop = new Set([...members.keys()].filter((n) => useless(n) || part(n)));
+  for (const [id, list] of c.cats) c.cats.set(id, list.filter((n) => !drop.has(n)));
+  c.order = c.order.filter((n) => !drop.has(n));
+  // with no categories at all, an add-on's own genres sort its things instead; one that nearly
+  // everything has ("Film" on every film) sorts nothing
+  for (const list of [c.films, c.series]) {
+    const count = new Map<string, number>();
+    for (const a of list) for (const g of new Set(a.genres)) count.set(g, (count.get(g) ?? 0) + 1);
+    for (const [g, k] of count) if (list.length >= 10 && k > list.length * 0.6) c.generic.add(g);
+  }
+  c.building = false;
+  catalogues.set(aid, c);
+  log("browse", `${aid}: ${c.films.length} films, ${c.series.length} series in ${c.order.length} categories`);
+  emit("browse");
+}
+
+/** The add-on's films or series: all of them, also those only inside its category pages. */
+export function catalogue(aid: string, kind: "film" | "series"): AItem[] {
+  const c = catalogues.get(aid);
+  if (c && (c.films.length || c.series.length)) return kind === "film" ? c.films : c.series;
+  // not built yet: what its rows show
+  const st = sections.get(aid);
+  const seen = new Set<string>();
+  const out: AItem[] = [];
+  for (const sec of ["films", "series"] as const) for (const row of st?.rows[sec] ?? []) for (const a of row.items) if (a.kind === kind && !seen.has(a.id)) { seen.add(a.id); out.push(a); }
+  return out;
+}
+
+/** The add-on's categories in its own order, each with its films and series. */
+export function categories(aid: string): { name: string; items: AItem[] }[] {
+  const c = catalogues.get(aid);
+  if (!c) return [];
+  const by = new Map<string, AItem[]>(c.order.map((n) => [n, []]));
+  for (const a of [...c.films, ...c.series]) for (const n of c.cats.get(a.id) ?? []) by.get(n)?.push(a);
+  return c.order.map((name) => ({ name, items: by.get(name) ?? [] })).filter((x) => x.items.length);
+}
+
+/** An add-on film's or series' genres: its categories (or, without any, its own genres). */
+export function genresOf(a: AItem): string[] {
+  const c = catalogues.get(a.source);
+  // an add-on with categories of its own is sorted by them alone (its tags would repeat them:
+  // "Krimi" next to "Krimifilm og thrillers")
+  if (c?.order.length) return c.cats.get(a.id) ?? [];
+  return (a.genres ?? []).filter((g) => !c?.generic.has(g));
 }
 
 // --- search ------------------------------------------------------------------------------

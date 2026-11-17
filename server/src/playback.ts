@@ -311,7 +311,7 @@ function friendly(err: string): string {
   return err.replace(/^\[[^\]]+\]\s*/, "").slice(0, 200) || "it stopped";
 }
 
-export async function stream(src: Source, start: number, q: { audio?: string; burn?: string; v?: string; a?: string }, res: ServerResponse, onClose: (fn: () => void) => void, key = ""): Promise<void> {
+export async function stream(src: Source, start: number, q: { audio?: string; burn?: string; v?: string; a?: string; vi?: string }, res: ServerResponse, onClose: (fn: () => void) => void, key = ""): Promise<void> {
   streamErrors.delete(key);
   const args = ["-hide_banner", "-loglevel", "error", "-nostdin"];
   // a copied picture starts at a key frame: asked for exactly one, FFmpeg can land on the one
@@ -320,15 +320,18 @@ export async function stream(src: Source, start: number, q: { audio?: string; bu
   args.push(...(await inputArgs(src)));
   const audio = q.audio !== undefined && /^\d+$/.test(q.audio) ? Number(q.audio) : null;
   const burn = q.burn !== undefined && /^\d+$/.test(q.burn) ? Number(q.burn) : null;
+  // which picture: a stream with several qualities (HLS) says which one, else the first
+  const vi = q.vi !== undefined && /^\d+$/.test(q.vi) ? Number(q.vi) : null;
+  const vsel = vi !== null ? `0:${vi}` : "0:v:0";
   const copyV = q.v === "copy" && burn === null;
   if (burn !== null) {
-    args.push("-filter_complex", `[0:v:0][0:${burn}]overlay[v]`, "-map", "[v]");
-  } else if (!src.url || audio !== null) {
+    args.push("-filter_complex", `[${vsel}][0:${burn}]overlay[v]`, "-map", "[v]");
+  } else if (!src.url || audio !== null || vi !== null) {
     // the picture too whenever streams are picked by hand (a chosen audio track alone would leave it out)
-    args.push("-map", "0:v:0?");
+    args.push("-map", vi !== null ? vsel : "0:v:0?");
   }
   if (audio !== null) args.push("-map", `0:${audio}`);
-  else if (!src.url || burn !== null) args.push("-map", "0:a:0?");
+  else if (!src.url || burn !== null || vi !== null) args.push("-map", "0:a:0?");
   if (copyV) {
     args.push("-c:v", "copy");
   } else {

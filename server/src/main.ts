@@ -675,7 +675,7 @@ function addonView(id: string, p: people.Person) {
   const st = addons.state(id);
   return {
     id, name: base.name, version: m?.version ?? e?.version ?? "", storeVersion: e?.version ?? "", author: base.author, description: base.description,
-    games: !!(m?.games ?? e?.games), installed: !!m, builtin: !!m?.builtin, enabled: !!m && st.enabled, error: m?.error ?? "",
+    games: !!(m?.games ?? e?.games), installed: !!m, builtin: !!m?.builtin, enabled: !!m && st.enabled, place: addons.place(id), error: m?.error ?? "",
     status: store.status(id), busy: store.store.busy.has(id), internet: (m?.permissions ?? e?.permissions ?? []).includes("internet"),
     hosts: m?.hosts ?? e?.hosts ?? [], hostsFromSettings: !!(m?.hosts_from_settings ?? e?.hosts_from_settings),
     settings: p.admin && m ? m.settings.map((s) => ({ ...s, value: s.type === "password" ? (addons.settingsOf(id)[s.key] ? "set" : "") : addons.settingsOf(id)[s.key] })) : [],
@@ -703,7 +703,7 @@ app.get("/api/addon", async (req: Req) => {
 
 app.post("/api/addon/:action", async (req: Req) => {
   // installing and turning add-ons on and off: admins and those allowed to; their settings: admins
-  if (req.params.action === "setting") admin(req);
+  if (req.params.action === "setting" || req.params.action === "place") admin(req);
   else installer(req);
   const id = String(body(req).id ?? "");
   switch (req.params.action) {
@@ -734,6 +734,9 @@ app.post("/api/addon/:action", async (req: Req) => {
     }
     case "refresh":
       browse.refresh(id, true);
+      return { ok: true };
+    case "place":
+      if (!addons.setPlace(id, String(body(req).place ?? ""))) throw new HttpError(400, "Say \"mixed\" (in Films and Series) or \"own\" (a tile of its own).");
       return { ok: true };
   }
   throw new HttpError(404, "Unknown action.");

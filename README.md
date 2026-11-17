@@ -24,9 +24,12 @@ few lines of Lua, and a Store for them.
 - **Browser:** `http://<nas>:8100/web` is Jellyfin's own web app; `http://<nas>:8100` is Korie's
   pages, where an admin adds folders, people and add-ons.
 
-What the add-ons bring shows up in the Jellyfin apps with the rest, no separate menu: their films
-under Films, their series and categories under Series, their channels under Live TV, and they're
-in Search. Nothing is scanned or written to disk first, so it's there as soon as an add-on is on.
+What the add-ons bring shows up in the Jellyfin apps with the rest: their films under Films, their
+series under Series, their channels under Live TV, and they're in Search. An add-on's categories
+(DRTV's Krimi, Dokumentar, Julefilm ...) are genres, so in the Android TV app Films and Series open
+with rows (Continue watching, Latest, Favourites) and Genres shows one row per category. An admin
+can instead give an add-on a tile of its own on the home screen, with its categories as folders.
+Nothing is scanned or written to disk first, so it's there as soon as an add-on is on.
 
 ## Running the server
 
