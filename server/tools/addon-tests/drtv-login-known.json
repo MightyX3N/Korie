@@ -25,14 +25,14 @@
    "match": "/api/authorization/exchange$",
    "json": [
     {
-     "type": "UserAccount",
-     "value": "ACC-TOKEN",
-     "expirationDate": "2026-11-25T10:00:00.000Z"
+     "Type": "UserAccount",
+     "Token": "ACC-TOKEN",
+     "Expires": "2026-11-25T10:00:00.0000000Z"
     },
     {
-     "type": "UserProfile",
-     "value": "PROFILE-TOKEN",
-     "expirationDate": "2026-11-25T10:00:00.000Z"
+     "Type": "UserProfile",
+     "Token": "PROFILE-TOKEN",
+     "Expires": "2026-11-25T10:00:00.0000000Z"
     }
    ]
   },
