@@ -5,7 +5,8 @@
  ],
  "ctx": {
   "house": {
-   "addons": []
+   "addons": [],
+   "no_cinemeta": true
   }
  },
  "answers": [

@@ -1,0 +1,30 @@
+{
+ "call": "about",
+ "ctx": {
+  "house": {
+   "addons": [
+    {
+     "base": "https://opensubtitles-v3.strem.io",
+     "url": "https://opensubtitles-v3.strem.io/manifest.json",
+     "name": "OpenSubtitles v3",
+     "resources": [
+      "subtitles"
+     ],
+     "types": [
+      "movie",
+      "series"
+     ],
+     "catalogs": []
+    }
+   ],
+   "hosts": [
+    "opensubtitles-v3.strem.io"
+   ]
+  }
+ },
+ "answers": [],
+ "expect": {
+  "sections.0.items.0.title": "Cinemeta",
+  "sections.0.items.1.title": "OpenSubtitles v3"
+ }
+}

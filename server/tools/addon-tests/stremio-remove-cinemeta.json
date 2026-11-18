@@ -1,0 +1,31 @@
+{
+ "call": "remove_house_addon",
+ "args": [
+  "https://v3-cinemeta.strem.io/manifest.json"
+ ],
+ "ctx": {
+  "house": {
+   "addons": [
+    {
+     "base": "https://opensubtitles-v3.strem.io",
+     "url": "https://opensubtitles-v3.strem.io/manifest.json",
+     "name": "OpenSubtitles v3",
+     "resources": [
+      "subtitles"
+     ],
+     "types": [
+      "movie",
+      "series"
+     ],
+     "catalogs": []
+    }
+   ]
+  }
+ },
+ "answers": [],
+ "expect": {
+  "ok": true,
+  "save.addons.0.name": "OpenSubtitles v3",
+  "save.no_cinemeta": true
+ }
+}
