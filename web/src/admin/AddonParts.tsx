@@ -112,7 +112,7 @@ export function AccountsPart({ v, onPeople }: { v: AddonView; onPeople?: (ids: s
   return (
     <>
       <section aria-labelledby="acct" className="adm-card adm-list">
-        <h2 id="acct" className="adm-h2">{data.label}s</h2>
+        <h2 id="acct" className="adm-h2">{data.label}s <span className="adm-soft small">(optional)</span></h2>
         {data.help && <p className="adm-soft max">{data.help}</p>}
         {data.people.map((p) => (
           <div key={p.id} className="adm-line">
@@ -120,7 +120,7 @@ export function AccountsPart({ v, onPeople }: { v: AddonView; onPeople?: (ids: s
             <span className="adm-line-text">
               <strong>{p.name}</strong>
               {p.account ? <Signal on>Signed in as {p.account.name}{p.account.at ? ` · ${ago(p.account.at * 1000)}` : ""}</Signal>
-                : <span className="adm-soft small">{p.mayUse ? `Not signed in: no ${v.name} films or series for them` : `Not signed in. ${p.name} may not use ${v.name} (People).`}</span>}
+                : <span className="adm-soft small">{p.mayUse ? `Not signed in: they get the add-ons for everyone` : `Not signed in. ${p.name} may not use ${v.name} (People).`}</span>}
             </span>
             {p.account ? <button className="adm-btn" onClick={() => void logout(p.id, p.name)}>Sign out</button>
               : <button className="adm-btn primary" onClick={() => { setWhy(""); setSigning(p.id); }}>Sign in</button>}
@@ -241,12 +241,28 @@ export function ChannelsPart({ v, channels, changed }: { v: AddonView; channels:
   );
 }
 
-interface About { about: null | { sections: { title: string; text: string; items: { title: string; subtitle: string }[] }[]; rows: { id: string; title: string; section: string; hidden: boolean }[] }; error?: string }
+interface Act { call: string; value: string; label: string }
+interface About { about: null | { sections: { title: string; text: string; items: { title: string; subtitle: string; remove: Act | null }[]; add: { call: string; label: string; placeholder: string; help: string } | null }[]; rows: { id: string; title: string; section: string; hidden: boolean }[] }; error?: string }
 
 /** What the add-on says about one person's view of it, and which of its rows show for them. */
-export function AboutPart({ v, person, personName, pick }: { v: AddonView; person: string | null; personName: string; pick?: React.ReactNode }) {
+export function AboutPart({ v, person, personName, pick, tag = "h" }: { v: AddonView; person: string | null; personName: string; pick?: React.ReactNode; tag?: string }) {
   const { data, reload } = useData(() => api<About>(`/api/admin/addon/about?id=${encodeURIComponent(v.id)}${person ? `&person=${encodeURIComponent(person)}` : ""}`), [v.id, person], ["addons"]);
+  const [typed, setTyped] = useState("");
+  const [busy, setBusy] = useState("");
+  const [why, setWhy] = useState("");
   const a = data?.about;
+  const act = async (call: string, value: string, what: string) => {
+    setBusy(what);
+    setWhy("");
+    try {
+      await api("/api/admin/addon/act", { id: v.id, person, call, value });
+      if (what === "add") setTyped("");
+      reload();
+    } catch (e) {
+      setWhy(e instanceof Error ? e.message : String(e));
+    }
+    setBusy("");
+  };
   if (data?.error) return <p className="adm-bad">{v.name}: {data.error}</p>;
   if (!a) return null;
   const setRow = async (id: string, on: boolean) => {
@@ -260,18 +276,36 @@ export function AboutPart({ v, person, personName, pick }: { v: AddonView; perso
         <section key={i} className="adm-card adm-list" aria-label={s.title}>
           <div className="adm-row between"><h2 className="adm-h2">{s.title}</h2>{i === 0 && pick}</div>
           {s.text && <p className="adm-soft">{s.text}</p>}
-          {s.items.map((x, j) => <div key={j} className="adm-line between"><strong>{x.title}</strong><span className="adm-soft small">{x.subtitle}</span></div>)}
+          {s.items.map((x, j) => (
+            <div key={j} className="adm-line">
+              <span className="adm-line-text"><strong>{x.title}</strong><span className="adm-soft small">{x.subtitle}</span></span>
+              {x.remove && <button className="adm-btn small" disabled={!!busy} onClick={async () => {
+                if (await ui.confirm(`${x.remove!.label} ${x.title}?`, personName ? `It goes from ${personName}'s ${v.name} too.` : "", x.remove!.label)) void act(x.remove!.call, x.remove!.value, `rm${j}`);
+              }}>{busy === `rm${j}` ? "…" : x.remove.label}</button>}
+            </div>
+          ))}
+          {s.add && (
+            <form className="adm-stack small-gap" onSubmit={(e) => { e.preventDefault(); if (typed.trim()) void act(s.add!.call, typed.trim(), "add"); }}>
+              <label htmlFor={`add-${tag}-${i}`} className="adm-bold">{s.add.label}</label>
+              <div className="adm-row">
+                <input id={`add-${tag}-${i}`} className="adm-input grow" value={typed} placeholder={s.add.placeholder} onChange={(e) => setTyped(e.target.value)} autoComplete="off" spellCheck={false} />
+                <button type="submit" className="adm-btn primary" disabled={!typed.trim() || !!busy}>{busy === "add" ? "Adding…" : "Add"}</button>
+              </div>
+              {s.add.help && <span className="adm-soft small">{s.add.help}</span>}
+            </form>
+          )}
+          {why && <p className="adm-bad" role="alert">{why}</p>}
         </section>
       ))}
       {a.rows.length > 0 && (
-        <section className="adm-card adm-list" aria-labelledby="rows">
-          <div className="adm-row between"><h2 id="rows" className="adm-h2">Which catalogues show up{personName ? ` for ${personName}` : ""}</h2>{!a.sections.length && pick}</div>
+        <section className="adm-card adm-list" aria-labelledby={`rows-${tag}`}>
+          <div className="adm-row between"><h2 id={`rows-${tag}`} className="adm-h2">Which catalogues show up{personName ? ` for ${personName}` : v.accounts?.who === "person" ? " for everyone" : ""}</h2>{!a.sections.length && pick}</div>
           <div className="adm-checks">
             {a.rows.map((r) => (
               <label key={r.id} className="adm-checkline"><input type="checkbox" className="adm-tick" checked={!r.hidden} onChange={(e) => void setRow(r.id, e.target.checked)} />{r.title}</label>
             ))}
           </div>
-          <span className="adm-soft small">The list comes from {personName ? `${personName}'s` : "the"} {v.name} add-ons, so it changes with them.</span>
+          <span className="adm-soft small">The list comes from {personName ? `${personName}'s` : "these"} {v.name} add-ons, so it changes with them.{!personName && v.accounts?.who === "person" ? ` Someone signed in to ${v.name} picks their own below.` : ""}</span>
         </section>
       )}
     </>

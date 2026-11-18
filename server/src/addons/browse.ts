@@ -59,18 +59,25 @@ function perPerson(aid: string): boolean {
 export function sources(pid?: string | null): string[] {
   const out: string[] = [];
   for (const aid of addons.enabledIds()) {
+    // an add-on with an account per person: their own view if they signed in (the house's things
+    // in it too), otherwise the house's (Stremio add-ons added for everyone)
     if (!perPerson(aid)) out.push(aid);
-    else if (pid && addons.account(aid, pid)) out.push(`${aid}@${pid}`);
+    else out.push(pid && addons.account(aid, pid) ? `${aid}@${pid}` : aid);
   }
   return out;
+}
+
+/** The source a person's view of an add-on is: their own if it has accounts per person and they signed in. */
+export function srcFor(aid: string, pid?: string | null): string {
+  return pid && perPerson(aid) && addons.account(aid, pid) ? `${aid}@${pid}` : aid;
 }
 
 /** Every source there is: the add-ons, and everyone's own view of the per-person ones. */
 function allSources(): string[] {
   const out: string[] = [];
   for (const aid of addons.enabledIds()) {
-    if (!perPerson(aid)) out.push(aid);
-    else for (const pid of addons.signedIn(aid)) out.push(`${aid}@${pid}`);
+    out.push(aid);
+    if (perPerson(aid)) for (const pid of addons.signedIn(aid)) out.push(`${aid}@${pid}`);
   }
   return out;
 }
@@ -348,18 +355,53 @@ export function channels(aid: string): AItem[] {
   return ordered(aid, (src && sections.get(src)?.rows.live[0]?.items) || []);
 }
 
-export interface About { sections: { title: string; text: string; items: { title: string; subtitle: string }[] }[]; rows: { id: string; title: string; section: string }[] }
+export interface AboutAct { call: string; value: string; label: string }
+export interface About {
+  sections: { title: string; text: string; items: { title: string; subtitle: string; remove: AboutAct | null }[]; add: { call: string; label: string; placeholder: string; help: string } | null }[];
+  rows: { id: string; title: string; section: string }[];
+}
+
+/** Does one of the things about() offered (add a Stremio add-on, remove one): only those, with the
+ *  value the admin typed; an address typed to add may be fetched for that one call. */
+export async function act(aid: string, pid: string | null, fn: string, value: string): Promise<any> {
+  const a = await about(aid, pid);
+  const offered = new Set<string>();
+  for (const sec of a?.sections ?? []) {
+    if (sec.add) offered.add(sec.add.call);
+    for (const i of sec.items) if (i.remove) offered.add(i.remove.call);
+  }
+  if (!offered.has(fn)) throw new Error("The add-on doesn't offer that.");
+  const src = srcFor(aid, pid);
+  const who = people.get(personOfSrc(src) ?? pid ?? "");
+  const { ctx, owner } = addons.ctx(aid, who ? { id: who.id, name: who.name } : null);
+  let host = "";
+  try {
+    host = new URL(value.trim().replace(/^stremio:\/\//, "https://")).hostname.toLowerCase();
+  } catch {
+    /* not an address */
+  }
+  const res = await addons.call(aid, fn, [value, ctx], owner, host ? [host] : []);
+  if (res && typeof res === "object" && res.error) throw new Error(String(res.error));
+  forget(src);
+  refreshAddon(aid, true);
+  return res;
+}
 
 /** What an add-on says about one source of its own for the admin page (Stremio: a person's add-ons and catalogues). */
 export async function about(aid: string, pid?: string | null): Promise<About | null> {
   if (!(await addons.has(aid, "about"))) return null;
-  const res = await callFor(pid && perPerson(aid) ? `${aid}@${pid}` : aid, "about", [], pid);
+  const res = await callFor(srcFor(aid, pid), "about", [], pid);
   if (!res || typeof res !== "object") return null;
   if (res.error) throw new Error(String(res.error));
   return {
     sections: list(res.sections).map((x: any) => ({
       title: s(x?.title, 200), text: s(x?.text, 1000),
-      items: list(x?.items).map((i: any) => ({ title: s(i?.title, 200), subtitle: s(i?.subtitle, 300) })).filter((i) => i.title),
+      items: list(x?.items).map((i: any) => ({
+        title: s(i?.title, 200), subtitle: s(i?.subtitle, 300),
+        remove: i?.remove && typeof i.remove === "object" && /^[a-z_]+$/.test(s(i.remove.call, 40)) ? { call: s(i.remove.call, 40), value: s(i.remove.value, 2000), label: s(i.remove.label, 40) || "Remove" } : null,
+      })).filter((i) => i.title),
+      add: x?.add && typeof x.add === "object" && /^[a-z_]+$/.test(s(x.add.call, 40))
+        ? { call: s(x.add.call, 40), label: s(x.add.label, 200) || "Add", placeholder: s(x.add.placeholder, 200), help: s(x.add.help, 500) } : null,
     })).filter((x) => x.title),
     rows: list(res.rows).map((r: any) => ({ id: s(r?.id, 500), title: s(r?.title, 200), section: s(r?.section, 20) })).filter((r) => r.id && r.title),
   };

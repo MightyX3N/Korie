@@ -281,12 +281,27 @@ export function register(app: FastifyInstance): void {
     try {
       const a = await browse.about(id, person?.id ?? null);
       if (!a) return { about: null };
-      const src = person && addons.manifests.get(id)?.accounts?.who === "person" ? `${id}@${person.id}` : id;
+      const src = browse.srcFor(id, person?.id);
       const hide = new Set(addons.hidden(src));
       return { about: { ...a, rows: a.rows.map((r) => ({ ...r, hidden: hide.has(r.id) })) } };
     } catch (e) {
       return { about: null, error: e instanceof Error ? e.message : String(e) };
     }
+  });
+
+  app.post("/api/admin/addon/act", async (req) => {
+    admin(req);
+    const b = (req.body ?? {}) as Record<string, unknown>;
+    const id = String(b.id ?? "");
+    if (!addons.manifests.get(id)) throw Object.assign(new AdminError(404, "That add-on isn't installed."), { statusCode: 404 });
+    const person = b.person ? people.get(String(b.person)) : null;
+    try {
+      await browse.act(id, person?.id ?? null, String(b.call ?? ""), String(b.value ?? ""));
+    } catch (e) {
+      throw Object.assign(new AdminError(400, e instanceof Error ? e.message : String(e)), { statusCode: 400 });
+    }
+    emit("addons");
+    return { ok: true };
   });
 
   app.post("/api/admin/addon/rows", async (req) => {
@@ -296,7 +311,7 @@ export function register(app: FastifyInstance): void {
     const m = addons.manifests.get(id);
     if (!m || !Array.isArray(b.hidden)) throw Object.assign(new AdminError(400, "Say which rows to hide."), { statusCode: 400 });
     const person = b.person ? people.get(String(b.person)) : null;
-    const src = person && m.accounts?.who === "person" ? `${id}@${person.id}` : id;
+    const src = browse.srcFor(id, person?.id);
     addons.setHidden(src, (b.hidden as unknown[]).map(String));
     emit("browse");
     return { ok: true };

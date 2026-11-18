@@ -142,7 +142,7 @@ button, input, select { font: inherit; color: inherit; }
 .row { margin-bottom: calc(var(--u) * 2); }
 .row-title { font-size: 1.35em; margin: 0 0 .7em; }
 .row-wrap { position: relative; margin: 0 calc(var(--pad) * -1); }
-.row-items { display: grid; grid-auto-flow: column; gap: calc(var(--u) * 1); overflow-x: auto; scroll-snap-type: x proximity; padding: .3em var(--pad) .6em; scrollbar-width: none; scroll-padding: var(--pad); }
+.row-items { display: grid; grid-auto-flow: column; gap: calc(var(--u) * 1); overflow-x: auto; scroll-snap-type: x proximity; padding: 1em var(--pad) 1em; margin: -.7em 0 -.4em; scrollbar-width: none; scroll-padding: var(--pad); }
 .row-items::-webkit-scrollbar { display: none; }
 .row-items > * { scroll-snap-align: start; }
 .row-poster { grid-auto-columns: clamp(118px, 11vw, 230px); }

@@ -12,7 +12,7 @@ import { DATA, log } from "../config.ts";
 import { db, json, now } from "../db.ts";
 import { fetchText, hostOf } from "../net.ts";
 import { emit } from "../events.ts";
-import { Sandbox } from "./sandbox.ts";
+import { Sandbox, toJson } from "./sandbox.ts";
 
 export const BUILTIN_DIR = path.join(import.meta.dirname, "../../builtin");
 export const USER_DIR = path.join(DATA, "addons");
@@ -412,7 +412,7 @@ async function fetchWithJar(id: string, url: string, init: { method: string; hea
 /** Calls an add-on function and follows its fetch requests to the answer. owner: whose account
  *  the call was made with ("house" or a person's id): an answer with save_account = { ... } keeps
  *  the add-on's fresh tokens for it. */
-export async function call(id: string, fn: string, args: unknown[], owner?: string): Promise<any> {
+export async function call(id: string, fn: string, args: unknown[], owner?: string, also: string[] = []): Promise<any> {
   const sb = await sandbox(id);
   if (!sb) throw new AddonError(`${manifests.get(id)?.name ?? id} isn't running`);
   let res: any;
@@ -434,7 +434,8 @@ export async function call(id: string, fn: string, args: unknown[], owner?: stri
     const answers = await Promise.all(jobs.map(async (j) => {
       const job = typeof j === "string" ? { url: j } : (j ?? {});
       const url = String(job.url ?? "");
-      if (!mayFetch(id, url)) {
+      // also: hosts an admin just typed for this one call (a Stremio add-on's address to add)
+      if (!mayFetch(id, url) && !(/^https:\/\//.test(url) && also.includes(hostOf(url)))) {
         failed ||= `not allowed to fetch from ${hostOf(url) || url}`;
         addLog(id, `blocked: ${url}`);
         return null;
@@ -446,7 +447,7 @@ export async function call(id: string, fn: string, args: unknown[], owner?: stri
         body = new URLSearchParams(Object.entries(form).map(([k, v]) => [k, String(v)])).toString();
         headers["Content-Type"] ??= "application/x-www-form-urlencoded";
       } else if (body && typeof body === "object") {
-        body = JSON.stringify(body);
+        body = toJson(body);
         headers["Content-Type"] ??= "application/json";
       }
       const as = job.as ?? res.as ?? "json";
@@ -498,6 +499,9 @@ export async function call(id: string, fn: string, args: unknown[], owner?: stri
         data[k] = v && typeof v === "object" && !Array.isArray(v) && was && typeof was === "object" && !Array.isArray(was) && Object.keys(v).length ? { ...was, ...v } : v;
       }
       saveAccount(id, owner, { data });
+    } else if (owner === "house" && manifests.get(id)?.accounts?.who === "person") {
+      // the house's own things in an add-on with an account per person: kept from the first one
+      saveAccount(id, "house", { name: "", data: saved, profiles: [] });
     }
   }
   return res;
@@ -511,12 +515,14 @@ export function ctx(id: string, person?: { id: string; name: string } | null): {
   const m = manifests.get(id);
   let owner: string | undefined;
   if (person) c.person = { id: person.id, name: person.name };
-  if (m?.accounts?.who === "person" && person) {
-    const a = account(id, person.id);
+  if (m?.accounts?.who === "person") {
+    // what's the house's (Stremio add-ons added for everyone), and the person's own account if they signed in
+    c.house = account(id, "house")?.data ?? {};
+    const a = person ? account(id, person.id) : null;
     if (a) {
       c.account = a.data;
-      owner = person.id;
-    }
+      owner = person!.id;
+    } else owner = "house";
   } else if (m?.accounts) {
     const a = account(id, "house");
     if (a) {

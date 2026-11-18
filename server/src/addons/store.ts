@@ -76,10 +76,17 @@ export async function install(id: string): Promise<string> {
     await Promise.all(e.files.map(async (f) => {
       const name = String(f.name ?? "");
       if (!name || name.includes("..") || path.isAbsolute(name)) throw new Error(`The Store lists a file Korie won't write (${name}).`);
-      const res = await fetch(STORE_URL + (e.path || "addons/" + id) + "/" + name.split("/").map(encodeURIComponent).join("/"), { signal: AbortSignal.timeout(30000) });
-      if (!res.ok) throw new Error(`Couldn't download ${name} (${res.status}).`);
-      const body = Buffer.from(await res.arrayBuffer());
-      if (f.sha256 && crypto.createHash("sha256").update(body).digest("hex") !== f.sha256) throw new Error(`${name} didn't arrive as the Store lists it.`);
+      const url = STORE_URL + (e.path || "addons/" + id) + "/" + name.split("/").map(encodeURIComponent).join("/");
+      // GitHub keeps files cached for 5 minutes: asking for this exact version (its sha256) gets
+      // the new file straight after an update, not the one from before; once more if it's still old
+      let body = Buffer.alloc(0);
+      for (const v of [String(f.sha256 ?? "").slice(0, 16), String(Date.now())]) {
+        const res = await fetch(`${url}?v=${v}`, { signal: AbortSignal.timeout(30000) });
+        if (!res.ok) throw new Error(`Couldn't download ${name} (${res.status}).`);
+        body = Buffer.from(await res.arrayBuffer());
+        if (!f.sha256 || crypto.createHash("sha256").update(body).digest("hex") === f.sha256) break;
+      }
+      if (f.sha256 && crypto.createHash("sha256").update(body).digest("hex") !== f.sha256) throw new Error(`${name} didn't arrive as the Store lists it. GitHub may still have the old one: try again in a few minutes.`);
       fs.mkdirSync(path.dirname(path.join(tmp, name)), { recursive: true });
       fs.writeFileSync(path.join(tmp, name), body);
     }));

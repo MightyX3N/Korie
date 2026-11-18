@@ -14,7 +14,7 @@ interface Stats { stats: { films: number; series: number; live: number; games: n
 export async function turnOn(a: AddonView): Promise<boolean> {
   let r = await ui.attempt(`Couldn't turn ${a.name} on`, () => api<{ ok?: boolean; needsInternet?: boolean; hosts?: string[]; hostsFromSettings?: boolean; hostsFromAccount?: boolean }>("/api/addon/enable", { id: a.id }));
   if (r?.needsInternet) {
-    const where = [...(r.hosts ?? []), ...(r.hostsFromSettings ? ["the addresses you type in its settings"] : []), ...(r.hostsFromAccount ? ["the add-ons in each person's account"] : [])].join(", ");
+    const where = [...(r.hosts ?? []), ...(r.hostsFromSettings ? ["the addresses you type in its settings"] : []), ...(r.hostsFromAccount ? ["the Stremio add-ons added on its page or in someone's account"] : [])].join(", ");
     if (!(await ui.confirm(`Let ${a.name} use the internet?`, `It fetches from: ${where || "the internet"}. It can't reach anything else.`, "Allow"))) return false;
     r = await ui.attempt(`Couldn't turn ${a.name} on`, () => api("/api/addon/enable", { id: a.id, internet: true }));
   }
@@ -141,7 +141,7 @@ export function AddonPage({ id }: { id: string }) {
       </select>
     </label>
   ) : null;
-  const where = [...v.hosts, ...(v.hostsFromSettings ? ["the addresses in its settings"] : []), ...(v.hostsFromAccount ? ["the add-ons in each person's account"] : [])];
+  const where = [...v.hosts, ...(v.hostsFromSettings ? ["the addresses in its settings"] : []), ...(v.hostsFromAccount ? ["the Stremio add-ons added on its page or in someone's account"] : [])];
   return (
     <>
       <a className="adm-back" href={href("/admin/addons")} onClick={(e) => follow(e, "/admin/addons")}>Add-ons</a>
@@ -160,8 +160,9 @@ export function AddonPage({ id }: { id: string }) {
       {v.error && <p className="adm-bad">{v.error}</p>}
       {st?.error && !st.loading && <div className="adm-alert bad"><span className="adm-alert-bar" /><div><strong>{v.name} couldn't get its {v.games ? "games" : "films and series"}</strong><p>{st.error}</p></div></div>}
 
+      {v.installed && v.enabled && perPerson && <AboutPart v={v} person={null} personName="" tag="house" />}
       {v.installed && v.accounts && <AccountsPart v={v} onPeople={setSignedIn} />}
-      {v.installed && v.enabled && (!perPerson || person) && <AboutPart v={v} person={person} personName={nameOf(person)} pick={pick} />}
+      {v.installed && v.enabled && (!perPerson || person) && <AboutPart v={v} person={person} personName={nameOf(person)} pick={pick} tag="person" />}
 
       {forms.length > 0 && <Settings v={v} forms={forms} saved={reload} />}
 

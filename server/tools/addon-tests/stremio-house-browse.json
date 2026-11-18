@@ -1,0 +1,94 @@
+{
+ "call": "browse",
+ "ctx": {
+  "house": {
+   "addons": [
+    {
+     "base": "https://v3-cinemeta.strem.io",
+     "url": "https://v3-cinemeta.strem.io/manifest.json",
+     "name": "Cinemeta",
+     "resources": [
+      "catalog",
+      "meta",
+      "addon_catalog"
+     ],
+     "types": [
+      "movie",
+      "series"
+     ],
+     "catalogs": [
+      {
+       "type": "movie",
+       "id": "top",
+       "name": "Popular",
+       "required": false,
+       "search": true
+      },
+      {
+       "type": "series",
+       "id": "top",
+       "name": "Popular",
+       "required": false,
+       "search": true
+      },
+      {
+       "type": "movie",
+       "id": "year",
+       "name": "New",
+       "required": true,
+       "search": false
+      },
+      {
+       "type": "series",
+       "id": "year",
+       "name": "New",
+       "required": true,
+       "search": false
+      },
+      {
+       "type": "movie",
+       "id": "imdbRating",
+       "name": "Featured",
+       "required": false,
+       "search": false
+      },
+      {
+       "type": "series",
+       "id": "imdbRating",
+       "name": "Featured",
+       "required": false,
+       "search": false
+      },
+      {
+       "type": "series",
+       "id": "last-videos",
+       "name": "Last videos",
+       "required": true,
+       "search": false
+      },
+      {
+       "type": "series",
+       "id": "calendar-videos",
+       "name": "Calendar videos",
+       "required": true,
+       "search": false
+      }
+     ]
+    }
+   ],
+   "hosts": [
+    "v3-cinemeta.strem.io"
+   ]
+  }
+ },
+ "answers": [
+  {
+   "match": "v3-cinemeta\\.strem\\.io/catalog/",
+   "live": true
+  }
+ ],
+ "expect": {
+  "films.0.id": "cat|https://v3-cinemeta.strem.io|movie|top",
+  "home.0.title": "Popular"
+ }
+}

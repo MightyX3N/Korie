@@ -1,0 +1,22 @@
+{
+ "call": "add_house_addon",
+ "args": [
+  "stremio://v3-cinemeta.strem.io/manifest.json"
+ ],
+ "ctx": {
+  "house": {}
+ },
+ "answers": [
+  {
+   "match": "cinemeta\\.strem\\.io/manifest\\.json$",
+   "live": true
+  }
+ ],
+ "expect": {
+  "ok": true,
+  "save.addons.0.name": "Cinemeta",
+  "save.hosts": [
+   "v3-cinemeta.strem.io"
+  ]
+ }
+}

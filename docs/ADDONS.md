@@ -34,8 +34,9 @@ limit (64 MB). Errors stop the add-on's call, never Korie.
   `default` is what it is until an admin changes it.
 - `accounts`: the add-on signs in to a service. `who: "house"` is one account for everyone; with
   `profiles: true` each person in Korie uses one of the account's profiles (DR). `who: "person"`
-  is an account per person (Stremio): only people who signed in see what the add-on offers, each
-  their own. An admin signs in on the add-on's page; Korie never keeps the password, only what
+  is an optional account per person (Stremio): someone who signed in gets their own view, everyone
+  else the house's. `ctx.house` is the house's own data (Stremio: the add-ons added for everyone),
+  kept with `save_account` from a call made without a person's account. An admin signs in on the add-on's page; Korie never keeps the password, only what
   `login()` returns.
 - `games: true`: the add-on has games; Korie shows Games in the menu when it's on.
 
@@ -80,12 +81,19 @@ function A.progress(item, p, ctx)  -- p = { position, duration (seconds), watche
   return { ok = true }             -- what they watch in Korie, back to the service (once a minute)
 end
 function A.about(ctx)           -- for the admin page: what it says about this account, and
-  return { sections = { { title = "...", text = "...", items = { { title = "...", subtitle = "..." } } } },
+  return { sections = { { title = "...", text = "...",
+             items = { { title = "...", subtitle = "...", remove = { call = "remove_thing", value = "...", label = "Remove" } } },
+             add = { call = "add_thing", label = "Add one", placeholder = "https://...", help = "..." } } },
            rows = { { id = "row id", title = "...", section = "films" } } }  -- rows an admin may hide
+end
+function A.add_thing(value, ctx)   -- what an admin typed (an address there may be fetched for this call)
+  return { ok = true }             -- or { error = "why not" }; remove_thing gets the item's value
 end
 ```
 
-Any answer may carry `save_account = { ... }`: Korie merges it into the account's data (one
+Lua has no empty list, only an empty table: an empty JSON list arrives as `{ __array = true }`
+(`#t` is 0 and `ipairs` works) and leaves as `[]` again; write `{ __array = true }` yourself for
+an empty list a service needs. Any answer may carry `save_account = { ... }`: Korie merges it into the account's data (one
 level deep), so fresh tokens are kept. The `korie` table has helpers: `korie.sha256(s)`,
 `korie.sha256_b64url(s)`, `korie.random(n)`, `korie.uuid()`, `korie.base64(s)`,
 `korie.unbase64(s)`, `korie.urlencode(s)`, `korie.json(v)` and `korie.unjson(s)`.

@@ -53,7 +53,7 @@ export class Sandbox {
       base64: (x: unknown) => Buffer.from(String(x)).toString("base64"),
       unbase64: (x: unknown) => Buffer.from(String(x).replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8"),
       urlencode: (x: unknown) => encodeURIComponent(String(x)),
-      json: (x: unknown) => JSON.stringify(x ?? null),
+      json: (x: unknown) => toJson(x ?? null),
       unjson: (x: unknown) => {
         try {
           return JSON.parse(String(x));
@@ -92,7 +92,7 @@ export class Sandbox {
     if (typeof f !== "function") throw new Error(`has no ${fn}()`);
     this.engine.global.setTimeout(Date.now() + CALL_MS);
     try {
-      return await (f as (...a: unknown[]) => unknown)(...args.map(plain));
+      return fromLua(await (f as (...a: unknown[]) => unknown)(...args.map(plain)));
     } finally {
       this.engine.global.setTimeout(undefined);
     }
@@ -107,13 +107,33 @@ export class Sandbox {
   }
 }
 
+/** Lua can't tell an empty list from an empty table, so an empty list going in is { __array = true }
+ *  and comes out as [] again (an add-on writes { __array = true } for an empty list it makes itself). */
+export function toJson(v: unknown): string {
+  return JSON.stringify(v, (_k, x) => (x && typeof x === "object" && !Array.isArray(x) && (x as Record<string, unknown>).__array === true && Object.keys(x).length === 1 ? [] : x));
+}
+
+/** A list that went in empty ({ __array = true }) and had things added in Lua is a list again. */
+function fromLua(v: unknown): unknown {
+  if (Array.isArray(v)) return v.map(fromLua);
+  if (!v || typeof v !== "object") return v;
+  const o = v as Record<string, unknown>;
+  if (o.__array === true) {
+    const keys = Object.keys(o).filter((k) => k !== "__array");
+    if (keys.every((k) => /^\d+$/.test(k))) return keys.map(Number).sort((a, b) => a - b).map((k) => fromLua(o[String(k)]));
+  }
+  const out: Record<string, unknown> = {};
+  for (const [k, x] of Object.entries(o)) out[k] = fromLua(x);
+  return out;
+}
+
 /** Only plain data goes into Lua. Lua has no null: a missing answer in a list
  *  becomes false (so `if a then` and `type(a) == "table"` both skip it), and
  *  a null field is left out. */
 function plain(v: unknown): unknown {
   const clean = (x: unknown, inList: boolean): unknown => {
     if (x === null || x === undefined) return inList ? false : undefined;
-    if (Array.isArray(x)) return x.map((y) => clean(y, true));
+    if (Array.isArray(x)) return x.length ? x.map((y) => clean(y, true)) : { __array: true };
     if (typeof x === "object") {
       const o: Record<string, unknown> = {};
       for (const [k, y] of Object.entries(x)) {

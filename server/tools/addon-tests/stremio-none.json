@@ -1,0 +1,20 @@
+{
+ "call": "play",
+ "args": [
+  {
+   "id": "movie~tt0111161",
+   "kind": "film",
+   "data": {
+    "type": "movie",
+    "id": "tt0111161"
+   }
+  }
+ ],
+ "ctx": {
+  "house": {}
+ },
+ "answers": [],
+ "expect": {
+  "error": "No Stremio add-ons yet: add some in Korie's admin (Add-ons \u2192 Stremio)"
+ }
+}
