@@ -30,7 +30,7 @@ export function folders(): Folder[] {
 }
 
 export function addFolder(p: string, kind: Folder["kind"]): Folder | string {
-  const full = path.resolve(p);
+  const full = findPath(p) ?? path.resolve(p);
   try {
     if (!fs.statSync(full).isDirectory()) return "That isn't a folder.";
   } catch {
@@ -62,6 +62,54 @@ export function browseDir(dir: string): { path: string; parent: string | null; d
   }
   const parent = path.dirname(full);
   return { path: full, parent: parent === full ? null : parent, dirs };
+}
+
+const VIDEO_EXT = /\.(mkv|mp4|m4v|avi|mov|wmv|ts|m2ts|webm|mpg|mpeg|iso|vob)$/i;
+const AUDIO_EXT = /\.(mp3|flac|m4a|aac|ogg|opus|wav|wma|alac)$/i;
+
+/** How many video and music files a folder has (looked at a few levels down, up to a limit). */
+export function countFiles(dir: string): { videos: number; songs: number } {
+  let videos = 0, songs = 0, looked = 0;
+  const walk = (d: string, depth: number) => {
+    if (depth > 4 || looked > 4000) return;
+    let list: fs.Dirent[] = [];
+    try {
+      list = fs.readdirSync(d, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const e of list) {
+      if (e.name.startsWith(".")) continue;
+      looked++;
+      if (e.isDirectory()) {
+        if (e.name === "VIDEO_TS" || e.name === "BDMV") {
+          videos++;
+          continue;
+        }
+        walk(path.join(d, e.name), depth + 1);
+      } else if (VIDEO_EXT.test(e.name)) videos++;
+      else if (AUDIO_EXT.test(e.name)) songs++;
+    }
+  };
+  walk(dir, 0);
+  return { videos, songs };
+}
+
+/** A path as the NAS shows it (/volume1/Media/Movies) that isn't there inside Korie's container:
+ *  the same folder under /media (or another mapped folder), found by its last parts. */
+export function findPath(p: string): string | null {
+  const full = path.resolve(p);
+  if (fs.existsSync(full)) return full;
+  const parts = full.split("/").filter(Boolean);
+  const roots = ["/media", "/data/media", "/mnt", "/srv"].filter((r) => fs.existsSync(r));
+  for (let i = 1; i < parts.length; i++) {
+    const tail = parts.slice(i).join("/");
+    for (const r of roots) {
+      const c = path.join(r, tail);
+      if (fs.existsSync(c)) return c;
+    }
+  }
+  return null;
 }
 
 // --- scanning -------------------------------------------------------------------------
@@ -404,4 +452,18 @@ export function pictures(r: Row): { poster: string; backdrop: string; thumb: str
   const backdrop = local(d.localBackdrop) || d.backdrop || d.nfoBackdrop || "";
   const thumb = local(d.localThumb) || d.still || d.nfoThumb || backdrop || "";
   return { poster: img(poster), backdrop: img(backdrop), thumb: img(thumb) };
+}
+
+/** What each folder holds (films; series and episodes; albums and songs), for the admin's Libraries page. */
+export function folderCounts(): Record<number, Record<string, number>> {
+  const out: Record<number, Record<string, number>> = {};
+  for (const r of db.prepare(`SELECT folder, kind, COUNT(*) AS n FROM items WHERE ${SHOWN} GROUP BY folder, kind`).all() as { folder: number; kind: string; n: number }[]) {
+    (out[r.folder] ??= {})[r.kind] = r.n;
+  }
+  return out;
+}
+
+/** Films and series still waiting for TMDb details (poster, description). */
+export function missingDetails(): number {
+  return (db.prepare(`SELECT COUNT(*) AS n FROM items WHERE kind IN ('film', 'series') AND ${SHOWN} AND json_extract(data, '$.checked') IS NULL`).get() as { n: number }).n;
 }

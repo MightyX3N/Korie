@@ -1,0 +1,10 @@
+{ "call": "mine",
+  "ctx": { "now": 1795000000, "profile": { "id": "p2", "name": "Børn", "kid": true },
+           "account": { "account": "ACC", "account_til": 1795600800, "profile": "PROF-DEFAULT", "refresh": "RT", "profiles": {} } },
+  "answers": [
+    { "match": "/api/authorization/profile$", "json": [ { "type": "UserProfile", "value": "KIDS-TOKEN", "expirationDate": "2026-11-25T10:00:00.000Z" } ] },
+    { "match": "continue-watching/list", "json": { "items": [ { "id": 111, "type": "episode", "title": "Bamses Billedbog", "showId": 99, "showTitle": "Bamse", "duration": 900 } ] } },
+    { "match": "bookmarks/list", "json": { "items": [ { "id": 222, "type": "program", "title": "Hodja fra Pjort", "releaseYear": 2018, "duration": 4800 } ] } }
+  ],
+  "expect": { "rows.0.title": "Fortsæt med at se", "rows.0.items.0.kind": "episode", "rows.1.items.0.title": "Hodja fra Pjort",
+              "save.profiles.p2.token": "KIDS-TOKEN" } }

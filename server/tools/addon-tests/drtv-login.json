@@ -1,0 +1,113 @@
+{
+ "call": "login",
+ "args": [
+  {
+   "email": "mor@example.dk",
+   "password": "hemmelig"
+  }
+ ],
+ "answers": [
+  {
+   "match": "^https://login\\.dr\\.dk/oidc/authorize\\?client_id=283ba39a2cf31d3b81e922b8&code_challenge=[A-Za-z0-9_-]{43}&code_challenge_method=S256",
+   "status": 200,
+   "url": "https://login.dr.dk/login/T-12345",
+   "text": "<html></html>"
+  },
+  {
+   "match": "login\\.dr\\.dk/graphql",
+   "json": {
+    "data": {
+     "transaction": {
+      "id": "T-12345",
+      "__typename": "UnidentifiedAuthenticationTransaction"
+     }
+    }
+   }
+  },
+  {
+   "match": "login\\.dr\\.dk/graphql",
+   "json": {
+    "data": {
+     "identify": {
+      "id": "T-12345",
+      "email": "mor@example.dk",
+      "__typename": "UnauthenticatedAuthenticationTransaction"
+     }
+    }
+   }
+  },
+  {
+   "match": "login\\.dr\\.dk/graphql",
+   "json": {
+    "data": {
+     "authenticate": {
+      "id": "T-12345",
+      "email": "mor@example.dk",
+      "href": "https://login.dr.dk/oidc/resume/T-12345",
+      "__typename": "AuthenticatedAuthenticationTransaction"
+     }
+    }
+   }
+  },
+  {
+   "match": "^https://login\\.dr\\.dk/oidc/resume/T-12345$",
+   "status": 302,
+   "url": "https://www.dr.dk/drtv/callback?code=CODE-777&state=xyz"
+  },
+  {
+   "match": "^https://login\\.dr\\.dk/oidc/token$",
+   "json": {
+    "access_token": "AT",
+    "id_token": "IT",
+    "refresh_token": "RT",
+    "expires_in": 3600
+   }
+  },
+  {
+   "match": "/api/authorization/exchange$",
+   "json": [
+    {
+     "type": "UserAccount",
+     "value": "ACC-TOKEN",
+     "expirationDate": "2026-11-25T10:00:00.000Z"
+    },
+    {
+     "type": "UserProfile",
+     "value": "PROFILE-TOKEN",
+     "expirationDate": "2026-11-25T10:00:00.000Z"
+    }
+   ]
+  },
+  {
+   "match": "/api/account\\?",
+   "json": {
+    "email": "mor@example.dk",
+    "profiles": [
+     {
+      "id": "p1",
+      "name": "Mor",
+      "segments": [
+       "drtv"
+      ]
+     },
+     {
+      "id": "p2",
+      "name": "Børn",
+      "segments": [
+       "kids"
+      ]
+     }
+    ]
+   }
+  }
+ ],
+ "expect": {
+  "account.name": "mor@example.dk",
+  "account.data.account": "ACC-TOKEN",
+  "account.data.refresh": "RT",
+  "account.data.account_til": 1795600800,
+  "profiles.0.name": "Mor",
+  "profiles.1.kid": true,
+  "profiles.0.kid": false
+ }
+}

@@ -11,7 +11,7 @@ export const VERSION: string = JSON.parse(
 export const DATA = path.resolve(process.env.KORIE_DATA ?? "./data");
 export const PORT = Number(process.env.KORIE_PORT ?? 8100);
 export const DISCOVERY_PORT = 7361; // Jellyfin uses 7359: Korie stays clear of it
-export const CLIENT_DIR = path.resolve(process.env.KORIE_CLIENT ?? path.join(import.meta.dirname, "../../client/dist"));
+export const WEB_DIR = path.resolve(process.env.KORIE_WEB ?? path.join(import.meta.dirname, "../../web/dist"));
 export const STORE_URL = (process.env.KORIE_STORE ?? "https://raw.githubusercontent.com/MightyX3N/korie-store/main/").replace(/\/?$/, "/");
 export const FFMPEG = process.env.KORIE_FFMPEG ?? "ffmpeg";
 export const FFPROBE = process.env.KORIE_FFPROBE ?? "ffprobe";
@@ -48,6 +48,14 @@ export function builtInTmdbKey(): string {
   return out.toString("utf8");
 }
 
+/** The last things the server did, for the admin's Server page ("What happened"). */
+export interface LogLine { at: number; area: string; text: string; bad: boolean }
+export const recentLog: LogLine[] = [];
+const BAD = /\b(error|fail|failed|couldn't|can't|cannot|refused|denied|crash|ended with|not allowed|blocked|wrong)\b|\b[45]\d\d\b/i;
+
 export function log(area: string, msg: string): void {
   console.log(`${new Date().toISOString().slice(11, 23)} [${area}] ${msg}`);
+  if (area === "http") return;
+  recentLog.push({ at: Date.now(), area, text: msg.slice(0, 600), bad: BAD.test(msg) });
+  if (recentLog.length > 600) recentLog.splice(0, recentLog.length - 600);
 }

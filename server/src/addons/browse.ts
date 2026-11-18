@@ -15,6 +15,7 @@ import path from "node:path";
 import { DATA, log } from "../config.ts";
 import { emit } from "../events.ts";
 import * as addons from "./manager.ts";
+import * as people from "../people.ts";
 
 export const SECTIONS = ["home", "films", "series", "live", "games"] as const;
 export type Section = (typeof SECTIONS)[number];
@@ -35,7 +36,51 @@ export interface ARow { id: string; title: string; items: AItem[] }
 
 interface Sections { at: number; loading: boolean; error: string; rows: Record<Section, ARow[]> }
 
+// A source is an add-on's id, or for an add-on with an account per person (Stremio), that person's
+// own view of it: "korie.stremio@<person id>". Its items carry the source, so opening or playing one
+// is done with the right person's account.
 const sections = new Map<string, Sections>();
+
+export function aidOf(src: string): string {
+  const i = src.indexOf("@");
+  return i < 0 ? src : src.slice(0, i);
+}
+
+function personOfSrc(src: string): string | null {
+  const i = src.indexOf("@");
+  return i < 0 ? null : src.slice(i + 1);
+}
+
+function perPerson(aid: string): boolean {
+  return addons.manifests.get(aid)?.accounts?.who === "person";
+}
+
+/** The sources a person sees: every add-on, and their own view of the ones with a person's account. */
+export function sources(pid?: string | null): string[] {
+  const out: string[] = [];
+  for (const aid of addons.enabledIds()) {
+    if (!perPerson(aid)) out.push(aid);
+    else if (pid && addons.account(aid, pid)) out.push(`${aid}@${pid}`);
+  }
+  return out;
+}
+
+/** Every source there is: the add-ons, and everyone's own view of the per-person ones. */
+function allSources(): string[] {
+  const out: string[] = [];
+  for (const aid of addons.enabledIds()) {
+    if (!perPerson(aid)) out.push(aid);
+    else for (const pid of addons.signedIn(aid)) out.push(`${aid}@${pid}`);
+  }
+  return out;
+}
+
+/** Calls an add-on for a source; pid: the person it's for (their DR profile, say). */
+async function callFor(src: string, fn: string, args: unknown[], pid?: string | null): Promise<any> {
+  const who = people.get(personOfSrc(src) ?? pid ?? "");
+  const { ctx, owner } = addons.ctx(aidOf(src), who ? { id: who.id, name: who.name } : null);
+  return addons.call(aidOf(src), fn, [...args, ctx], owner);
+}
 const items = new Map<string, AItem>();
 const pages = new Map<string, { at: number; loading: boolean; error: string; title: string; rows: ARow[] }>();
 
@@ -90,7 +135,7 @@ function rows(aid: string, v: unknown, from: string): ARow[] {
   const out: ARow[] = [];
   for (const [i, r] of list(v).entries()) {
     if (!r || typeof r !== "object") {
-      addons.logs.get(aid)?.push(`${from}: row ${i + 1} isn't a table, left out`);
+      addons.logs.get(aidOf(aid))?.push(`${from}: row ${i + 1} isn't a table, left out`);
       continue;
     }
     const its = list((r as any).items).map((x) => item(aid, x)).filter((x): x is AItem => !!x);
@@ -104,7 +149,7 @@ function sectionsFrom(aid: string, res: any): Record<Section, ARow[]> {
   for (const k of SECTIONS) {
     if (k === "live") {
       const its = list(res?.live).map((x) => item(aid, x)).filter((x): x is AItem => !!x);
-      out.live = its.length ? [{ id: "live", title: addons.manifests.get(aid)?.name ?? aid, items: its }] : [];
+      out.live = its.length ? [{ id: "live", title: addons.manifests.get(aidOf(aid))?.name ?? aid, items: its }] : [];
     } else {
       out[k] = rows(aid, res?.[k], `browse().${k}`);
     }
@@ -119,11 +164,11 @@ function file(key: string): string {
 }
 
 export function load(): void {
-  for (const aid of addons.enabledIds()) {
+  for (const aid of allSources()) {
     try {
       const saved = JSON.parse(fs.readFileSync(file(aid), "utf8"));
       // rows kept by an older version of the add-on are fetched again at once
-      const same = saved.version === addons.manifests.get(aid)?.version;
+      const same = saved.version === addons.manifests.get(aidOf(aid))?.version;
       sections.set(aid, { at: same ? saved.at ?? 0 : 0, loading: false, error: "", rows: sectionsFrom(aid, saved.res) });
       void buildCatalogue(aid);
     } catch {
@@ -144,16 +189,17 @@ export function refresh(aid: string, force = false): void {
   const t0 = Date.now();
   void (async () => {
     try {
-      if (!(await addons.has(aid, "browse"))) {
+      if (!(await addons.has(aidOf(aid), "browse"))) {
         st.at = Date.now();
         return;
       }
-      const res = await addons.call(aid, "browse", [addons.ctx(aid)]);
+      const res = await callFor(aid, "browse", []);
       if (res && typeof res === "object" && !res.error) {
         st.rows = sectionsFrom(aid, res);
         st.at = Date.now();
         st.error = "";
-        fs.writeFileSync(file(aid), JSON.stringify({ at: st.at, version: addons.manifests.get(aid)?.version, res }));
+        fs.mkdirSync(DIR, { recursive: true });
+        fs.writeFileSync(file(aid), JSON.stringify({ at: st.at, version: addons.manifests.get(aidOf(aid))?.version, res }));
         log("browse", `${aid}: fresh rows in ${Date.now() - t0} ms`);
         void buildCatalogue(aid);
       } else {
@@ -169,33 +215,154 @@ export function refresh(aid: string, force = false): void {
   })();
 }
 
-export function refreshAll(force = false): void {
-  for (const aid of addons.enabledIds()) refresh(aid, force);
+/** An add-on asked again: for an add-on with a person's account, everyone's view of it. */
+export function refreshAddon(aid: string, force = false): void {
+  if (perPerson(aid)) for (const pid of addons.signedIn(aid)) refresh(`${aid}@${pid}`, force);
+  else refresh(aid, force);
 }
 
+export function refreshAll(force = false): void {
+  for (const src of allSources()) refresh(src, force);
+}
+
+/** An add-on (all its sources), or one person's view of it (aid@person). */
 export function forget(aid: string): void {
-  sections.delete(aid);
-  catalogues.delete(aid);
-  try {
-    fs.unlinkSync(file(aid));
-  } catch {
-    /* none */
+  for (const k of [...sections.keys()]) {
+    if (k !== aid && !(aid.indexOf("@") < 0 && k.startsWith(aid + "@"))) continue;
+    sections.delete(k);
+    catalogues.delete(k);
+    try {
+      fs.unlinkSync(file(k));
+    } catch {
+      /* none */
+    }
   }
+  for (const k of [...mine.keys()]) if (k.startsWith(aidOf(aid) + "#")) mine.delete(k);
   for (const k of [...searches.keys()]) searches.delete(k);
   emit("browse");
 }
 
-export interface SectionView { addon: string; name: string; rows: ARow[]; loading: boolean; error: string }
+export interface SectionView { addon: string; aid: string; name: string; rows: ARow[]; loading: boolean; error: string }
 
-export function section(sec: Section, allowed: (aid: string) => boolean): SectionView[] {
+/** A section's rows from every source the person may see (pid: whose; allowed: by add-on id). */
+export function section(sec: Section, allowed: (aid: string) => boolean, pid?: string | null): SectionView[] {
   const out: SectionView[] = [];
-  for (const aid of addons.enabledIds()) {
+  for (const src of sources(pid)) {
+    const aid = aidOf(src);
     if (!allowed(aid)) continue;
-    refresh(aid);
-    const st = sections.get(aid)!;
-    out.push({ addon: aid, name: addons.manifests.get(aid)?.name ?? aid, rows: st.rows[sec] ?? [], loading: st.loading && !(st.rows[sec] ?? []).length, error: st.error });
+    refresh(src);
+    const st = sections.get(src)!;
+    let rows = st.rows[sec] ?? [];
+    // rows an admin hid for this source (one person's Stremio catalogues)
+    const hideRows = new Set(addons.hidden(src));
+    if (hideRows.size) rows = rows.filter((r) => !hideRows.has(r.id));
+    if (sec === "live") {
+      // channels an admin hid, in the order they chose
+      const hide = new Set(addons.hidden(aid));
+      rows = rows.map((r) => ({ ...r, items: ordered(aid, r.items.filter((a) => !hide.has(a.id))) })).filter((r) => r.items.length);
+    }
+    // a house account's rows for this person's profile (DR's Continue watching, My list)
+    if (sec === "home" && pid) rows = [...mineRows(src, pid), ...rows];
+    out.push({ addon: src, aid, name: addons.manifests.get(aid)?.name ?? aid, rows, loading: st.loading && !rows.length, error: st.error });
   }
   return out;
+}
+
+// --- a person's own rows from a house account (their DR profile's Continue watching) --------------
+
+const mine = new Map<string, { at: number; loading: boolean; rows: ARow[] }>();
+const MINE_FRESH = 5 * 60 * 1000;
+
+function mineRows(src: string, pid: string): ARow[] {
+  const aid = aidOf(src);
+  const m = addons.manifests.get(aid);
+  if (!m?.accounts || m.accounts.who !== "house" || !addons.account(aid, "house")) return [];
+  const key = `${aid}#${pid}`;
+  let e = mine.get(key);
+  if (!e) {
+    e = { at: 0, loading: false, rows: [] };
+    mine.set(key, e);
+  }
+  if (!e.loading && Date.now() - e.at > MINE_FRESH) {
+    const entry = e;
+    entry.loading = true;
+    void (async () => {
+      try {
+        if (!(await addons.has(aid, "mine"))) return;
+        const res = await callFor(aid, "mine", [], pid);
+        entry.rows = rows(aid, res?.rows, "mine()");
+      } catch (err) {
+        log("browse", `${aid} mine() for a person: ${err instanceof Error ? err.message : String(err)}`);
+      } finally {
+        entry.at = Date.now();
+        entry.loading = false;
+        emit("browse");
+      }
+    })();
+  }
+  return e.rows;
+}
+
+/** A person's own rows were changed (they watched something): ask again next time. */
+export function staleMine(aid: string, pid: string): void {
+  const e = mine.get(`${aid}#${pid}`);
+  if (e) e.at = 0;
+}
+
+/** How much an add-on offers and when it was last asked (the admin's add-on pages). */
+export function stats(aid: string): { films: number; series: number; live: number; games: number; categories: number; at: number; loading: boolean; error: string } {
+  if (perPerson(aid)) {
+    // each person's own view: the biggest, and any problem
+    const all = addons.signedIn(aid).map((pid) => stats(`${aid}@${pid}`));
+    const sum = { films: 0, series: 0, live: 0, games: 0, categories: 0, at: 0, loading: false, error: "" };
+    for (const x of all) {
+      for (const k of ["films", "series", "live", "games", "categories", "at"] as const) sum[k] = Math.max(sum[k], x[k]);
+      sum.loading ||= x.loading;
+      sum.error ||= x.error;
+    }
+    return sum;
+  }
+  const st = sections.get(aid);
+  const c = catalogues.get(aid);
+  const games = new Set<string>();
+  for (const r of st?.rows.games ?? []) for (const a of r.items) games.add(a.id);
+  return {
+    films: c?.films.length ?? catalogue(aid, "film").length, series: c?.series.length ?? catalogue(aid, "series").length,
+    live: st?.rows.live[0]?.items.length ?? 0, games: games.size, categories: c?.order.length ?? 0,
+    at: st?.at ?? 0, loading: !!st?.loading, error: st?.error ?? "",
+  };
+}
+
+/** An add-on's live channels, in its own order. */
+/** Channels in the order an admin chose; ones they haven't placed keep the add-on's order, after. */
+function ordered(aid: string, list: AItem[]): AItem[] {
+  const order = addons.channelOrder(aid);
+  if (!order.length) return list;
+  const at = new Map(order.map((id, i) => [id, i]));
+  return list.map((a, i) => ({ a, k: at.get(a.id) ?? order.length + i })).sort((x, y) => x.k - y.k).map((x) => x.a);
+}
+
+/** An add-on's live channels (all of them, hidden ones too), in the admin's order. */
+export function channels(aid: string): AItem[] {
+  const src = sections.get(aid) ? aid : [...sections.keys()].find((k) => aidOf(k) === aid && sections.get(k)?.rows.live[0]);
+  return ordered(aid, (src && sections.get(src)?.rows.live[0]?.items) || []);
+}
+
+export interface About { sections: { title: string; text: string; items: { title: string; subtitle: string }[] }[]; rows: { id: string; title: string; section: string }[] }
+
+/** What an add-on says about one source of its own for the admin page (Stremio: a person's add-ons and catalogues). */
+export async function about(aid: string, pid?: string | null): Promise<About | null> {
+  if (!(await addons.has(aid, "about"))) return null;
+  const res = await callFor(pid && perPerson(aid) ? `${aid}@${pid}` : aid, "about", [], pid);
+  if (!res || typeof res !== "object") return null;
+  if (res.error) throw new Error(String(res.error));
+  return {
+    sections: list(res.sections).map((x: any) => ({
+      title: s(x?.title, 200), text: s(x?.text, 1000),
+      items: list(x?.items).map((i: any) => ({ title: s(i?.title, 200), subtitle: s(i?.subtitle, 300) })).filter((i) => i.title),
+    })).filter((x) => x.title),
+    rows: list(res.rows).map((r: any) => ({ id: s(r?.id, 500), title: s(r?.title, 200), section: s(r?.section, 20) })).filter((r) => r.id && r.title),
+  };
 }
 
 export function get(id: string): AItem | null {
@@ -209,7 +376,7 @@ export function remember(a: AItem): void {
 
 // --- pages (an add-on's categories) -------------------------------------------------
 
-export async function page(id: string): Promise<{ title: string; rows: ARow[]; error: string }> {
+export async function page(id: string, pid?: string | null): Promise<{ title: string; rows: ARow[]; error: string }> {
   const it = items.get(id);
   if (!it) return { title: "", rows: [], error: "This page isn't known any more. Go back and open it again." };
   let p = pages.get(id);
@@ -223,7 +390,7 @@ export async function page(id: string): Promise<{ title: string; rows: ARow[]; e
     /* not kept */
   }
   try {
-    const res = await addons.call(it.source, "page", [{ id: it.sourceId, kind: "page", title: it.title, data: it.data }, addons.ctx(it.source)]);
+    const res = await callFor(it.source, "page", [{ id: it.sourceId, kind: "page", title: it.title, data: it.data }], pid);
     const fresh = { at: Date.now(), loading: false, error: s(res?.error), title: s(res?.title) || it.title, rows: rows(it.source, res?.rows, "page()") };
     pages.set(id, fresh);
     fs.writeFileSync(file("page-" + id), JSON.stringify({ at: fresh.at, title: fresh.title, rows: res?.rows ?? [] }));
@@ -350,43 +517,46 @@ export function genresOf(a: AItem): string[] {
 
 const searches = new Map<string, Map<string, AItem[] | null>>();
 
-export function search(q: string, allowed: (aid: string) => boolean): Map<string, AItem[] | null> {
+/** What each source found (null: still asking), for the sources this person sees. */
+export function search(q: string, allowed: (aid: string) => boolean, pid?: string | null): Map<string, AItem[] | null> {
   const key = q.toLowerCase().trim();
   let found = searches.get(key);
   if (!found) {
     found = new Map();
     searches.set(key, found);
     if (searches.size > 50) searches.delete(searches.keys().next().value!);
-    for (const aid of addons.enabledIds()) {
-      found.set(aid, null);
-      const f = found;
-      void (async () => {
-        try {
-          if (!(await addons.has(aid, "search"))) {
-            f.delete(aid);
-            return;
-          }
-          const res = await addons.call(aid, "search", [q, addons.ctx(aid)]);
-          f.set(aid, list(res?.items).map((x) => item(aid, x)).filter((x): x is AItem => !!x));
-        } catch {
-          f.set(aid, []);
+  }
+  const mine = sources(pid);
+  for (const src of mine) {
+    if (found.has(src)) continue;
+    found.set(src, null);
+    const f = found;
+    void (async () => {
+      try {
+        if (!(await addons.has(aidOf(src), "search"))) {
+          f.delete(src);
+          return;
         }
-        emit("search");
-      })();
-    }
+        const res = await callFor(src, "search", [q], pid);
+        f.set(src, list(res?.items).map((x) => item(src, x)).filter((x): x is AItem => !!x));
+      } catch {
+        f.set(src, []);
+      }
+      emit("search");
+    })();
   }
   const out = new Map<string, AItem[] | null>();
-  for (const [k, v] of found) if (allowed(k)) out.set(k, v);
+  for (const [k, v] of found) if (mine.includes(k) && allowed(aidOf(k))) out.set(k, v);
   return out;
 }
 
 // --- a series' seasons -----------------------------------------------------------------
 
-export async function open(id: string): Promise<AItem> {
+export async function open(id: string, pid?: string | null): Promise<AItem> {
   const it = items.get(id);
   if (!it) throw new Error("This isn't known any more. Go back and open it again.");
   if (it.seasons?.length) return it;
-  const res = await addons.call(it.source, "open", [{ id: it.sourceId, kind: it.kind, title: it.title, data: it.data }, addons.ctx(it.source)]);
+  const res = await callFor(it.source, "open", [{ id: it.sourceId, kind: it.kind, title: it.title, data: it.data }], pid);
   if (res?.error) throw new Error(s(res.error));
   for (const k of ["overview", "poster", "backdrop", "year"] as const) {
     const v = k === "poster" || k === "backdrop" ? url(res?.[k]) : s(res?.[k]);
@@ -409,10 +579,10 @@ export async function open(id: string): Promise<AItem> {
 
 export interface PlayAnswer { url?: string; web?: string; live: boolean; subtitles: { url: string; title: string; language: string; default: boolean }[]; headers?: Record<string, string> }
 
-export async function play(id: string): Promise<PlayAnswer> {
+export async function play(id: string, pid?: string | null): Promise<PlayAnswer> {
   const it = items.get(id);
   if (!it) throw new Error("This isn't known any more. Go back and open it again.");
-  const res = await addons.call(it.source, "play", [{ id: it.sourceId, kind: it.kind, title: it.title, data: it.data }, addons.ctx(it.source)]);
+  const res = await callFor(it.source, "play", [{ id: it.sourceId, kind: it.kind, title: it.title, data: it.data }], pid);
   if (!res || typeof res !== "object") throw new Error("the add-on gave no answer");
   if (res.error) throw new Error(s(res.error));
   if (url(res.web)) return { web: url(res.web), live: false, subtitles: [] };
@@ -421,4 +591,30 @@ export async function play(id: string): Promise<PlayAnswer> {
   const headers: Record<string, string> = {};
   if (res.headers && typeof res.headers === "object") for (const [k, v] of Object.entries(res.headers)) if (typeof v === "string") headers[k] = v;
   return { url: url(res.url), live: res.live === true || it.kind === "live", subtitles, headers };
+}
+
+// --- what people watch, told to the add-on (Stremio's Continue Watching, DR's) ---------------
+
+const told = new Map<string, number>();
+
+/** Someone watched an add-on's film or episode up to position (seconds): the add-on may keep it
+ *  in step with its service. Told at most once a minute per thing, and when they stop. */
+export function progress(id: string, pid: string, position: number, duration: number, stopped: boolean): void {
+  const it = items.get(id);
+  if (!it || (it.kind !== "film" && it.kind !== "episode")) return;
+  const key = `${pid}|${id}`;
+  if (!stopped && Date.now() - (told.get(key) ?? 0) < 60_000) return;
+  told.set(key, Date.now());
+  if (told.size > 2000) told.delete(told.keys().next().value!);
+  const aid = aidOf(it.source);
+  void (async () => {
+    try {
+      if (!(await addons.has(aid, "progress"))) return;
+      const watched = duration > 0 && position >= duration * 0.92;
+      await callFor(it.source, "progress", [{ id: it.sourceId, kind: it.kind, title: it.title, data: it.data, series: it.series ? items.get(it.series)?.sourceId ?? null : null }, { position, duration, watched, stopped }], pid);
+      if (stopped) staleMine(aid, pid);
+    } catch (e) {
+      log("browse", `${aid} progress(): ${e instanceof Error ? e.message : String(e)}`);
+    }
+  })();
 }

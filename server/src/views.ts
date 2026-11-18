@@ -118,7 +118,7 @@ export function addonCard(person: Person, a: browse.AItem): Card {
   const p = progressOf(person.id, a.id);
   return {
     id: a.id, kind: a.kind, title: a.title, subtitle: a.subtitle || a.year, year: a.year, poster: img(a.poster), thumb: img(a.thumb || a.backdrop || a.poster),
-    backdrop: img(a.backdrop), progress: frac(p), watched: !!p?.watched, source: addons.manifests.get(a.source)?.name ?? a.source,
+    backdrop: img(a.backdrop), progress: frac(p), watched: !!p?.watched, source: addons.manifests.get(browse.aidOf(a.source))?.name ?? a.source,
     overview: a.overview ?? "", genres: a.genres ?? [], rating: a.rating ?? 0, runtime: a.runtime ?? 0, director: a.director ?? "",
     cast: (a.cast ?? []).slice(0, 10).map((c) => ({ name: c.name, role: c.role, photo: img(c.photo) })),
     position: p && !p.watched ? p.position : 0, duration: p?.duration ?? 0, favourite: isFavourite(person, a.id), local: false,
@@ -256,7 +256,7 @@ export function details(person: Person, id: string): Record<string, unknown> | n
   return {
     id, kind: a.kind, title: a.title, year: a.year, overview: a.overview, genres: a.genres, rating: a.rating, runtime: a.runtime, director: a.director,
     cast: castView(a.cast), poster: img(a.poster), backdrop: img(a.backdrop), thumb: img(a.thumb || a.backdrop), favourite: isFavourite(person, id),
-    source: addons.manifests.get(a.source)?.name ?? a.source, subtitle: a.subtitle, local: false, matched: true,
+    source: addons.manifests.get(browse.aidOf(a.source))?.name ?? a.source, subtitle: a.subtitle, local: false, matched: true,
     position: p && !p.watched ? p.position : 0, duration: p?.duration ?? 0, watched: !!p?.watched,
     seasons: a.seasons?.map((s) => ({
       n: s.n, title: s.title || (s.n === 0 ? "Extras" : `Season ${s.n}`),

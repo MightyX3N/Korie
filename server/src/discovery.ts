@@ -23,9 +23,18 @@ function startJellyfinDiscovery(): void {
       sock.send(answer, from.port, from.address);
     });
   });
-  sock.on("error", (e) => log("discovery", `Jellyfin's apps can't find Korie by themselves (UDP 7359: ${e.message})`));
-  sock.bind(7359, () => log("discovery", "answering Jellyfin's apps on UDP 7359"));
+  sock.on("error", (e) => {
+    discovery.jellyfin = `UDP 7359 is taken (${e.message}): probably a Jellyfin server on this machine. Jellyfin's apps can still connect by typing the address.`;
+    log("discovery", `Jellyfin's apps can't find Korie by themselves (UDP 7359: ${e.message})`);
+  });
+  sock.bind(7359, () => {
+    discovery.jellyfin = "";
+    log("discovery", "answering Jellyfin's apps on UDP 7359");
+  });
 }
+
+/** Whether each kind of app can find Korie by itself (the admin's Server page shows it). */
+export const discovery = { korie: "starting", jellyfin: "starting" };
 
 export function startDiscovery(): void {
   startJellyfinDiscovery();
@@ -35,8 +44,12 @@ export function startDiscovery(): void {
     const answer = JSON.stringify({ korie: true, id: serverId(), name: String(setting("server_name") || "Korie"), port: PORT, version: VERSION });
     sock.send(answer, from.port, from.address);
   });
-  sock.on("error", (e) => log("discovery", `can't listen on UDP ${DISCOVERY_PORT}: ${e.message}`));
+  sock.on("error", (e) => {
+    discovery.korie = `UDP ${DISCOVERY_PORT} is taken (${e.message})`;
+    log("discovery", `can't listen on UDP ${DISCOVERY_PORT}: ${e.message}`);
+  });
   sock.bind(DISCOVERY_PORT, () => {
+    discovery.korie = "";
     try {
       sock.setBroadcast(true);
     } catch {

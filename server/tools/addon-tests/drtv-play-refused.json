@@ -1,0 +1,37 @@
+{
+ "call": "play",
+ "args": [
+  {
+   "id": "622926",
+   "kind": "film"
+  }
+ ],
+ "ctx": {
+  "now": 1795000000
+ },
+ "answers": [
+  {
+   "match": "anonymous-sso",
+   "json": [
+    {
+     "type": "UserAccount",
+     "value": "ANON"
+    },
+    {
+     "type": "UserProfile",
+     "value": "ANONP"
+    }
+   ]
+  },
+  {
+   "match": "/account/items/622926/videos\\?.*resolution=HD-1080.*sub=Anonymous",
+   "status": 403,
+   "json": {
+    "message": "geo"
+   }
+  }
+ ],
+ "expect": {
+  "error": "DR refused (403): DR only streams to Denmark. Check that the server's internet connection is in Denmark (no VPN)."
+ }
+}

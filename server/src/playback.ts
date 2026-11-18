@@ -200,6 +200,14 @@ export async function plan(src: Source, caps: Caps, audio: number | null, burn: 
   try {
     p = await probe(src);
   } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    const http = msg.match(/Server returned (\d{3})/);
+    if (src.url && http && Number(http[1]) >= 400) {
+      // the source refused: say so now, rather than a player that opens and closes
+      throw new Error(Number(http[1]) === 403
+        ? "The stream's source refused this server (403 Forbidden). DRTV and some other services only stream to their own country: check that the server's internet connection is in that country (no VPN)."
+        : `The stream's source answered ${http[1]}: it isn't there right now.`);
+    }
     if (src.url) {
       // can't look inside (some live streams): let FFmpeg try anyway
       p = { container: "", duration: 0, streams: [] };
@@ -235,7 +243,9 @@ export async function plan(src: Source, caps: Caps, audio: number | null, burn: 
 
   pickSubs(subs, chosenAudio?.lang ?? "", prefs.subs);
 
-  const audioTracks: Track[] = auds.map((a) => ({ id: String(a.index), label: audioLabel(a), lang: a.lang, isDefault: a === chosenAudio }));
+  let audioTracks: Track[] = auds.map((a) => ({ id: String(a.index), label: audioLabel(a), lang: a.lang, isDefault: a === chosenAudio }));
+  // a web stream in several qualities (HLS) has the same sound once per quality: one is enough
+  if (src.url) audioTracks = audioTracks.filter((t, i) => audioTracks.findIndex((x) => x.label === t.label && x.lang === t.lang) === i || t.isDefault);
   const container = p.container;
   const containerOk = (MP4ISH.test(container) && caps.containers.includes("mp4")) || (container.startsWith("matroska,webm") && caps.containers.includes("webm") && (!v || ["vp8", "vp9", "av1"].includes(v.codec)))
     // Korie's TV app (ExoPlayer) opens any Matroska file
@@ -350,7 +360,13 @@ export async function stream(src: Source, start: number, q: { audio?: string; bu
   const p0 = src.file || src.url ? await probe(src).catch(() => null) : null;
   const vcodec = p0?.streams.find((s) => s.type === "video")?.codec;
   if (!(copyV && vcodec === "hevc")) args.splice(args.indexOf("-tag:v"), 2);
+  // AAC from an MPEG-TS source (live TV, HLS, .ts recordings) has ADTS headers that MP4 can't hold:
+  // without this FFmpeg stops at the first sound packet (DRTV's channels played for a split second)
+  const acodec = (audio !== null ? p0?.streams.find((s) => s.index === audio) : p0?.streams.find((s) => s.type === "audio"))?.codec;
+  if (q.a === "copy" && (acodec === "aac" || (!p0 && src.url))) args.splice(args.indexOf("-c:a") + 2, 0, "-bsf:a", "aac_adtstoasc");
   const ff = spawn(FFMPEG, args, { stdio: ["ignore", "pipe", "pipe"] });
+  // closed by the player (it went away): not a problem with the stream
+  let closed = false;
   let errText = "";
   ff.stderr.on("data", (d) => {
     errText = (errText + d.toString()).slice(-2000);
@@ -366,7 +382,7 @@ export async function stream(src: Source, start: number, q: { audio?: string; bu
   });
   ff.on("close", (code) => {
     let why = "";
-    if (code && code !== 255) {
+    if (code && !(closed && code === 255)) {
       const last = errText.trim().split("\n").slice(-3).join(" | ");
       log("stream", `ffmpeg ended with ${code}: ${last}`);
       why = friendly(last);
@@ -381,7 +397,10 @@ export async function stream(src: Source, start: number, q: { audio?: string; bu
     res.end();
   });
   onClose(() => {
-    if (ff.exitCode === null) ff.kill("SIGKILL");
+    if (ff.exitCode === null) {
+      closed = true;
+      ff.kill("SIGKILL");
+    }
   });
 }
 
@@ -408,4 +427,24 @@ export async function subtitles(src: Source, index: number | null): Promise<stri
 
 function srtToVtt(s: string): string {
   return "WEBVTT\n\n" + s.replace(/\r/g, "").replace(/(\d\d:\d\d:\d\d),(\d\d\d)/g, "$1.$2").replace(/^\d+\n(?=\d\d:)/gm, "");
+}
+
+/** Plays a few seconds of a stream the way it would be sent (MP4 out), and says whether that worked:
+ *  for the admin's Test the channels. */
+export async function tryStream(src: Source, seconds = 6): Promise<{ ok: boolean; error: string }> {
+  const args = ["-hide_banner", "-nostdin", "-loglevel", "error", ...(await inputArgs(src)), "-t", String(seconds),
+    "-map", "0:v:0?", "-map", "0:a:0?", "-c", "copy", "-f", "mpegts", "pipe:1"];
+  return new Promise((resolve) => {
+    const ff = spawn(FFMPEG, args, { stdio: ["ignore", "pipe", "pipe"] });
+    let bytes = 0;
+    let err = "";
+    ff.stdout.on("data", (b: Buffer) => (bytes += b.length));
+    ff.stderr.on("data", (b: Buffer) => (err += b.toString()));
+    const timer = setTimeout(() => ff.kill("SIGKILL"), (seconds + 25) * 1000);
+    ff.on("close", (code) => {
+      clearTimeout(timer);
+      if (code === 0 && bytes > 50_000) resolve({ ok: true, error: "" });
+      else resolve({ ok: false, error: friendly(err) || (code === null ? "it didn't start in time" : `nothing came (${bytes} bytes)`) });
+    });
+  });
 }

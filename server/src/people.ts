@@ -175,6 +175,21 @@ export function endSession(token: string): void {
   db.prepare("DELETE FROM sessions WHERE token = ?").run(token);
 }
 
+/** The device a session was started on ("Korie in Chrome", "Jellyfin for Android TV on Projector"). */
+export function sessionDevice(token: string | undefined): string {
+  if (!token) return "";
+  return (db.prepare("SELECT device FROM sessions WHERE token = ?").get(token) as { device: string } | undefined)?.device ?? "";
+}
+
+/** Where someone is signed in (each session, newest use first); id is the session's row id. */
+export function sessionsOf(person: string): { id: number; device: string; created: number; seen: number }[] {
+  return db.prepare("SELECT rowid AS id, device, created, seen FROM sessions WHERE person = ? ORDER BY seen DESC LIMIT 30").all(person) as { id: number; device: string; created: number; seen: number }[];
+}
+
+export function endSessionById(person: string, id: number): boolean {
+  return db.prepare("DELETE FROM sessions WHERE person = ? AND rowid = ?").run(person, id).changes > 0;
+}
+
 export function mayUseApp(p: Person, pkg: string): boolean {
   return p.apps === "all" || p.apps.includes(pkg);
 }

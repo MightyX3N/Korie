@@ -1,0 +1,34 @@
+{
+ "call": "browse",
+ "ctx": {
+  "account": {
+   "key": "KEY123",
+   "email": "far@example.dk",
+   "addons": [],
+   "hosts": []
+  }
+ },
+ "answers": [
+  {
+   "match": "addonCollectionGet$",
+   "json": {
+    "error": {
+     "message": "Session not found",
+     "code": 1
+    }
+   }
+  },
+  {
+   "match": "datastoreGet$",
+   "json": {
+    "error": {
+     "message": "Session not found",
+     "code": 1
+    }
+   }
+  }
+ ],
+ "expect": {
+  "error": "Stremio said: Session not found. Sign in to Stremio again in Korie's admin."
+ }
+}

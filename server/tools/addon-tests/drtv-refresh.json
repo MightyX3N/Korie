@@ -1,0 +1,8 @@
+{ "call": "search", "args": ["matador"],
+  "ctx": { "now": 1795600000, "account": { "account": "OLD", "account_til": 1795600800, "profile": "OLDP", "refresh": "RT", "profiles": { "p1": { "token": "x", "til": 1 } } } },
+  "answers": [
+    { "match": "login\\.dr\\.dk/oidc/token$", "json": { "access_token": "AT2", "id_token": "IT2", "refresh_token": "RT2" } },
+    { "match": "authorization/exchange$", "json": [ { "type": "UserAccount", "value": "NEW-ACC", "expirationDate": "2026-12-01T10:00:00.000Z" }, { "type": "UserProfile", "value": "NEW-PROF", "expirationDate": "2026-12-01T10:00:00.000Z" } ] },
+    { "match": "/api/search\\?", "json": { "series": { "items": [ { "id": 5, "type": "show", "title": "Matador" } ] } } }
+  ],
+  "expect": { "items.0.title": "Matador", "save.account": "NEW-ACC", "save.refresh": "RT2" } }

@@ -21,6 +21,7 @@ import { picture } from "./images.ts";
 import * as browse from "./addons/browse.ts";
 import * as addonMgr from "./addons/manager.ts";
 import { serverId } from "./ident.ts";
+import * as watching from "./watching.ts";
 import EMPTY from "./jellyfin-empty.json" with { type: "json" };
 import websocket from "@fastify/websocket";
 
@@ -203,7 +204,7 @@ async function openSeries(a: browse.AItem): Promise<browse.AItem> {
 
 /** Whether a person may see an add-on's thing: they may use the add-on, and its age rating fits. */
 function mayA(p: P, a: browse.AItem): boolean {
-  return people.mayUseAddon(p, a.source) && views.mayItem(p, a);
+  return people.mayUseAddon(p, browse.aidOf(a.source)) && views.mayItem(p, a);
 }
 
 /** What the add-ons this person may use offer for a section, each once: films, series (all of
@@ -218,10 +219,10 @@ function addonItems(p: P, sec: "films" | "series" | "live", which: "mixed" | "al
     out.push(a);
   };
   if (sec === "live") {
-    for (const v of browse.section("live", (aid) => people.mayUseAddon(p, aid))) for (const row of v.rows) for (const a of row.items) if (a.kind === "live") add(a);
+    for (const v of browse.section("live", (aid) => people.mayUseAddon(p, aid), p.id)) for (const row of v.rows) for (const a of row.items) if (a.kind === "live") add(a);
     return out;
   }
-  for (const v of browse.section(sec, (aid) => people.mayUseAddon(p, aid) && (which === "all" || addonMgr.place(aid) === "mixed"))) {
+  for (const v of browse.section(sec, (aid) => people.mayUseAddon(p, aid) && (which === "all" || addonMgr.place(aid) === "mixed"), p.id)) {
     for (const a of browse.catalogue(v.addon, sec === "films" ? "film" : "series")) add(a);
   }
   return out;
@@ -229,7 +230,7 @@ function addonItems(p: P, sec: "films" | "series" | "live", which: "mixed" | "al
 
 /** Add-ons this person may use that sit on a tile of their own. */
 function ownTiles(p: P): string[] {
-  return addonMgr.enabledIds().filter((aid) => addonMgr.place(aid) === "own" && people.mayUseAddon(p, aid) && (browse.catalogue(aid, "film").length || browse.catalogue(aid, "series").length));
+  return browse.sources(p.id).filter((src) => addonMgr.place(browse.aidOf(src)) === "own" && people.mayUseAddon(p, browse.aidOf(src)) && (browse.catalogue(src, "film").length || browse.catalogue(src, "series").length));
 }
 
 /** The picture on each of an own tile's folders: a different film or series for each, where it can. */
@@ -261,10 +262,10 @@ function tileFolders(p: P, aid: string): { name: string; label: string; items: b
 /** Add-on search results (add-ons answer in their own time: a few seconds at most). */
 async function addonSearch(p: P, term: string): Promise<browse.AItem[]> {
   const until = Date.now() + 4000;
-  let found = browse.search(term, (aid) => people.mayUseAddon(p, aid));
+  let found = browse.search(term, (aid) => people.mayUseAddon(p, aid), p.id);
   while ([...found.values()].some((v) => v === null) && Date.now() < until) {
     await new Promise((r) => setTimeout(r, 150));
-    found = browse.search(term, (aid) => people.mayUseAddon(p, aid));
+    found = browse.search(term, (aid) => people.mayUseAddon(p, aid), p.id);
   }
   return [...found.values()].flatMap((v) => v ?? []).filter((a) => a.kind !== "episode" && mayA(p, a));
 }
@@ -358,10 +359,10 @@ function aDto(p: P, a: browse.AItem): Record<string, unknown> {
   // stream's own tracks, comes from PlaybackInfo when it's played.
   if (a.kind === "film" || a.kind === "episode" || a.kind === "live") o.MediaSources = [stubSource(a)];
   if (a.kind === "film") {
-    Object.assign(o, { IsFolder: false, MediaType: "Video", VideoType: "VideoFile", ParentId: jid(addonMgr.place(a.source) === "own" ? "aview:" + a.source : "view:films") });
+    Object.assign(o, { IsFolder: false, MediaType: "Video", VideoType: "VideoFile", ParentId: jid(addonMgr.place(browse.aidOf(a.source)) === "own" ? "aview:" + a.source : "view:films") });
     images(o, a.poster || a.thumb, a.backdrop, 2 / 3);
   } else if (a.kind === "series") {
-    Object.assign(o, { IsFolder: true, MediaType: "Unknown", ParentId: jid(addonMgr.place(a.source) === "own" ? "aview:" + a.source : "view:series"), ChildCount: a.seasons?.length, Status: "Continuing" });
+    Object.assign(o, { IsFolder: true, MediaType: "Unknown", ParentId: jid(addonMgr.place(browse.aidOf(a.source)) === "own" ? "aview:" + a.source : "view:series"), ChildCount: a.seasons?.length, Status: "Continuing" });
     images(o, a.poster || a.thumb, a.backdrop, 2 / 3);
   } else if (a.kind === "page") {
     // an add-on's category ("Dokumentar", "Krimi" ...): a folder of its films and series
@@ -562,7 +563,7 @@ async function children(p: P, parent: Thing | null, recursive: boolean, types: s
     const a = parent.a;
     if (!mayA(p, a)) return [];
     if (a.kind === "page") {
-      const pg = await browse.page(a.id);
+      const pg = await browse.page(a.id, p.id);
       const seen = new Set<string>();
       for (const row of pg.rows) for (const x of row.items) if (!seen.has(x.id) && mayA(p, x) && (!types.length || wantA(x))) { seen.add(x.id); out.push(aThing(x)); }
       return out;
@@ -852,10 +853,10 @@ function vttEvents(vtt: string): { Id: string; StartPositionTicks: number; EndPo
 /** Where an add-on's film, episode or channel plays from, as Jellyfin's media source. The add-on
  *  is asked for the address now (they expire); Korie repackages it as it plays, so headers the
  *  source needs and streams in formats the apps can't open (HLS with odd codecs) work everywhere. */
-async function addonMediaSource(a: browse.AItem, body: Record<string, any>): Promise<Record<string, unknown>> {
+async function addonMediaSource(a: browse.AItem, body: Record<string, any>, pid?: string): Promise<Record<string, unknown>> {
   let ans: browse.PlayAnswer;
   try {
-    ans = await browse.play(a.id);
+    ans = await browse.play(a.id, pid);
   } catch (e) {
     throw new JfError(502, `The add-on couldn't start "${a.title}": ${e instanceof Error ? e.message : e}`);
   }
@@ -1359,7 +1360,7 @@ export async function register(app: FastifyInstance, webDir: string | null): Pro
     const q = qs(req);
     for (const k of ["AudioStreamIndex", "SubtitleStreamIndex", "StartTimeTicks"]) if (b[k] == null && q[k.toLowerCase()] != null) b[k] = q[k.toLowerCase()];
     if (th.t === "aitem" && ["film", "episode", "live"].includes(th.a.kind)) {
-      const ms = await addonMediaSource(th.a, b);
+      const ms = await addonMediaSource(th.a, b, p.id);
       lengths.set(th.a.id, Number(ms.RunTimeTicks ?? 0) / TICKS || th.a.runtime * 60);
       return { MediaSources: [ms], PlaySessionId: crypto.randomBytes(16).toString("hex") };
     }
@@ -1446,6 +1447,8 @@ export async function register(app: FastifyInstance, webDir: string | null): Pro
     if (!k) return undefined;
     const pos = Number(b.PositionTicks ?? 0) / TICKS;
     const len = lengths.get(k) || (lib.getRow(k) ? runtimeOf(lib.getRow(k)!) : (browse.get(k)?.runtime ?? 0) * 60);
+    watching.note(tokenOf(req), p, people.sessionDevice(tokenOf(req)), k, pos, len, b.IsPaused === true, stopped);
+    browse.progress(k, p.id, pos, len, stopped || b.IsPaused === true);
     // a live channel has no place to come back to
     if (browse.get(k)?.kind === "live") return undefined;
     if (pos > 0 || stopped) views.setProgress(p, k, pos, len, false);

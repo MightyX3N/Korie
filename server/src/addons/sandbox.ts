@@ -2,6 +2,7 @@
 // Add-ons get base, string, table, math and utf8 only: no files, no os, no
 // loading code. Each call has a time limit and the state a memory limit, so a
 // broken or hostile add-on stops itself, never Korie.
+import crypto from "node:crypto";
 import { LuaFactory, type LuaEngine } from "wasmoon";
 
 const factory = new LuaFactory();
@@ -42,6 +43,25 @@ export class Sandbox {
     engine.global.setMemoryMax(MEMORY);
     await engine.doString(SETUP);
     engine.global.set("print", (...args: unknown[]) => log(args.map((a) => (typeof a === "object" ? JSON.stringify(a) : String(a))).join(" ")));
+    // small helpers Lua doesn't have: what logins need (PKCE: a random secret and its SHA-256)
+    const b64url = (b: Buffer) => b.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    engine.global.set("korie", {
+      sha256: (x: unknown) => crypto.createHash("sha256").update(String(x)).digest("hex"),
+      sha256_b64url: (x: unknown) => b64url(crypto.createHash("sha256").update(String(x)).digest()),
+      random: (n: unknown) => b64url(crypto.randomBytes(Math.max(8, Math.min(96, Number(n) || 32)))).slice(0, Math.max(8, Math.min(128, Number(n) || 32))),
+      uuid: () => crypto.randomUUID(),
+      base64: (x: unknown) => Buffer.from(String(x)).toString("base64"),
+      unbase64: (x: unknown) => Buffer.from(String(x).replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8"),
+      urlencode: (x: unknown) => encodeURIComponent(String(x)),
+      json: (x: unknown) => JSON.stringify(x ?? null),
+      unjson: (x: unknown) => {
+        try {
+          return JSON.parse(String(x));
+        } catch {
+          return null;
+        }
+      },
+    });
     engine.global.setTimeout(Date.now() + CALL_MS);
     let mod: unknown;
     try {

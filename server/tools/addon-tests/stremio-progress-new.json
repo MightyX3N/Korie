@@ -1,0 +1,49 @@
+{
+ "call": "progress",
+ "args": [
+  {
+   "id": "movie~tt0111161",
+   "kind": "film",
+   "data": {
+    "type": "movie",
+    "id": "tt0111161",
+    "name": "The Shawshank Redemption",
+    "poster": "https://x/s.jpg"
+   }
+  },
+  {
+   "position": 3000,
+   "duration": 8520,
+   "watched": false,
+   "stopped": true
+  }
+ ],
+ "ctx": {
+  "now": 1795000000,
+  "account": {
+   "key": "KEY123",
+   "email": "far@example.dk",
+   "addons": [],
+   "hosts": []
+  }
+ },
+ "answers": [
+  {
+   "match": "datastoreGet$",
+   "json": {
+    "result": []
+   }
+  },
+  {
+   "match": "datastorePut$",
+   "json": {
+    "result": {
+     "success": true
+    }
+   }
+  }
+ ],
+ "expect": {
+  "ok": true
+ }
+}

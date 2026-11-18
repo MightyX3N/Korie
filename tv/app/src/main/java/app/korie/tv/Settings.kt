@@ -1,7 +1,7 @@
 package app.korie.tv
 
 // Settings (Settings.tsx): categories on the left, their settings on the right, and a search
-// across all of them. People opens its own page: everyone on the left, what the chosen person
+// across all of them. People shows beside the categories: everyone, then what the chosen person
 // may do on the right.
 
 import androidx.compose.foundation.background
@@ -40,6 +40,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.foundation.focusGroup
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -193,6 +196,7 @@ private fun Face(name: String, color: String, size: Dp? = null) {
 
 private val CATS = listOf("look" to "Look", "playback" to "Playback", "libraries" to "Libraries", "people" to "People", "server" to "Server", "addons" to "Add-ons", "device" to "This device", "about" to "About")
 
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun Settings(nav: Nav, me: Screen, who: Me, refresh: () -> Unit, signOut: () -> Unit) {
     val r = rem()
@@ -211,7 +215,8 @@ fun Settings(nav: Nav, me: Screen, who: Me, refresh: () -> Unit, signOut: () -> 
             "look" -> Look(nav, reqs)
             "playback" -> Playback(who, refresh, reqs)
             "libraries" -> if (may) Libraries(who, reqs) else Locked()
-            "people" -> if (who.person.admin) PeopleSummary(nav, reqs) else You(who, refresh, reqs)
+            // (only for search: the People category itself shows PeoplePane)
+            "people" -> if (who.person.admin) PeopleSummary(reqs) { id -> q = ""; nav.replace(mapOf("tab" to "people", "id" to id)) } else You(who, refresh, reqs)
             "server" -> if (may) ServerSettings(reqs) else Locked()
             "addons" -> AddonsList(nav, reqs)
             "device" -> ThisDevice(nav, who, signOut, reqs)
@@ -243,12 +248,13 @@ fun Settings(nav: Nav, me: Screen, who: Me, refresh: () -> Unit, signOut: () -> 
         // .st-body: the categories, and the chosen one's settings
         Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(r(1.2f))) {
             if (q.isEmpty()) {
-                Column(Modifier.width(r(15)), verticalArrangement = Arrangement.spacedBy(r(0.25f))) {
+                // back from the right: on the category shown
+                Column(Modifier.width(r(15)).focusProperties { enter = { catReqs[cat] ?: FocusRequester.Default } }.focusGroup(), verticalArrangement = Arrangement.spacedBy(r(0.25f))) {
                     cats.forEach { (id, label) ->
                         val on = id == cat
                         Focusable(Modifier.fillMaxWidth().focusRequester(catReqs.getOrPut(id) { FocusRequester() }),
                             onFocus = { if (id != cat) nav.replace(mapOf("tab" to id)) },
-                            onClick = { if (id == "people" && who.person.admin) nav.push("people") else nav.replace(mapOf("tab" to id)) }) { f ->
+                            onClick = { nav.replace(mapOf("tab" to id)) }) { f ->
                             val shape = RoundedCornerShape(r(0.55f))
                             Box(Modifier.fillMaxWidth().clip(shape).background(if (f) C.accent else if (on) Color(0xFF12304A) else Color.Transparent)) {
                                 Text(label, style = body(1.3f, if (f) C.onAccent else if (on) C.ink else C.soft), modifier = Modifier.padding(start = r(1.1f), end = r(0.9f), top = r(0.85f), bottom = r(0.85f)))
@@ -260,7 +266,9 @@ fun Settings(nav: Nav, me: Screen, who: Me, refresh: () -> Unit, signOut: () -> 
                     }
                 }
             }
-            Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(bottom = r(5))) {
+            // People has its own list and cards (and their scrolling) beside the categories
+            if (q.isEmpty() && cat == "people" && who.person.admin) PeoplePane(nav, me, who, refresh, modifier = Modifier.weight(1f))
+            else Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(bottom = r(5))) {
                 CompositionLocalProvider(LocalQuery provides q, LocalSettingsScreen provides me) {
                     if (q.isNotEmpty()) cats.forEach { (id, label) ->
                         // .st-sec: each category's matches under its name (no name without matches)
@@ -447,7 +455,7 @@ private fun ThisDevice(nav: Nav, who: Me, signOut: () -> Unit, reqs: MutableMap<
     Rows {
         SRow("dev-who", "Switch person", "Back to Who's watching", "profile sign out", reqs, signOut) { Val(who.person.name, it) }
         if (who.person.admin) SRow("dev-auto", "Signs in by itself as", "${Korie.deviceName}: skip Who's watching and start as one person (set in People)", "automatic sign in", reqs, {
-            nav.push("people", if (auto != null) mapOf("id" to auto.id) else emptyMap())
+            nav.replace(if (auto != null) mapOf("tab" to "people", "id" to auto.id) else mapOf("tab" to "people"))
         }) { Sel(auto?.name ?: "Nobody: asks who's watching", it) }
         SRow("dev-server", "Change server", "Look for Korie servers again, or type an address", reqs = reqs, onClick = { Korie.forgetServer(ctx) })
     }
@@ -491,20 +499,20 @@ fun personNote(p: PersonFull): String {
 
 /** In Settings: everyone, each opening People. */
 @Composable
-private fun PeopleSummary(nav: Nav, reqs: MutableMap<String, FocusRequester>) {
+private fun PeopleSummary(reqs: MutableMap<String, FocusRequester>, open: (String) -> Unit) {
     val scope = rememberCoroutineScope()
     val (data, _, reload) = useData("people-all", listOf("people")) { Korie.read<PeopleData>(Korie.api("/api/people/all")) }
     data ?: return
     Rows {
         data.people.forEach { p ->
-            SRow("sp-${p.id}", p.name, personNote(p), "people person pin", reqs, { nav.push("people", mapOf("id" to p.id)) }) { Face(p.name, p.color) }
+            SRow("sp-${p.id}", p.name, personNote(p), "people person pin", reqs, { open(p.id) }) { Face(p.name, p.color) }
         }
         SRow("sp-add", "Add person", words = "people new", reqs = reqs, onClick = {
             scope.launch {
                 val t = Ui.text("Name of the new person")?.trim()
                 if (!t.isNullOrEmpty()) try {
                     val n = Korie.read<PersonFull>(Korie.api("/api/people", buildJsonObject { put("name", t) }))
-                    reload(); nav.push("people", mapOf("id" to n.id))
+                    reload(); open(n.id)
                 } catch (e: Exception) { Ui.toast(e.message ?: "") }
             }
         }) { Ico(R.drawable.lc_plus, it) }
@@ -532,10 +540,25 @@ private fun PCard(title: String?, modifier: Modifier = Modifier, row: Boolean = 
     }
 }
 
-/** Settings › People: who may do what. [done] (Manage people from Who's watching): Back closes it. */
-@OptIn(ExperimentalLayoutApi::class)
+/** People on a screen of its own (Manage people from Who's watching): Back closes it. */
 @Composable
 fun People(nav: Nav, me: Screen, who: Me, refresh: () -> Unit) {
+    val r = rem()
+    Column(Modifier.fillMaxSize().padding(start = gutter(), end = gutter(), top = r(2.2f))) {
+        Row(Modifier.padding(bottom = r(1.3f)).heightIn(min = r(3)), verticalAlignment = Alignment.Bottom) {
+            Text("People", style = heading(2.3f))
+            Box(Modifier.weight(1f))
+            Clock()
+        }
+        PeoplePane(nav, me, who, refresh, grabFocus = true)
+    }
+}
+
+/** Settings › People: everyone, and who may do what. In Settings it sits beside the categories;
+ *  [grabFocus]: on a screen of its own, the chosen person has the focus at once. */
+@OptIn(ExperimentalLayoutApi::class, ExperimentalComposeUiApi::class)
+@Composable
+fun PeoplePane(nav: Nav, me: Screen, who: Me, refresh: () -> Unit, grabFocus: Boolean = false, modifier: Modifier = Modifier) {
     val r = rem()
     val scope = rememberCoroutineScope()
     val (data, _, reload) = useData("people-all", listOf("people")) { Korie.read<PeopleData>(Korie.api("/api/people/all")) }
@@ -559,16 +582,11 @@ fun People(nav: Nav, me: Screen, who: Me, refresh: () -> Unit) {
     fun mayAddon(id: String) = p.all(p.addons) || id in p.list(p.addons)
     fun mayApp(pkg: String) = p.all(p.apps) || pkg in p.list(p.apps)
     val devName = d.devices.firstOrNull { it.id == p.autoDevice }?.name ?: "No device"
-    Column(Modifier.fillMaxSize().padding(start = gutter(), end = gutter(), top = r(2.2f))) {
-        Row(Modifier.padding(bottom = r(1.3f)).heightIn(min = r(3)), verticalAlignment = Alignment.Bottom) {
-            Text("Settings ›", style = body(1.3f, C.soft), modifier = Modifier.padding(end = r(0.6f), bottom = r(0.35f)))
-            Text("People", style = heading(2.3f))
-            Box(Modifier.weight(1f))
-            Clock()
-        }
-        Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(r(1.2f))) {
+    run {
+        Row(modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(r(1.2f))) {
             // .pp-list: everyone
-            Column(Modifier.width(r(16)).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(r(0.25f))) {
+            // coming in from the side: on the person shown, not the nearest line
+            Column(Modifier.width(r(16)).focusProperties { enter = { listReqs[p.id] ?: FocusRequester.Default } }.focusGroup().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(r(0.25f))) {
                 d.people.forEach { x ->
                     val on = x.id == p.id
                     Focusable(Modifier.fillMaxWidth().focusRequester(listReqs.getOrPut(x.id) { FocusRequester() }), onFocus = { if (x.id != p.id) nav.replace(mapOf("id" to x.id)) }, onClick = { nav.replace(mapOf("id" to x.id)) }) { f ->
@@ -586,7 +604,8 @@ fun People(nav: Nav, me: Screen, who: Me, refresh: () -> Unit) {
                         }
                     }
                 }
-                Focusable(Modifier.fillMaxWidth(), onClick = {
+                // the last line: Down stays here (not out to the Settings categories)
+                Focusable(Modifier.fillMaxWidth().focusProperties { down = FocusRequester.Cancel }, onClick = {
                     scope.launch {
                         val t = Ui.text("Name of the new person")?.trim()
                         if (!t.isNullOrEmpty()) try { val n = Korie.read<PersonFull>(Korie.api("/api/people", buildJsonObject { put("name", t) })); reload(); nav.replace(mapOf("id" to n.id))
@@ -690,6 +709,6 @@ fun People(nav: Nav, me: Screen, who: Me, refresh: () -> Unit) {
             }
         }
     }
-    LaunchedEffect(Unit) { delay(120); try { listReqs[p.id]?.requestFocus() } catch (_: Exception) {} }
+    if (grabFocus) LaunchedEffect(Unit) { delay(120); try { listReqs[p.id]?.requestFocus() } catch (_: Exception) {} }
     LaunchedEffect(Ui.closed) { val f = me.focused ?: return@LaunchedEffect; delay(80); if (Ui.busy) return@LaunchedEffect; try { reqs[f]?.requestFocus() } catch (_: Exception) {} }
 }

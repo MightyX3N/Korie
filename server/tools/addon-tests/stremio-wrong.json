@@ -1,0 +1,24 @@
+{
+ "call": "login",
+ "args": [
+  {
+   "email": "far@example.dk",
+   "password": "wrong"
+  }
+ ],
+ "answers": [
+  {
+   "match": "login$",
+   "status": 200,
+   "json": {
+    "error": {
+     "message": "Wrong password",
+     "code": 2
+    }
+   }
+  }
+ ],
+ "expect": {
+  "error": "Stremio said: Wrong password"
+ }
+}

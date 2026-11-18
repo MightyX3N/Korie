@@ -4,7 +4,9 @@ import fs from "node:fs";
 import path from "node:path";
 import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
 import fastifyStatic from "@fastify/static";
-import { CLIENT_DIR, PORT, VERSION, log } from "./config.ts";
+import { WEB_DIR, PORT, VERSION, log } from "./config.ts";
+import * as adminPages from "./admin.ts";
+import * as watching from "./watching.ts";
 import { setting, setSetting, DEFAULTS } from "./db.ts";
 import * as people from "./people.ts";
 import * as lib from "./library.ts";
@@ -48,9 +50,13 @@ class HttpError extends Error {
   }
 }
 
-function who(req: FastifyRequest): people.Person {
+function tokenOf(req: FastifyRequest): string {
   const h = req.headers.authorization ?? "";
-  const tok = h.startsWith("Bearer ") ? h.slice(7) : ((req.query as Record<string, string>)?.t ?? "");
+  return h.startsWith("Bearer ") ? h.slice(7) : ((req.query as Record<string, string>)?.t ?? "");
+}
+
+function who(req: FastifyRequest): people.Person {
+  const tok = tokenOf(req);
   const p = people.fromToken(tok);
   if (!p) throw new HttpError(401, "Sign in first.");
   return p;
@@ -165,7 +171,7 @@ app.get("/api/home", async (req) => {
   if (recentMusic.length) rows.push({ id: "music", title: "Recently added music", kind: "square", items: recentMusic });
   const fav = views.favourites(p);
   if (fav.length) rows.push({ id: "favourites", title: "Favourites", kind: "fav", items: fav });
-  for (const s of browse.section("home", allowed(p))) {
+  for (const s of browse.section("home", allowed(p), p.id)) {
     for (const r of s.rows) rows.push({ id: `${s.addon}:${r.id}`, title: `${s.name}: ${r.title}`, kind: rowKind(r.items), items: r.items.filter((a) => views.mayItem(p, a)).map((a) => views.addonCard(p, a)), source: s.addon });
   }
   return { rows, empty: rows.length === 0, scanning: lib.status.scanning, status: lib.status.text };
@@ -205,14 +211,15 @@ function sorter(sort: string): (a: lib.Row, b: lib.Row) => number {
 
 function sectionView(req: Req, sec: "films" | "series", kind: "film" | "series") {
   const p = who(req);
-  const sources = browse.section(sec, allowed(p)).filter((s) => s.rows.length || s.loading);
+  // a games add-on (RomM) has no films or series: not a source here
+  const sources = browse.section(sec, allowed(p), p.id).filter((s) => s.rows.length || (s.loading && !addons.manifests.get(s.aid)?.games));
   const src = req.query.source ?? "";
   const out: Record<string, unknown> = {
     sources: [{ id: "", name: sec === "films" ? "Your films" : "Your series" }, ...sources.map((s) => ({ id: s.addon, name: s.name }))],
     source: src,
   };
   if (src) {
-    const s = browse.section(sec, allowed(p)).find((x) => x.addon === src);
+    const s = browse.section(sec, allowed(p), p.id).find((x) => x.addon === src);
     out.rows = (s?.rows ?? []).map((r) => ({ id: r.id, title: r.title, kind: rowKind(r.items), items: r.items.filter((a) => views.mayItem(p, a)).map((a) => views.addonCard(p, a)) }));
     out.status = s ? (s.rows.length ? "" : s.loading ? `Loading ${s.name}…` : s.error || `${s.name} has nothing here.`) : "This add-on isn't on.";
   } else {
@@ -310,14 +317,14 @@ app.delete("/api/playlists/:id", async (req: Req) => {
 
 app.get("/api/live", async (req) => {
   const p = who(req);
-  const secs = browse.section("live", allowed(p));
+  const secs = browse.section("live", allowed(p), p.id);
   const rows = secs.filter((s) => s.rows.length).map((s) => ({ id: s.addon, title: s.name, kind: "wide", items: s.rows[0].items.filter((a) => views.mayItem(p, a)).map((a) => views.addonCard(p, a)) }));
   return { rows, status: rows.length ? "" : secs.some((s) => s.loading) ? "Loading channels…" : "No channels yet. Add-ons with live TV (DRTV, Stremio TV add-ons) show their channels here. Get them in the Store." };
 });
 
 app.get("/api/games", async (req) => {
   const p = who(req);
-  const secs = browse.section("games", allowed(p)).filter((s) => addons.manifests.get(s.addon)?.games);
+  const secs = browse.section("games", allowed(p), p.id).filter((s) => addons.manifests.get(s.aid)?.games);
   const rows = secs.flatMap((s) => s.rows.map((r) => ({ id: `${s.addon}:${r.id}`, title: secs.length > 1 ? `${r.title} · ${s.name}` : r.title, kind: "poster", items: r.items.filter((a) => views.mayItem(p, a)).map((a) => views.addonCard(p, a)) })));
   const errors = secs.filter((s) => !s.rows.length && s.error).map((s) => `${s.name}: ${s.error}`);
   return { rows, status: rows.length ? "" : secs.some((s) => s.loading) ? "Loading games…" : errors.join("\n") || "No games yet. Type your RomM server in the RomM add-on's settings (Store → Installed → RomM)." };
@@ -325,7 +332,7 @@ app.get("/api/games", async (req) => {
 
 app.get("/api/page", async (req: Req) => {
   const p = who(req);
-  const pg = await browse.page(req.query.id ?? "");
+  const pg = await browse.page(req.query.id ?? "", p.id);
   return { title: pg.title, rows: pg.rows.map((r) => ({ id: r.id, title: r.title, kind: rowKind(r.items), items: r.items.filter((a) => views.mayItem(p, a)).map((a) => views.addonCard(p, a)) })), status: pg.rows.length ? "" : pg.error || "Nothing here." };
 });
 
@@ -340,7 +347,7 @@ app.get("/api/item", async (req: Req) => {
   let a = browse.get(id);
   if (a && a.kind === "series" && !a.seasons) {
     try {
-      a = await browse.open(id);
+      a = await browse.open(id, p.id);
     } catch (e) {
       const d = views.details(p, id);
       return { ...d, error: e instanceof Error ? e.message : String(e) };
@@ -364,8 +371,8 @@ app.get("/api/search", async (req: Req) => {
     if (items.length) groups.push({ id: k, title, items });
   }
   if (q.length >= 2) {
-    for (const [aid, items] of browse.search(q, allowed(p))) {
-      const name = addons.manifests.get(aid)?.name ?? aid;
+    for (const [aid, items] of browse.search(q, allowed(p), p.id)) {
+      const name = addons.manifests.get(browse.aidOf(aid))?.name ?? aid;
       if (items === null) groups.push({ id: aid, title: name, items: [], loading: true });
       else if (items.some((a) => views.mayItem(p, a))) groups.push({ id: aid, title: name, items: items.filter((a) => views.mayItem(p, a)).slice(0, 40).map((a) => views.addonCard(p, a)) });
     }
@@ -410,14 +417,14 @@ app.post("/api/play", async (req: Req) => {
     const a = browse.get(id);
     if (!a) throw new HttpError(404, "This isn't known any more. Go back and open it again.");
     if (!views.mayItem(p, a)) throw new HttpError(403, "This isn't for you. An admin can change what you may watch (Settings, People).");
-    if (!people.mayUseAddon(p, a.source)) throw new HttpError(403, "You can't use this add-on.");
+    if (!people.mayUseAddon(p, browse.aidOf(a.source))) throw new HttpError(403, "You can't use this add-on.");
     title = a.title;
     subtitle = a.subtitle;
     let ans: browse.PlayAnswer;
     try {
-      ans = await browse.play(id);
+      ans = await browse.play(id, p.id);
     } catch (e) {
-      throw new HttpError(502, `${addons.manifests.get(a.source)?.name ?? a.source} couldn't start "${a.title}": ${e instanceof Error ? e.message : e}.`);
+      throw new HttpError(502, `${addons.manifests.get(browse.aidOf(a.source))?.name ?? a.source} couldn't start "${a.title}": ${e instanceof Error ? e.message : e}.`);
     }
     if (ans.web) return { web: ans.web, title };
     src = { url: ans.url!, headers: ans.headers, live: ans.live };
@@ -499,8 +506,13 @@ app.get("/api/subs/:tok/:name", async (req: Req, reply: FastifyReply) => {
 
 app.post("/api/progress", async (req: Req) => {
   const p = who(req);
-  const { id, position, duration, ended } = body(req);
+  const { id, position, duration, ended, paused, stopped } = body(req);
   if (typeof id !== "string") throw new HttpError(400, "No id.");
+  const tok = tokenOf(req);
+  watching.note(tok, p, people.sessionDevice(tok), id, Number(position) || 0, Number(duration) || 0, paused === true, stopped === true || ended === true);
+  browse.progress(id, p.id, Number(position) || 0, Number(duration) || 0, stopped === true || ended === true || paused === true);
+  // a live channel has no place to come back to, and a song isn't continued
+  if (browse.get(id)?.kind === "live" || lib.getRow(id)?.kind === "track") return { ok: true };
   views.setProgress(p, id, Number(position) || 0, Number(duration) || 0, ended === true);
   return { ok: true };
 });
@@ -676,8 +688,11 @@ function addonView(id: string, p: people.Person) {
   return {
     id, name: base.name, version: m?.version ?? e?.version ?? "", storeVersion: e?.version ?? "", author: base.author, description: base.description,
     games: !!(m?.games ?? e?.games), installed: !!m, builtin: !!m?.builtin, enabled: !!m && st.enabled, place: addons.place(id), error: m?.error ?? "",
-    status: store.status(id), busy: store.store.busy.has(id), internet: (m?.permissions ?? e?.permissions ?? []).includes("internet"),
-    hosts: m?.hosts ?? e?.hosts ?? [], hostsFromSettings: !!(m?.hosts_from_settings ?? e?.hosts_from_settings),
+    status: store.status(id), busy: store.store.busy.has(id),
+    update: !!m && !!e && store.newer(e.version, m.version), trouble: m && st.enabled ? browse.stats(id).error : "",
+    internet: (m?.permissions ?? e?.permissions ?? []).includes("internet"),
+    hosts: m?.hosts ?? e?.hosts ?? [], hostsFromSettings: !!(m?.hosts_from_settings ?? e?.hosts_from_settings), hostsFromAccount: !!(m?.hosts_from_account ?? (e as any)?.hosts_from_account),
+    accounts: m?.accounts ? { who: m.accounts.who, label: m.accounts.label } : null,
     settings: p.admin && m ? m.settings.map((s) => ({ ...s, value: s.type === "password" ? (addons.settingsOf(id)[s.key] ? "set" : "") : addons.settingsOf(id)[s.key] })) : [],
     log: p.admin ? (addons.logs.get(id) ?? []).slice(-30) : [],
   };
@@ -714,9 +729,9 @@ app.post("/api/addon/:action", async (req: Req) => {
     }
     case "enable": {
       const err = addons.enable(id, body(req).internet === true);
-      if (err === "needs_internet") return { needsInternet: true, hosts: addons.manifests.get(id)?.hosts ?? [], hostsFromSettings: addons.manifests.get(id)?.hosts_from_settings };
+      if (err === "needs_internet") return { needsInternet: true, hosts: addons.manifests.get(id)?.hosts ?? [], hostsFromSettings: addons.manifests.get(id)?.hosts_from_settings, hostsFromAccount: addons.manifests.get(id)?.hosts_from_account };
       if (err) throw new HttpError(400, err);
-      browse.refresh(id, true);
+      browse.refreshAddon(id, true);
       return { ok: true };
     }
     case "disable":
@@ -729,11 +744,11 @@ app.post("/api/addon/:action", async (req: Req) => {
     case "setting": {
       if (!addons.setSetting(id, String(body(req).key ?? ""), body(req).value)) throw new HttpError(400, "That setting can't be saved.");
       browse.forget(id);
-      browse.refresh(id, true);
+      browse.refreshAddon(id, true);
       return { ok: true };
     }
     case "refresh":
-      browse.refresh(id, true);
+      browse.refreshAddon(id, true);
       return { ok: true };
     case "place":
       if (!addons.setPlace(id, String(body(req).place ?? ""))) throw new HttpError(400, "Say \"mixed\" (in Films and Series) or \"own\" (a tile of its own).");
@@ -784,28 +799,33 @@ app.post("/api/theme/:action", async (req: Req) => {
 
 // --- Jellyfin's apps (jellyfin.ts) --------------------------------------------------------------
 
-await jellyfin.register(app, process.env.KORIE_JELLYFIN_WEB ?? null);
+await jellyfin.register(app, null);
 
-// --- the web client ---------------------------------------------------------------------------
+// --- the web client and admin, at /web ------------------------------------------------------
 
-if (fs.existsSync(CLIENT_DIR)) {
-  await app.register(fastifyStatic, { root: CLIENT_DIR, prefix: "/", wildcard: true, setHeaders: (res: any, file: string) => {
+adminPages.register(app);
+
+app.get("/", async (_req, reply) => reply.redirect("/web/"));
+app.get("/web", async (_req, reply) => reply.redirect("/web/"));
+
+if (fs.existsSync(WEB_DIR)) {
+  await app.register(fastifyStatic, { root: WEB_DIR, prefix: "/web/", wildcard: true, setHeaders: (res: any, file: string) => {
     const v = file.includes(`${path.sep}assets${path.sep}`) ? "public, max-age=31536000, immutable" : "no-cache";
     if (typeof res.setHeader === "function") res.setHeader("Cache-Control", v);
     else res.header("Cache-Control", v);
   } });
-  app.setNotFoundHandler((req, reply) => {
-    if (req.url.startsWith("/api/") || req.url.startsWith("/img/")) return reply.code(404).send({ error: "Not found." });
-    // a Jellyfin address Korie doesn't answer (yet): noted, so it's known what the apps ask for
-    if (/^\/[A-Z]/.test(req.url)) {
-      log("jellyfin", `not answered: ${req.method} ${req.url.split("?")[0]}`);
-      return reply.code(404).send();
-    }
-    return reply.header("Cache-Control", "no-cache").sendFile("index.html");
-  });
 } else {
-  log("http", `no web client at ${CLIENT_DIR} (build it with npm run build in client/)`);
+  log("http", `no web client at ${WEB_DIR} (build it with npm run build in web/)`);
 }
+
+app.setNotFoundHandler((req, reply) => {
+  if (req.url.startsWith("/api/") || req.url.startsWith("/img/")) return reply.code(404).send({ error: "Not found." });
+  // the web client's own pages (/web/films, /web/admin/people ...) are one page
+  if (req.url.startsWith("/web/") && fs.existsSync(WEB_DIR)) return reply.header("Cache-Control", "no-cache").sendFile("index.html", WEB_DIR);
+  // a Jellyfin address Korie doesn't answer (yet): noted, so it's known what the apps ask for
+  if (/^\/[A-Z]/.test(req.url)) log("jellyfin", `not answered: ${req.method} ${req.url.split("?")[0]}`);
+  return reply.code(404).send();
+});
 
 // --- start ----------------------------------------------------------------------------------
 

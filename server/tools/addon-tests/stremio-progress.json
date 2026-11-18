@@ -1,0 +1,78 @@
+{
+ "call": "progress",
+ "args": [
+  {
+   "id": "series~tt0903747:1:4",
+   "kind": "episode",
+   "data": {
+    "type": "series",
+    "id": "tt0903747:1:4",
+    "series": "tt0903747",
+    "name": "Breaking Bad"
+   }
+  },
+  {
+   "position": 600,
+   "duration": 2820,
+   "watched": false,
+   "stopped": true
+  }
+ ],
+ "ctx": {
+  "now": 1795000000,
+  "account": {
+   "key": "KEY123",
+   "email": "far@example.dk",
+   "addons": [],
+   "hosts": []
+  }
+ },
+ "answers": [
+  {
+   "match": "datastoreGet$",
+   "json": {
+    "result": [
+     {
+      "_id": "tt0903747",
+      "name": "Breaking Bad",
+      "type": "series",
+      "poster": "https://x/p.jpg",
+      "posterShape": "poster",
+      "removed": false,
+      "temp": false,
+      "_ctime": "2026-01-01T00:00:00.000Z",
+      "_mtime": "2026-11-10T10:00:00.000Z",
+      "state": {
+       "lastWatched": "2026-11-10T10:00:00.000Z",
+       "timeWatched": 5000,
+       "timeOffset": 1200000,
+       "overallTimeWatched": 99999,
+       "timesWatched": 0,
+       "flaggedWatched": 0,
+       "duration": 2800000,
+       "video_id": "tt0903747:1:3",
+       "watched": "abc",
+       "noNotif": false
+      },
+      "behaviorHints": {
+       "defaultVideoId": null,
+       "featuredVideoId": null,
+       "hasScheduledVideos": false
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": "datastorePut$",
+   "json": {
+    "result": {
+     "success": true
+    }
+   }
+  }
+ ],
+ "expect": {
+  "ok": true
+ }
+}
