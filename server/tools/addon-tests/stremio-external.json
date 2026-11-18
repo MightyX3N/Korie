@@ -1,0 +1,52 @@
+{
+ "call": "play",
+ "args": [
+  {
+   "id": "movie~tt0111161",
+   "kind": "film",
+   "data": {
+    "type": "movie",
+    "id": "tt0111161"
+   }
+  }
+ ],
+ "ctx": {
+  "house": {
+   "addons": [
+    {
+     "base": "https://streams.example.org",
+     "url": "https://streams.example.org/manifest.json",
+     "name": "Streaming catalogs",
+     "resources": [
+      "stream"
+     ],
+     "types": [
+      "movie"
+     ],
+     "catalogs": []
+    }
+   ],
+   "no_cinemeta": true
+  }
+ },
+ "answers": [
+  {
+   "match": "streams\\.example\\.org/stream/",
+   "json": {
+    "streams": [
+     {
+      "name": "Netflix",
+      "externalUrl": "https://www.netflix.com/title/123"
+     },
+     {
+      "name": "Store",
+      "url": "https://play.google.com/store/apps/details?id=com.netflix.mediaclient"
+     }
+    ]
+   }
+  }
+ ],
+ "expect": {
+  "error": "it's only offered in another app (Netflix), which Korie can't play"
+ }
+}

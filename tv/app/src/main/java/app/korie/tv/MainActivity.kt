@@ -94,6 +94,8 @@ fun App() {
             stage = if (me != null) "signed" else "people"
         }
     }
+    // a new TV app is offered on any screen, even before there's a Korie to talk to
+    LaunchedEffect(Unit) { delay(4000); Update.offer(ctx) }
     LaunchedEffect(Korie.forgotten) { if (Korie.forgotten > 0) { Music.stop(); me = null; stage = "connect" } }
     // what Korie knows about this person again (after a change in Settings, or to add-ons and people)
     val refresh: () -> Unit = { scope.launch { Korie.meOrNull()?.let { me = it } } }
@@ -145,6 +147,7 @@ fun Signed(me: Me, refresh: () -> Unit, signOut: () -> Unit) {
     val nav = remember { Nav() }
     val scope = rememberCoroutineScope()
     LaunchedEffect(Unit) { Korie.listen() }
+    // a new version of the TV app on GitHub: offered once, a little after starting
     val holder = rememberSaveableStateHolder()
     val railFocus = remember { SECTIONS.associate { it.id to FocusRequester() } }
     val content = remember { FocusRequester() }

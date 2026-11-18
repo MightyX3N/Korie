@@ -1,0 +1,65 @@
+# Builds Korie's TV app and publishes it as a GitHub release (korie-tv.apk and version.json),
+# which the app itself updates from. Every build is signed with the same key (repository
+# secrets KORIE_TV_KEYSTORE, the keystore as base64, and KORIE_TV_KEYSTORE_PASSWORD), so a new
+# version installs over the one before.
+name: TV app
+
+on:
+  push:
+    branches: [main]
+    paths: ["tv/**", ".github/workflows/android.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: android-actions/setup-android@v3
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.14.3"
+
+      - name: Signing key
+        env:
+          KEYSTORE: ${{ secrets.KORIE_TV_KEYSTORE }}
+        run: |
+          if [ -z "$KEYSTORE" ]; then
+            echo "::error::The KORIE_TV_KEYSTORE secret is missing: without Korie's key the app couldn't update itself. Add it under Settings, Secrets and variables, Actions."
+            exit 1
+          fi
+          printf '%s' "$KEYSTORE" | base64 -d > "$RUNNER_TEMP/korie-tv.keystore"
+
+      - name: Build
+        working-directory: tv
+        env:
+          KORIE_TV_KEYSTORE: ${{ runner.temp }}/korie-tv.keystore
+          KORIE_TV_KEYSTORE_PASSWORD: ${{ secrets.KORIE_TV_KEYSTORE_PASSWORD }}
+          KORIE_TV_VERSION_CODE: ${{ github.run_number }}
+          KORIE_TV_VERSION: 0.2.${{ github.run_number }}
+        run: |
+          gradle assembleRelease --no-daemon
+          cp app/build/outputs/apk/release/app-release.apk "$RUNNER_TEMP/korie-tv.apk"
+          printf '{"versionCode": %s, "version": "0.2.%s"}\n' "$GITHUB_RUN_NUMBER" "$GITHUB_RUN_NUMBER" > "$RUNNER_TEMP/version.json"
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: tv-v0.2.${{ github.run_number }}
+          name: Korie TV app 0.2.${{ github.run_number }}
+          make_latest: "true"
+          body: |
+            Korie's app for Android TV and Google TV. Install korie-tv.apk once; after that the app updates itself (it asks when a new version is out, and Settings › About › Check for updates).
+          files: |
+            ${{ runner.temp }}/korie-tv.apk
+            ${{ runner.temp }}/version.json

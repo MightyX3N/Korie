@@ -156,11 +156,12 @@ object Ui {
                 }
             }
         }
-        // the dialog takes the focus, and takes it back if something under it grabbed it meanwhile
+        // the dialog takes the focus, and takes it back whenever something under it grabs it (for as long as it's open)
         LaunchedEffect(l) {
-            for (wait in listOf(60L, 200L, 400L)) {
-                delay(wait)
+            delay(60)
+            while (!l.done.isCompleted) {
                 if (!inside.value) try { first.requestFocus() } catch (_: Exception) {}
+                delay(250)
             }
         }
     }

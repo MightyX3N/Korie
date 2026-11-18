@@ -472,6 +472,8 @@ private fun About(who: Me, reqs: MutableMap<String, FocusRequester>) {
     val app = remember { try { ctx.packageManager.getPackageInfo(ctx.packageName, 0).versionName ?: "" } catch (_: Exception) { "" } }
     Rows {
         SRow("about-v", "Korie ${who.server.version}", "Server “${who.server.name}” · TV app $app", "version", reqs)
+        val scope = rememberCoroutineScope()
+        SRow("about-update", "Check for updates", "The TV app updates itself from Korie's releases on GitHub", "update upgrade new version", reqs = reqs, onClick = { scope.launch { Update.offer(ctx, quiet = false) } })
         if (q.isEmpty()) Note("Film and series details and pictures come from The Movie Database (TMDb). This product uses the TMDb API but is not endorsed or certified by TMDb. Video is converted with FFmpeg when a device can't play a file as it is.")
     }
 }

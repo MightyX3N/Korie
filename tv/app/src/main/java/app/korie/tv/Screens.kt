@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -307,7 +308,7 @@ fun KeyboardRows(keys: List<String>, columns: Int, first: FocusRequester?, onKey
     val r = rem()
     Column(verticalArrangement = Arrangement.spacedBy(r(0.4f))) {
         keys.chunked(columns).forEach { line ->
-            Row(horizontalArrangement = Arrangement.spacedBy(r(0.4f))) {
+            Row(Modifier.fillMaxWidth().height(r(3.1f)), horizontalArrangement = Arrangement.spacedBy(r(0.4f))) {
                 line.forEach { k ->
                     val wide = k.length > 1
                     Key(k, Modifier.weight(if (wide) 2f else 1f).then(if (k == keys[0] && first != null) Modifier.focusRequester(first) else Modifier)) { onKey(k) }

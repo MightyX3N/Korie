@@ -12,13 +12,27 @@ android {
         applicationId = "app.korie.tv"
         minSdk = 23
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        // GitHub Actions sets these (the run number), so every release is newer than the one before
+        versionCode = (System.getenv("KORIE_TV_VERSION_CODE") ?: "1").toInt()
+        versionName = System.getenv("KORIE_TV_VERSION") ?: "0.2.0-dev"
+        // where the app looks for its updates (another address only for testing)
+        buildConfigField("String", "UPDATES", "\"" + (System.getenv("KORIE_TV_UPDATES") ?: "https://github.com/MightyX3N/Korie/releases/latest/download/") + "\"")
+    }
+    // Korie's own signing key (KORIE_TV_KEYSTORE, a file, and KORIE_TV_KEYSTORE_PASSWORD), the same for
+    // every build, so a new version installs over the old one. Without it: the debug key (local tests only).
+    val keystore = System.getenv("KORIE_TV_KEYSTORE")?.let { file(it) }?.takeIf { it.exists() }
+    signingConfigs {
+        if (keystore != null) create("korie") {
+            storeFile = keystore
+            storePassword = System.getenv("KORIE_TV_KEYSTORE_PASSWORD")
+            keyAlias = "korie"
+            keyPassword = System.getenv("KORIE_TV_KEYSTORE_PASSWORD")
+        }
     }
     buildTypes {
         release {
             isMinifyEnabled = false
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = if (keystore != null) signingConfigs.getByName("korie") else signingConfigs.getByName("debug")
         }
     }
     compileOptions {
@@ -26,7 +40,7 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     kotlinOptions { jvmTarget = "17" }
-    buildFeatures { compose = true }
+    buildFeatures { compose = true; buildConfig = true }
 }
 
 dependencies {
