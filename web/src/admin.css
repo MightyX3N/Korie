@@ -205,3 +205,7 @@ textarea.adm-input { resize: vertical; }
 .adm-checkline { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 10px; background: var(--a-row); cursor: pointer; }
 .adm-who { flex: 1 1 8em; min-width: 0; }
 .adm-line .adm-select { flex: 1 1 12em; max-width: 18em; }
+.adm-meter { display: block; height: 6px; border-radius: 3px; background: var(--a-input); overflow: hidden; margin-top: 6px; max-width: 30em; }
+.adm-meter i { display: block; height: 100%; background: var(--a-amber); }
+.adm-more summary { cursor: pointer; color: var(--a-soft); padding: 4px 0; }
+.adm-more[open] summary { margin-bottom: 10px; }

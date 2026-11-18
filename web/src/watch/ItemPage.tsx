@@ -1,6 +1,6 @@
 // A film, series, episode, album or playlist: what it is, and play.
 import { useEffect, useState } from "react";
-import { Check, Heart, MoreHorizontal, Play, RotateCcw, Shuffle } from "lucide-react";
+import { Check, Download, Heart, MoreHorizontal, Play, RotateCcw, Shuffle } from "lucide-react";
 import { api, pic } from "../api";
 import { back, follow, go, href, itemPath } from "../router";
 import { ui, useData } from "../ui";
@@ -24,6 +24,8 @@ function minutes(m: number): string {
 export function ItemPage({ id, me, ep }: { id: string; me: Me; ep?: string }) {
   const { data: it, error, reload } = useData(() => api<Item>(`/api/item?id=${encodeURIComponent(id)}${ep ? "&series=1" : ""}`), [id], ["library", "browse", "playlists"]);
   const [season, setSeason] = useState(0);
+  // downloads (DRTV, Stremio): what's downloaded of it, for people who may download
+  const dl = useData(() => api<{ can: boolean; follow: boolean; items: Record<string, { status: string; progress: number; error: string }> }>(`/api/downloads/state?id=${encodeURIComponent(id)}`), [id, it?.seasons?.length ?? 0], ["downloads"]);
   useEffect(() => {
     if (!it?.seasons?.length) return;
     // the season of the episode it was opened at (Continue watching), or with the next episode to watch
@@ -63,6 +65,29 @@ export function ItemPage({ id, me, ep }: { id: string; me: Me; ep?: string }) {
     await ui.attempt("Couldn't change it", () => api("/api/favourite", { id: it.id }));
     reload();
   };
+  const canDl = !!dl.data?.can && !it.local;
+  const dlState = (x: string) => dl.data?.items[x];
+  const dlLabel = (x: string) => {
+    const d = dlState(x);
+    if (!d) return "";
+    return d.status === "done" ? "Downloaded" : d.status === "downloading" ? `Downloading ${Math.round(d.progress * 100)}%` : d.status === "queued" ? "Waiting to download" : d.status === "failed" ? "Didn't download" : "";
+  };
+  const download = async (body: { id: string; season?: number }) => {
+    const r = await ui.attempt("Couldn't download it", () => api<{ queued: number }>("/api/download", body));
+    if (r && r.queued === 0) await ui.message("Already there", "It's downloaded already, or on its way.");
+    dl.reload();
+  };
+  const seriesDownloads = () => void ui.menu(`Download ${it.title}`, [
+    { label: "The whole series", run: () => download({ id: it.id }) },
+    ...(sel ? [{ label: `${seasonName}`, run: () => download({ id: it.id, season: sel.n }) }] : []),
+    {
+      label: dl.data?.follow ? "Stop downloading new episodes" : "New episodes as they come out",
+      run: async () => {
+        await ui.attempt("Couldn't change it", () => api("/api/download/follow", { id: it.id, on: !dl.data?.follow }));
+        dl.reload();
+      },
+    },
+  ]);
   // the season shown: all of it watched or not, and marking episodes (several at once)
   const sel = it.seasons?.[season];
   const seasonSeen = !!sel && sel.episodes.length > 0 && sel.episodes.every((e) => e.watched);
@@ -111,6 +136,14 @@ export function ItemPage({ id, me, ep }: { id: string; me: Me; ep?: string }) {
                 <Check size={18} />
               </button>
             )}
+            {canDl && (it.kind === "film" || it.kind === "episode") && (
+              dlState(it.id) && dlState(it.id)!.status !== "failed"
+                ? <span className="dl-state">{dlLabel(it.id)}</span>
+                : <button className="btn round" onClick={() => void download({ id: it.id })} title={dlState(it.id)?.status === "failed" ? `Didn't download: ${dlState(it.id)!.error}. Try again` : "Download into your library"} aria-label="Download"><Download size={18} /></button>
+            )}
+            {canDl && it.kind === "series" && (
+              <button className={`btn round${dl.data?.follow ? " on" : ""}`} onClick={seriesDownloads} title={dl.data?.follow ? "New episodes are downloaded as they come out" : "Download"} aria-label="Download"><Download size={18} /></button>
+            )}
             {it.kind !== "playlist" && (
               <button className="btn round" aria-label="More options" onClick={() => void cardMenu(asCard, reload)}><MoreHorizontal size={18} /></button>
             )}
@@ -149,6 +182,9 @@ export function ItemPage({ id, me, ep }: { id: string; me: Me; ep?: string }) {
                   <p className="soft small">{minutes(e.runtime)}</p>
                   {e.overview && <p className="episode-overview">{e.overview}</p>}
                 </div>
+                {canDl && (dlState(e.id) && dlState(e.id)!.status !== "failed"
+                  ? <span className="dl-state small" title={dlLabel(e.id)}>{dlState(e.id)!.status === "done" ? <Download size={15} /> : `${Math.round(dlState(e.id)!.progress * 100)}%`}</span>
+                  : <button className="btn round small" onClick={() => void download({ id: e.id })} title={dlState(e.id) ? `Didn't download: ${dlState(e.id)!.error}. Try again` : "Download into your library"} aria-label={`Download episode ${e.n}`}><Download size={16} /></button>)}
                 <button className={`btn round small${e.watched ? " on" : ""}`} aria-pressed={e.watched} title={e.watched ? "Watched (click: not watched)" : "Mark as watched"}
                   aria-label={e.watched ? `Episode ${e.n} watched` : `Mark episode ${e.n} as watched`} onClick={() => void seenAll([e.id], !e.watched)}>
                   <Check size={16} />

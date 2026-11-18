@@ -36,7 +36,11 @@ export function source(tok: string): Source | null {
 
 // --- probing ------------------------------------------------------------------------------
 
-export interface Stream { index: number; type: "video" | "audio" | "subtitle"; codec: string; lang: string; title: string; channels: number; width: number; height: number; isDefault: boolean; forced: boolean }
+export interface Stream {
+  index: number; type: "video" | "audio" | "subtitle"; codec: string; lang: string; title: string; channels: number; width: number; height: number; isDefault: boolean; forced: boolean;
+  /** HLS with several qualities: which one (FFmpeg's program) it's in */
+  program?: number;
+}
 export interface Probe { container: string; duration: number; streams: Stream[] }
 
 const probes = new Map<string, { at: number; p: Probe }>();
@@ -60,7 +64,7 @@ export async function hasDvdDemuxer(): Promise<boolean> {
 }
 
 /** The input arguments FFmpeg needs for a source. */
-async function inputArgs(src: Source): Promise<string[]> {
+export async function inputArgs(src: Source): Promise<string[]> {
   if (src.url) {
     const h = Object.entries(src.headers ?? {}).map(([k, v]) => `${k}: ${v}\r\n`).join("");
     return [...(h ? ["-headers", h] : []), "-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "5", "-i", src.url];
@@ -112,9 +116,11 @@ export async function probe(src: Source): Promise<Probe> {
   const key = JSON.stringify(src) + (src.file ? ":" + safeMtime(src.file) : "");
   const hit = probes.get(key);
   if (hit && (src.file || Date.now() - hit.at < 10 * 60 * 1000)) return hit.p;
-  const args = ["-v", "error", "-print_format", "json", "-show_format", "-show_streams", ...(await inputArgs(src)).filter((a) => a !== "-i")];
+  const args = ["-v", "error", "-print_format", "json", "-show_format", "-show_streams", "-show_programs", ...(await inputArgs(src)).filter((a) => a !== "-i")];
   const out = await run(FFPROBE, args.slice(0, -1).concat(args[args.length - 1]), src.url ? 20000 : 60000);
   const j = JSON.parse(out);
+  const programOf = new Map<number, number>();
+  for (const pr of j.programs ?? []) for (const st of pr.streams ?? []) programOf.set(Number(st.index), Number(pr.program_id));
   const p: Probe = {
     container: String(j.format?.format_name ?? ""),
     duration: Number(j.format?.duration ?? 0) || 0,
@@ -122,6 +128,7 @@ export async function probe(src: Source): Promise<Probe> {
       index: s.index, type: s.codec_type, codec: String(s.codec_name ?? ""), lang: String(s.tags?.language ?? ""), title: String(s.tags?.title ?? ""),
       channels: Number(s.channels ?? 0), width: Number(s.width ?? 0), height: Number(s.height ?? 0),
       isDefault: s.disposition?.default === 1, forced: s.disposition?.forced === 1,
+      ...(programOf.has(Number(s.index)) ? { program: programOf.get(Number(s.index)) } : {}),
     })),
   };
   probes.set(key, { at: Date.now(), p });
@@ -215,14 +222,32 @@ export async function plan(src: Source, caps: Caps, audio: number | null, burn: 
       throw new Error("The file can't be opened: " + (e instanceof Error ? e.message.split("\n")[0] : String(e)));
     }
   }
-  const v = p.streams.find((s) => s.type === "video");
-  const auds = p.streams.filter((s) => s.type === "audio");
+  // a stream in several qualities (HLS, DRTV's channels): one quality, the best up to 1080p, and
+  // the sound from that same quality, picked by hand, so FFmpeg reads one of them and never leaves
+  // the sound out or takes it from another
+  const programs = new Set(p.streams.map((x) => x.program).filter((x) => x !== undefined));
+  const variants = !!src.url && programs.size > 1;
+  let v = p.streams.find((s) => s.type === "video");
+  if (variants) {
+    const vids = p.streams.filter((s) => s.type === "video");
+    const fit = vids.filter((x) => !x.height || x.height <= 1080);
+    v = (fit.length ? fit : vids).reduce<Stream | undefined>((b, x) => (!b || x.width * x.height > b.width * b.height ? x : b), undefined);
+  }
+  const all = p.streams.filter((s) => s.type === "audio");
+  // the sound tracks to choose from: those of the picked quality (the others are the same again)
+  const auds = variants && v ? all.filter((a) => a.program === v!.program).concat(all.filter((a) => a.program !== v!.program)) : all;
+  if (variants && v && audio !== null) {
+    // a track picked from another quality: the same one in the picked quality
+    const was = all.find((a) => a.index === audio);
+    const same = was && was.program !== v.program ? all.find((a) => a.program === v!.program && a.lang === was.lang && a.title === was.title) : null;
+    if (same) audio = same.index;
+  }
   if (audio === null && prefs.audio) {
     // the person's language, when the file has it
     const mine = auds.find((a) => sameLang(a.lang, prefs.audio));
     if (mine && mine !== (auds.find((a) => a.isDefault) ?? auds[0])) audio = mine.index;
   }
-  const chosenAudio = audio !== null ? auds.find((a) => a.index === audio) ?? null : (auds.find((a) => a.isDefault) ?? auds[0] ?? null);
+  const chosenAudio = audio !== null ? auds.find((a) => a.index === audio) ?? null : (auds.find((a) => a.isDefault && (!variants || a.program === v?.program)) ?? auds[0] ?? null);
   const subsIn = p.streams.filter((s) => s.type === "subtitle");
   const live = !!src.live || (!!src.url && !p.duration);
 
@@ -256,7 +281,8 @@ export async function plan(src: Source, caps: Caps, audio: number | null, burn: 
   const direct = !!src.file && !src.disc && !src.parts && containerOk && videoOk && audioOk && firstAudio && burn === null;
   const why = direct ? "plays as it is" : !src.file ? "from the internet, through the server" : !containerOk ? `repackaged (${container.split(",")[0]})` : !videoOk ? `video converted (${v?.codec})` : !audioOk ? `sound converted (${chosenAudio?.codec})` : "converted";
   const q = new URLSearchParams();
-  if (audio !== null && chosenAudio) q.set("audio", String(chosenAudio.index));
+  if ((audio !== null || variants) && chosenAudio) q.set("audio", String(chosenAudio.index));
+  if (variants && v) q.set("vi", String(v.index));
   if (burn !== null) q.set("burn", String(burn));
   q.set("v", videoOk ? "copy" : "x264");
   q.set("a", audioOk ? "copy" : "aac");

@@ -362,6 +362,20 @@ object Korie {
         } catch (_: Exception) { /* the next report catches up */ }
     }
 
+    /** Downloads (DRTV, Stremio into the library): a film, an episode, a season or a whole series. How many were queued. */
+    suspend fun download(id: String, season: Int? = null): Int =
+        json.parseToJsonElement(call("POST", "/api/download", buildJsonObject { put("id", id); if (season != null) put("season", season) })).jsonObject["queued"]?.jsonPrimitive?.content?.toIntOrNull() ?: 0
+    suspend fun downloadFollow(id: String, on: Boolean) { call("POST", "/api/download/follow", buildJsonObject { put("id", id); put("on", on) }) }
+    /** Whether this person may download, whether the series is followed, and each item's download state ("done", "downloading 34%" ...). */
+    suspend fun downloadState(id: String): Triple<Boolean, Boolean, Map<String, String>> {
+        val o = json.parseToJsonElement(call("GET", "/api/downloads/state?id=${enc(id)}")).jsonObject
+        val items = o["items"]?.jsonObject?.mapValues { (_, v) ->
+            val st = v.jsonObject["status"]?.jsonPrimitive?.content ?: ""
+            val pr = v.jsonObject["progress"]?.jsonPrimitive?.content?.toDoubleOrNull() ?: 0.0
+            when (st) { "done" -> "Downloaded"; "downloading" -> "Downloading ${(pr * 100).toInt()}%"; "queued" -> "Waiting to download"; "failed" -> "Didn't download"; else -> "" }
+        } ?: emptyMap()
+        return Triple(o["can"]?.jsonPrimitive?.content == "true", o["follow"]?.jsonPrimitive?.content == "true", items)
+    }
     suspend fun favourite(id: String): Boolean = json.parseToJsonElement(call("POST", "/api/favourite", buildJsonObject { put("id", id) })).jsonObject["favourite"]?.jsonPrimitive?.content == "true"
     suspend fun watched(id: String, watched: Boolean) { call("POST", "/api/watched", buildJsonObject { put("id", id); put("watched", watched) }) }
     /** Several at once (a season's episodes). */

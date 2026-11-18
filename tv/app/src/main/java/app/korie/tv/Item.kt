@@ -57,6 +57,11 @@ fun Item(nav: Nav, me: Screen, who: Me) {
     val scope = rememberCoroutineScope()
     val (data, error, reload) = useData(id, listOf("library")) { Korie.item(id) }
     var season by rememberSaveable { mutableStateOf<Int?>(null) }
+    // downloads into the library (DRTV, Stremio): may this person, is the series followed, each item's state
+    var dl by remember { mutableStateOf(Triple(false, false, emptyMap<String, String>())) }
+    val dlLoad: () -> Unit = { scope.launch { try { dl = Korie.downloadState(id) } catch (_: Exception) {} } }
+    LaunchedEffect(id, data?.seasons?.size) { dlLoad() }
+    LaunchedEffect(id) { Korie.changes.collect { if ("downloads" in it) dlLoad() } }
     val play = remember { FocusRequester() }
     val back = remember { FocusRequester() }
     val epReqs = remember { mutableMapOf<String, FocusRequester>() }
@@ -123,6 +128,29 @@ fun Item(nav: Nav, me: Screen, who: Me) {
                             scope.launch { try { Korie.watched(d.id, !d.watched) } catch (e: Exception) { Ui.toast(e.message ?: "") }; reload() }
                         }
                         if (canFix) Btn(null, R.drawable.lc_wand_sparkles) { scope.launch { fixMatch(d.id, d.title); reload() } }
+                        if (dl.first && !d.local && (d.kind == "film" || isSeries)) {
+                            val state = dl.third[d.id]
+                            Btn(if (!isSeries && !state.isNullOrEmpty() && state != "Didn't download") state else null, R.drawable.lc_download) {
+                                scope.launch {
+                                    try {
+                                        if (!isSeries) Korie.download(d.id)
+                                        else {
+                                            val sname = cur?.let { it.title.ifEmpty { if (it.n == 0) "Specials" else "Season ${it.n}" } }
+                                            when (Ui.menu("Download ${d.title}", listOfNotNull(
+                                                Choice("The whole series", "all", R.drawable.lc_download),
+                                                if (cur != null) Choice(sname!!, "season", R.drawable.lc_download) else null,
+                                                Choice(if (dl.second) "Stop downloading new episodes" else "New episodes as they come out", "follow", R.drawable.lc_download),
+                                            ))) {
+                                                "all" -> Korie.download(d.id)
+                                                "season" -> Korie.download(d.id, cur!!.n)
+                                                "follow" -> Korie.downloadFollow(d.id, !dl.second)
+                                            }
+                                        }
+                                    } catch (e: Exception) { Ui.toast(e.message ?: "") }
+                                    dlLoad()
+                                }
+                            }
+                        }
                     }
                     if (d.overview.isNotEmpty()) Text(d.overview, style = body(1.1f, C.body).copy(lineHeight = r.sp(1.65f)), maxLines = 6, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = r(46)))
                     if (d.error.isNotEmpty()) Status(d.error)
@@ -143,7 +171,7 @@ fun Item(nav: Nav, me: Screen, who: Me) {
                     }
                     Column(Modifier.widthIn(max = r(64)).padding(top = r(1)), verticalArrangement = Arrangement.spacedBy(r(0.5f))) {
                         cur.episodes.forEach { e ->
-                            Episode(e, Modifier.focusRequester(epReqs.getOrPut(e.id) { FocusRequester() }), onLong = {
+                            Episode(e, Modifier.focusRequester(epReqs.getOrPut(e.id) { FocusRequester() }), note = dl.third[e.id] ?: "", onLong = {
                                 // hold OK: what can be done with it without playing it
                                 season = cur.n
                                 scope.launch {
@@ -152,9 +180,11 @@ fun Item(nav: Nav, me: Screen, who: Me) {
                                         if (e.progress > 0 && !e.watched) Choice("Play from the start", "start", R.drawable.lc_rotate_ccw) else null,
                                         Choice(if (e.watched) "Mark as not watched" else "Mark as watched", "seen", if (e.watched) R.drawable.lc_eye_off else R.drawable.lc_check),
                                         Choice("Mark everything up to here as watched", "upto", R.drawable.lc_check),
+                                        if (dl.first && !d.local && dl.third[e.id].let { it == null || it == "Didn't download" }) Choice("Download", "download", R.drawable.lc_download) else null,
                                     )) ?: return@launch
                                     when (v) {
                                         "play", "start" -> { me.focused = e.id; nav.push("player", mapOf("id" to e.id, "mode" to if (v == "start") "start" else "resume", "title" to d.title)) }
+                                        "download" -> { try { Korie.download(e.id) } catch (x: Exception) { Ui.toast(x.message ?: "") }; dlLoad() }
                                         "seen" -> { try { Korie.watched(e.id, !e.watched) } catch (x: Exception) { Ui.toast(x.message ?: "") }; reload() }
                                         "upto" -> {
                                             val upTo = all.takeWhile { it.id != e.id }.map { it.id } + e.id
@@ -210,7 +240,7 @@ fun Item(nav: Nav, me: Screen, who: Me) {
 
 /** .ep: an episode's picture, number, title and story; focused: panel with an accent ring. */
 @Composable
-fun Episode(e: Episode, modifier: Modifier = Modifier, onLong: (() -> Unit)? = null, onClick: () -> Unit) {
+fun Episode(e: Episode, modifier: Modifier = Modifier, note: String = "", onLong: (() -> Unit)? = null, onClick: () -> Unit) {
     val r = rem()
     val shape = RoundedCornerShape(r(0.7f))
     Focusable(modifier.fillMaxWidth(), onClick = onClick, onLong = onLong) { f ->
@@ -225,7 +255,7 @@ fun Episode(e: Episode, modifier: Modifier = Modifier, onLong: (() -> Unit)? = n
                 }
             }
             Column(Modifier.weight(1f)) {
-                Text("Episode ${e.n}${if (e.runtime > 0) " · " + fmtRuntime(e.runtime) else ""}${if (e.watched) " · Watched ✓" else ""}${if (f && onLong != null) " · Hold OK for more" else ""}", style = body(0.9f, if (e.watched) C.accent else C.dim))
+                Text("Episode ${e.n}${if (e.runtime > 0) " · " + fmtRuntime(e.runtime) else ""}${if (e.watched) " · Watched ✓" else ""}${if (note.isNotEmpty()) " · $note" else ""}${if (f && onLong != null) " · Hold OK for more" else ""}", style = body(0.9f, if (e.watched) C.accent else C.dim))
                 Text(e.title, style = body(1.1f, C.ink, FontWeight.SemiBold))
                 if (e.overview.isNotEmpty()) Text(e.overview, style = body(0.92f, C.soft), maxLines = 2, overflow = TextOverflow.Ellipsis)
             }

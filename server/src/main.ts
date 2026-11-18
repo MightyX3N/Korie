@@ -7,6 +7,7 @@ import fastifyStatic from "@fastify/static";
 import { WEB_DIR, PORT, VERSION, log } from "./config.ts";
 import * as adminPages from "./admin.ts";
 import * as watching from "./watching.ts";
+import * as downloads from "./downloads.ts";
 import { setting, setSetting, DEFAULTS } from "./db.ts";
 import * as people from "./people.ts";
 import * as lib from "./library.ts";
@@ -526,6 +527,71 @@ app.post("/api/watched", async (req: Req) => {
   for (const id of ids) if (id) views.setWatched(p, id, body(req).watched === true);
   emit("library");
   return { ok: true };
+});
+
+// --- downloads: an add-on's films and episodes saved into a library (people who may change settings) ---
+
+function downloader(req: Req): people.Person {
+  const p = who(req);
+  if (!p.canSettings) throw new HttpError(403, "Only someone who may change Korie's settings can download.");
+  return p;
+}
+
+app.get("/api/downloads", async (req: Req) => {
+  downloader(req);
+  const f = downloads.folderFor("films"), s = downloads.folderFor("series");
+  return {
+    downloads: downloads.list().map(({ snap: _a, series_snap: _b, ...d }) => d), follows: downloads.follows(),
+    to: { films: f ? { id: f.id, path: f.path } : null, series: s ? { id: s.id, path: s.path } : null },
+    folders: lib.folders().filter((x) => x.kind !== "music").map((x) => ({ id: x.id, path: x.path, kind: x.kind })),
+  };
+});
+
+/** What's downloaded of an item (and its episodes), for its page. */
+app.get("/api/downloads/state", async (req: Req) => {
+  const p = who(req);
+  const id = req.query.id ?? "";
+  const a = browse.get(id);
+  if (!p.canSettings || !a || (a.kind !== "film" && a.kind !== "series" && a.kind !== "episode")) return { can: false, follow: false, items: {} };
+  const ids = [a.id, ...(a.seasons ?? []).flatMap((s) => s.episodes.map((e) => e.id))];
+  return { can: true, follow: a.kind === "series" && downloads.following(a.id), items: downloads.stateOf(ids) };
+});
+
+app.post("/api/download", async (req: Req) => {
+  const p = downloader(req);
+  const season = body(req).season;
+  try {
+    const n = await downloads.add(String(body(req).id ?? ""), p.id, typeof season === "number" ? season : null);
+    return { queued: n };
+  } catch (e) {
+    throw new HttpError(400, e instanceof Error ? e.message : String(e));
+  }
+});
+
+app.post("/api/download/:action", async (req: Req) => {
+  const p = downloader(req);
+  const b = body(req);
+  switch (req.params.action) {
+    case "cancel":
+      return { ok: downloads.cancel(Number(b.id)) };
+    case "clear":
+      downloads.clear();
+      return { ok: true };
+    case "follow":
+      try {
+        await downloads.follow(String(b.id ?? ""), p.id, b.on === true);
+      } catch (e) {
+        throw new HttpError(400, e instanceof Error ? e.message : String(e));
+      }
+      return { ok: true };
+    case "check":
+      await downloads.checkFollows();
+      return { ok: true };
+    case "folder":
+      if (!downloads.setFolder(b.kind === "series" ? "series" : "films", Number(b.id))) throw new HttpError(400, "That isn't a library of that kind.");
+      return { ok: true };
+  }
+  throw new HttpError(404, "No such thing.");
 });
 
 app.post("/api/favourite", async (req: Req) => {

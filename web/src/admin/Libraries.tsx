@@ -4,6 +4,7 @@ import { MoreHorizontal, X } from "lucide-react";
 import { api } from "../api";
 import { go } from "../router";
 import { ui, useData } from "../ui";
+import { DownloadsPart } from "./Downloads";
 import { Dot, GOOD, BUSY, BAD, ago } from "./Admin";
 
 interface Folder { id: number; path: string; kind: "films" | "series" | "music"; scanned: number; error: string; counts: Record<string, number> }
@@ -83,6 +84,8 @@ export function Libraries() {
       {adding && <AddFolder close={() => { setAdding(false); go("/admin/libraries", true); }} added={reload} />}
 
       {!!data?.missing && <p className="adm-soft">Getting posters and descriptions: {data.missing} films and series still to do. Everything is already watchable.</p>}
+
+      <DownloadsPart />
 
       {!!removed.data?.items.length && (
         <section className="adm-card adm-list">
