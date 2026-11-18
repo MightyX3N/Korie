@@ -1,0 +1,71 @@
+{
+ "call": "login",
+ "args": [
+  {
+   "email": "mor@example.dk",
+   "password": "hemmelig"
+  }
+ ],
+ "answers": [
+  {
+   "match": "^https://login\\.dr\\.dk/oidc/authorize\\?client_id=283ba39a2cf31d3b81e922b8&code_challenge=[A-Za-z0-9_-]{43}&code_challenge_method=S256",
+   "status": 303,
+   "url": "https://www.dr.dk/drtv/callback?code=CODE-777&state=xyz"
+  },
+  {
+   "match": "^https://login\\.dr\\.dk/oidc/token$",
+   "json": {
+    "access_token": "AT",
+    "id_token": "IT",
+    "refresh_token": "RT",
+    "expires_in": 3600
+   }
+  },
+  {
+   "match": "/api/authorization/exchange$",
+   "json": [
+    {
+     "type": "UserAccount",
+     "value": "ACC-TOKEN",
+     "expirationDate": "2026-11-25T10:00:00.000Z"
+    },
+    {
+     "type": "UserProfile",
+     "value": "PROFILE-TOKEN",
+     "expirationDate": "2026-11-25T10:00:00.000Z"
+    }
+   ]
+  },
+  {
+   "match": "/api/account\\?",
+   "json": {
+    "email": "mor@example.dk",
+    "profiles": [
+     {
+      "id": "p1",
+      "name": "Mor",
+      "segments": [
+       "drtv"
+      ]
+     },
+     {
+      "id": "p2",
+      "name": "B\u00f8rn",
+      "segments": [
+       "kids"
+      ]
+     }
+    ]
+   }
+  }
+ ],
+ "expect": {
+  "account.name": "mor@example.dk",
+  "account.data.account": "ACC-TOKEN",
+  "account.data.refresh": "RT",
+  "account.data.account_til": 1795600800,
+  "profiles.0.name": "Mor",
+  "profiles.1.kid": true,
+  "profiles.0.kid": false
+ }
+}

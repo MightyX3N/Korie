@@ -1,0 +1,19 @@
+{
+ "call": "login",
+ "args": [
+  {
+   "email": "mor@example.dk",
+   "password": "hemmelig"
+  }
+ ],
+ "answers": [
+  {
+   "match": "^https://login\\.dr\\.dk/oidc/authorize\\?client_id=283ba39a2cf31d3b81e922b8&code_challenge=[A-Za-z0-9_-]{43}&code_challenge_method=S256",
+   "status": 303,
+   "url": "https://www.dr.dk/drtv/callback?error=access_denied&error_description=Login+blocked"
+  }
+ ],
+ "expect": {
+  "error": "DR said no: Login blocked"
+ }
+}

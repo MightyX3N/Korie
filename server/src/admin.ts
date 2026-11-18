@@ -208,6 +208,7 @@ export function register(app: FastifyInstance): void {
     if (!(await addons.has(id, "login"))) throw Object.assign(new AdminError(400, `${m.name} can't sign in (it has no login()).`), { statusCode: 400 });
     const who = acc.who === "person" ? people.get(owner) : null;
     const { ctx } = addons.ctx(id, who ? { id: who.id, name: who.name } : null);
+    addons.forgetCookies(id);
     let res: any;
     try {
       res = await addons.call(id, "login", [fields, ctx]);

@@ -360,6 +360,11 @@ export class AddonError extends Error {}
 // cookie jars for a sign-in that goes through several pages (DR's login), per add-on
 const jars = new Map<string, Map<string, Map<string, string>>>();
 
+/** Forgets an add-on's cookies: every sign-in starts as a new browser would (no half-finished one before it). */
+export function forgetCookies(id: string): void {
+  jars.delete(id);
+}
+
 function jarOf(id: string, name: string): Map<string, string> {
   const all = jars.get(id) ?? new Map<string, Map<string, string>>();
   jars.set(id, all);
