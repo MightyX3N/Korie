@@ -106,6 +106,13 @@ export async function byImdb(kind: "film" | "series", imdb: string): Promise<num
   return hit?.id ?? null;
 }
 
+/** A film or series by its TheTVDB number (Plex's {tvdb-…}). */
+export async function byTvdb(kind: "film" | "series", tvdb: number): Promise<number | null> {
+  const r = await get(`find/${tvdb}`, { external_source: "tvdb_id" });
+  const hit = (kind === "film" ? r?.movie_results : r?.tv_results)?.[0];
+  return hit?.id ?? null;
+}
+
 export function norm(s: string): string {
   return s.toLowerCase().normalize("NFKD").replace(/[̀-ͯ]/g, "").replace(/&/g, "and").replace(/[^a-z0-9]+/g, "");
 }

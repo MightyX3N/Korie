@@ -106,7 +106,7 @@ fun App() {
             val first = !started
             started = true
             // this TV's own person (Settings, This device) comes first
-            val a = if (first) Korie.autoStart() else null
+            val a = if (first) Korie.autoStart(ctx) else null
             if (a?.needPin == true && a.person != null) { pinFor = a.person; stage = "pin"; return@LaunchedEffect }
             if (a?.token != null) Korie.setToken(ctx, a.token)
             me = if (Korie.token.isNotEmpty()) Korie.meOrNull() else null
@@ -117,7 +117,8 @@ fun App() {
             while (true) {
                 val pin = Ui.pin("${p.name}'s PIN")
                 if (pin == null) { Music.stop(); Korie.signOut(ctx); me = null; stage = "people"; return@LaunchedEffect }
-                try { Korie.login(ctx, p.id, pin); stage = "check2"; break } catch (e: Exception) { Ui.toast(e.message ?: "") }
+                // (the next step runs as its own effect: this one is cancelled by the change)
+                try { Korie.login(ctx, p.id, pin); stage = "check2"; return@LaunchedEffect } catch (e: Exception) { Ui.toast(e.message ?: "") }
             }
         }
         if (stage == "check2") {
@@ -128,7 +129,7 @@ fun App() {
     // back after a while (the TV slept, or another app was open): the PIN again when this TV asks for it
     LaunchedEffect(Korie.restarted) {
         if (Korie.restarted == 0 || stage != "signed") return@LaunchedEffect
-        val a = Korie.autoStart() ?: return@LaunchedEffect
+        val a = Korie.autoStart(ctx) ?: return@LaunchedEffect
         // only when it's still this TV's own person (someone who switched to themselves stays)
         if (a.needPin && a.person != null && me?.person?.id == a.person.id) { Music.stop(); pinFor = a.person; me = null; stage = "pin" }
     }

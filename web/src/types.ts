@@ -17,7 +17,7 @@ export interface Card {
 
 export interface Row { id: string; title: string; kind: string; items: Card[]; source?: string }
 
-export interface Episode { id: string; n: number; title: string; overview: string; runtime: number; thumb: string; progress: number; watched: boolean; position: number; duration: number }
+export interface Episode { id: string; n: number; date?: string; title: string; overview: string; runtime: number; thumb: string; progress: number; watched: boolean; position: number; duration: number }
 export interface Season { n: number; title: string; episodes: Episode[] }
 export interface Track { id: string; n: number; title: string; artist: string; duration: number; album?: string; albumTitle?: string; poster?: string }
 
@@ -25,6 +25,8 @@ export interface Item {
   id: string; kind: string; title: string; year: string; overview: string; genres: string[]; rating: number; runtime: number; director: string;
   cast: { name: string; role: string; photo: string }[]; poster: string; backdrop: string; thumb: string; favourite: boolean; source: string;
   subtitle?: string; local: boolean; matched?: boolean; cert?: string; age?: number | null; position: number; duration: number; watched: boolean;
+  /** a film's editions (Director's Cut, …) and a film's or series' extras (trailers, …) */
+  versions?: { id: string; edition: string }[]; edition?: string; extras?: { id: string; title: string; type: string }[];
   seasons?: Season[]; artist?: string; tracks?: Track[]; error?: string; series?: string; seriesTitle?: string; season?: number; episode?: number; disc?: string;
 }
 

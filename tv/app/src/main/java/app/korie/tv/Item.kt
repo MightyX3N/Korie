@@ -82,12 +82,21 @@ fun Item(nav: Nav, me: Screen, who: Me) {
     val all = seasons.flatMap { it.episodes }
     val nextEp = if (isSeries) all.firstOrNull { it.progress > 0 } ?: all.firstOrNull { !it.watched } else null
     fun playIt(mode: String, target: String = d.id) { me.focused = "play"; nav.push("player", mapOf("id" to target, "mode" to mode, "title" to d.title)) }
-    val meta = listOf(d.year, fmtRuntime(d.runtime), d.genres.take(3).joinToString(", "), if (d.kind == "game") d.subtitle else "", if (d.director.isNotEmpty()) "Directed by ${d.director}" else "", d.artist ?: "", if (d.source.isNotEmpty()) "From ${d.source}" else "").filter { it.isNotEmpty() }
+    // a film in several editions: which one
+    fun playFilm(mode: String) {
+        if (d.versions.size < 2 || (mode == "resume" && d.position > 30)) return playIt(mode)
+        scope.launch {
+            val v = Ui.menu("Which version?", d.versions.map { Choice(it.edition, it.id, R.drawable.lc_play) }) ?: return@launch
+            playIt(mode, v)
+        }
+    }
+    val meta = listOf(d.year, fmtRuntime(d.runtime), if (d.versions.size > 1) "${d.versions.size} versions" else d.edition, d.genres.take(3).joinToString(", "), if (d.kind == "game") d.subtitle else "", if (d.director.isNotEmpty()) "Directed by ${d.director}" else "", d.artist ?: "", if (d.source.isNotEmpty()) "From ${d.source}" else "").filter { it.isNotEmpty() }
     val canFix = d.local && (d.kind == "film" || isSeries) && who.person.canSettings
     val firstLabel = if (isSeries) {
         if (nextEp != null) {
             val sn = seasons.firstOrNull { it.episodes.contains(nextEp) }?.n
-            if (nextEp.progress > 0) "Resume S${sn}E${nextEp.n}" else "Play S${sn}E${nextEp.n}"
+            val which = nextEp.date ?: "S${sn}E${nextEp.n}"
+            if (nextEp.progress > 0) "Resume $which" else "Play $which"
         } else "Play"
     } else if (isAlbum) "Play" else if (d.position > 30) "Resume from ${fmtTime(d.position)}" else "Play"
 
@@ -117,9 +126,9 @@ fun Item(nav: Nav, me: Screen, who: Me) {
                         Btn(firstLabel, R.drawable.lc_play, primary = true, modifier = Modifier.focusRequester(play)) {
                             if (isSeries) { if (nextEp != null) playIt("resume", nextEp.id) }
                             else if (isAlbum) { if (!d.tracks.isNullOrEmpty()) scope.launch { me.focused = "play"; Music.playList(d.id); nav.push("nowplaying") } }
-                            else playIt("resume")
+                            else playFilm("resume")
                         }
-                        if (!isSeries && !isAlbum && d.position > 30) Btn("From the start", R.drawable.lc_rotate_ccw) { playIt("start") }
+                        if (!isSeries && !isAlbum && d.position > 30) Btn("From the start", R.drawable.lc_rotate_ccw) { playFilm("start") }
                         if (isAlbum) Btn("Shuffle", R.drawable.lc_shuffle) { if (!d.tracks.isNullOrEmpty()) scope.launch { Music.playList(d.id, "", true); nav.push("nowplaying") } }
                         if (d.kind != "game") Btn(null, if (d.favourite) R.drawable.lc_heart_fill else R.drawable.lc_heart) {
                             scope.launch { try { Korie.favourite(d.id) } catch (e: Exception) { Ui.toast(e.message ?: "") }; reload() }
@@ -207,6 +216,26 @@ fun Item(nav: Nav, me: Screen, who: Me) {
                     }
                 }
             }
+            // .extras: trailers, behind the scenes, …
+            if (d.extras.isNotEmpty()) {
+                Text("Extras", style = heading(1.6f), modifier = Modifier.padding(top = r(2.2f), bottom = r(0.8f)))
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(r(0.8f)), verticalArrangement = Arrangement.spacedBy(r(0.8f))) {
+                    d.extras.forEach { x ->
+                        Focusable(Modifier.width(r(14)), onClick = { me.focused = x.id; nav.push("player", mapOf("id" to x.id, "mode" to "start", "title" to d.title)) }) { f ->
+                            val shape = RoundedCornerShape(r(0.6f))
+                            Column(Modifier.fillMaxWidth().clip(shape).background(if (f) C.panel else Color(0x99102033)).then(if (f) Modifier.border(r(0.2f), C.accent, shape) else Modifier).padding(r(0.5f)), verticalArrangement = Arrangement.spacedBy(r(0.3f))) {
+                                Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(r(0.4f))).background(C.panel), contentAlignment = Alignment.Center) {
+                                    val pic = d.backdrop.ifEmpty { d.thumb }
+                                    if (pic.isNotEmpty()) AsyncImage(model = Korie.pic(pic, pxOf(r(14))), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize(), alpha = 0.7f)
+                                    androidx.tv.material3.Icon(androidx.compose.ui.res.painterResource(R.drawable.lc_play), null, tint = Color.White, modifier = Modifier.size(r(2)))
+                                }
+                                Text(x.title, style = body(1f, C.ink, FontWeight.SemiBold), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(x.type, style = body(0.85f, C.soft))
+                            }
+                        }
+                    }
+                }
+            }
             if (isSeries && seasons.isEmpty()) Status(if (d.error.isNotEmpty()) "" else if (d.local) "No episodes found." else "Loading the episodes…")
             // .cast
             if (d.cast.isNotEmpty()) {
@@ -255,7 +284,7 @@ fun Episode(e: Episode, modifier: Modifier = Modifier, note: String = "", onLong
                 }
             }
             Column(Modifier.weight(1f)) {
-                Text("Episode ${e.n}${if (e.runtime > 0) " · " + fmtRuntime(e.runtime) else ""}${if (e.watched) " · Watched ✓" else ""}${if (note.isNotEmpty()) " · $note" else ""}${if (f && onLong != null) " · Hold OK for more" else ""}", style = body(0.9f, if (e.watched) C.accent else C.dim))
+                Text("${e.date ?: "Episode ${e.n}"}${if (e.runtime > 0) " · " + fmtRuntime(e.runtime) else ""}${if (e.watched) " · Watched ✓" else ""}${if (note.isNotEmpty()) " · $note" else ""}${if (f && onLong != null) " · Hold OK for more" else ""}", style = body(0.9f, if (e.watched) C.accent else C.dim))
                 Text(e.title, style = body(1.1f, C.ink, FontWeight.SemiBold))
                 if (e.overview.isNotEmpty()) Text(e.overview, style = body(0.92f, C.soft), maxLines = 2, overflow = TextOverflow.Ellipsis)
             }

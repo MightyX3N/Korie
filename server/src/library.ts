@@ -9,10 +9,10 @@ import { img } from "./images.ts";
 import * as tmdb from "./tmdb.ts";
 import * as ages from "./ages.ts";
 import * as intros from "./intros.ts";
-import { scanFilms, scanMusic, scanSeries, type FoundAlbum, type FoundFilm, type FoundSeries, type Nfo } from "./scanner.ts";
+import { scanFilms, scanMusic, scanSeries, type FoundAlbum, type FoundExtra, type FoundFilm, type FoundSeries, type Nfo } from "./scanner.ts";
 import { emit } from "./events.ts";
 
-export type Kind = "film" | "series" | "episode" | "album" | "track";
+export type Kind = "film" | "series" | "episode" | "album" | "track" | "extra";
 
 export interface Row {
   id: string; kind: Kind; folder: number | null; parent: string | null; file: string | null;
@@ -152,13 +152,44 @@ function noteNfo(id: string, n: Nfo): void {
   nfoChanged.run(id, JSON.stringify(n));
 }
 
+const EXTRA_ORDER = ["trailer", "behindthescenes", "featurette", "interview", "scene", "deleted", "short", "other"];
+
+/** A film's or series' extras (trailers, behind the scenes, …): items under it, played like any other. */
+function saveExtras(f: Folder, parent: string, xs: FoundExtra[]): void {
+  for (const x of xs) {
+    upsert.run({
+      id: x.id, kind: "extra", folder: f.id, parent, file: x.file, title: x.title, sort: String(EXTRA_ORDER.indexOf(x.type)) + " " + sortTitle(x.title), year: "", added: now(),
+      data: JSON.stringify({ type: x.type }),
+    });
+  }
+}
+
 function saveFilms(f: Folder, found: FoundFilm[]): void {
   for (const x of found) {
     noteNfo(x.id, x.nfo);
     upsert.run({
       id: x.id, kind: "film", folder: f.id, parent: null, file: x.file, title: x.title, sort: sortTitle(x.title), year: x.year, added: now(),
-      data: JSON.stringify({ subs: x.subs, disc: x.disc ?? null, parts: x.parts ?? null, localPoster: x.poster, localBackdrop: x.backdrop, ...fromNfo(x.nfo) }),
+      data: JSON.stringify({ subs: x.subs, disc: x.disc ?? null, parts: x.parts ?? null, localPoster: x.poster, localBackdrop: x.backdrop, edition: x.edition ?? null, ...fromNfo(x.nfo) }),
     });
+    saveExtras(f, x.id, x.extras);
+  }
+  // editions of one film ({edition-Director's Cut}): one film, with the others as versions of it
+  const groups = new Map<string, FoundFilm[]>();
+  for (const x of found) {
+    const k = x.nfo.tmdb ? "t" + x.nfo.tmdb : x.nfo.imdb ? "i" + x.nfo.imdb : "n" + tmdb.norm(x.title) + "|" + x.year;
+    groups.set(k, [...(groups.get(k) ?? []), x]);
+  }
+  for (const g of groups.values()) {
+    const grouped = g.length > 1 && g.some((x) => x.edition);
+    if (!grouped) {
+      for (const x of g) patch.run(JSON.stringify({ versionOf: null, versions: null }), x.id);
+      continue;
+    }
+    g.sort((a, b) => (a.edition ? 1 : 0) - (b.edition ? 1 : 0) || (a.edition ?? "").localeCompare(b.edition ?? ""));
+    const main = g[0];
+    const versions = g.map((x) => ({ id: x.id, edition: x.edition || "Original" }));
+    patch.run(JSON.stringify({ versionOf: null, versions }), main.id);
+    for (const x of g.slice(1)) patch.run(JSON.stringify({ versionOf: main.id, versions: null }), x.id);
   }
 }
 
@@ -169,12 +200,15 @@ function saveSeries(f: Folder, found: FoundSeries[]): void {
       id: s.id, kind: "series", folder: f.id, parent: null, file: s.dir, title: s.title, sort: sortTitle(s.title), year: s.year, added: now(),
       data: JSON.stringify({ localPoster: s.poster, localBackdrop: s.backdrop, ...fromNfo(s.nfo) }),
     });
+    saveExtras(f, s.id, s.extras);
     for (const e of s.episodes) {
       upsert.run({
         id: e.id, kind: "episode", folder: f.id, parent: s.id, file: e.file, title: e.title, sort: String(e.season * 10000 + e.episode).padStart(8, "0"), year: "", added: now(),
         data: JSON.stringify({
           season: e.season, episode: e.episode, episodeEnd: e.episodeEnd ?? null, subs: e.subs, localThumb: e.thumb, fileTitle: e.title,
-          ...defined({ nfoTitle: e.nfo?.title, overview: e.nfo?.plot, aired: e.nfo?.aired, nfoThumb: e.nfo?.poster }),
+          // a dated episode (talk shows, news): found among TMDb's by its date
+          dated: e.aired ? true : null,
+          ...defined({ nfoTitle: e.nfo?.title, overview: e.nfo?.plot, aired: e.nfo?.aired ?? e.aired, nfoThumb: e.nfo?.poster }),
         }),
       });
     }
@@ -275,7 +309,8 @@ export async function enrich(force = false): Promise<void> {
     const d = json<Record<string, any>>(r.data, {});
     try {
       const kind = r.kind === "film" ? "film" : "series";
-      const id = d.nfo?.tmdb ?? d.tmdb ?? (d.nfo?.imdb ? await tmdb.byImdb(kind, d.nfo.imdb) : null) ?? (await tmdb.find(kind, r.title, r.year));
+      // the ID it was given ({tmdb-…}, .nfo, .plexmatch) wins over a search by name
+      const id = d.nfo?.tmdb ?? d.tmdb ?? (d.nfo?.imdb ? await tmdb.byImdb(kind, d.nfo.imdb) : null) ?? (d.nfo?.tvdb ? await tmdb.byTvdb(kind, d.nfo.tvdb) : null) ?? (await tmdb.find(kind, r.title, r.year));
       if (kind === "film") await fillFilm(r.id, id);
       else await fillSeries(r.id, id);
     } catch (e) {
@@ -360,11 +395,14 @@ export async function fillSeries(id: string, tmdbId: number | null): Promise<voi
     seasonInfo: Object.fromEntries(Object.entries(s.seasons).map(([n, x]) => [n, { title: x.title, poster: x.poster }])),
   }), id);
   db.prepare("UPDATE items SET title = ?, sort = ?, year = ?, data = json_set(data, '$.titled', 1) WHERE id = ?").run(s.title, sortTitle(s.title), s.year, id);
-  const eps = db.prepare("SELECT id, data FROM items WHERE parent = ?").all(id) as Row[];
+  const eps = db.prepare("SELECT id, data FROM items WHERE parent = ? AND kind = 'episode'").all(id) as Row[];
+  // dated episodes are found by the day they were on
+  const byDate = new Map<string, tmdb.EpisodeInfo>();
+  for (const se of Object.values(s.seasons)) for (const ep of Object.values(se.episodes)) if (ep.aired && !byDate.has(ep.aired)) byDate.set(ep.aired, ep);
   db.transaction(() => {
     for (const e of eps) {
       const d = json<Record<string, any>>(e.data, {});
-      const info = s.seasons[d.season]?.episodes[d.episode];
+      const info = d.dated ? byDate.get(d.aired) : s.seasons[d.season]?.episodes[d.episode];
       if (!info) continue;
       patch.run(JSON.stringify({ overview: d.overview || info.overview, runtime: info.runtime, still: info.still, aired: d.aired || info.aired }), e.id);
       db.prepare("UPDATE items SET title = ?, data = json_set(data, '$.titled', 1) WHERE id = ?").run(d.nfoTitle || info.title || d.fileTitle || `Episode ${d.episode}`, e.id);
@@ -397,7 +435,8 @@ export function getRow(id: string): Row | null {
 
 // Removed from the library (hidden): left out everywhere, but kept, so the next look through the
 // folder doesn't bring it back, and it can be brought back from the settings.
-const SHOWN = "NOT coalesce(json_extract(data, '$.hidden'), 0)";
+// (and another edition of a film is one of its versions, not a film of its own)
+const SHOWN = "NOT coalesce(json_extract(data, '$.hidden'), 0) AND json_extract(data, '$.versionOf') IS NULL";
 
 export function rows(kind: Kind, parent?: string): Row[] {
   if (parent) return db.prepare(`SELECT * FROM items WHERE kind = ? AND parent = ? AND ${SHOWN} ORDER BY sort`).all(kind, parent) as Row[];
@@ -428,7 +467,7 @@ export function hide(id: string, hidden = true): boolean {
 }
 
 export function hiddenRows(): Row[] {
-  return db.prepare(`SELECT * FROM items WHERE NOT (${SHOWN}) ORDER BY sort`).all() as Row[];
+  return db.prepare(`SELECT * FROM items WHERE coalesce(json_extract(data, '$.hidden'), 0) ORDER BY sort`).all() as Row[];
 }
 
 /** A poster picked by hand: it wins over every other picture (the folder's own included). */

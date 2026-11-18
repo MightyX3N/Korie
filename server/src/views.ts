@@ -44,7 +44,8 @@ function frac(p: Prog | null): number {
 export function may(person: Person, r: lib.Row): boolean {
   if (r.kind === "album" || r.kind === "track") return person.music;
   if (person.maxAge === null || person.maxAge === undefined) return true;
-  const top = r.kind === "episode" ? lib.getRow(r.parent ?? "") : r;
+  // an episode or an extra goes by its film's or series' age rating
+  const top = r.kind === "episode" || r.kind === "extra" ? lib.getRow(r.parent ?? "") : r;
   return !!top && ages.allows(person.maxAge, lib.data(top).age);
 }
 
@@ -93,9 +94,11 @@ export function rowCard(person: Person, r: lib.Row): Card {
   const p = progressOf(person.id, r.id);
   let subtitle = r.year;
   let watched = !!p?.watched;
+  // one of a film's editions says which
+  if (r.kind === "film" && d.edition) subtitle = [r.year, d.edition].filter(Boolean).join(" · ");
   if (r.kind === "series") {
-    const n = (db.prepare("SELECT COUNT(*) AS n FROM items WHERE parent = ?").get(r.id) as { n: number }).n;
-    const w = (db.prepare("SELECT COUNT(*) AS n FROM items i JOIN progress p ON p.item = i.id AND p.person = ? WHERE i.parent = ? AND p.watched = 1").get(person.id, r.id) as { n: number }).n;
+    const n = (db.prepare("SELECT COUNT(*) AS n FROM items WHERE parent = ? AND kind = 'episode'").get(r.id) as { n: number }).n;
+    const w = (db.prepare("SELECT COUNT(*) AS n FROM items i JOIN progress p ON p.item = i.id AND p.person = ? WHERE i.parent = ? AND i.kind = 'episode' AND p.watched = 1").get(person.id, r.id) as { n: number }).n;
     subtitle = [r.year, `${n} episode${n === 1 ? "" : "s"}`].filter(Boolean).join(" · ");
     watched = n > 0 && w >= n;
   } else if (r.kind === "album") {
@@ -104,7 +107,8 @@ export function rowCard(person: Person, r: lib.Row): Card {
     // an episode on a row (Continue watching, Next up) says what series it is: the series is the title
     const s = lib.getRow(r.parent ?? "");
     if (s?.title) {
-      subtitle = epLabel(d.season, d.episode, r.title);
+      // a dated episode (talk shows, news) goes by its day
+      subtitle = d.dated && d.aired ? [dayOf(d.aired), r.title].filter(Boolean).join(" · ") : epLabel(d.season, d.episode, r.title);
       return { ...rowCardBase(person, r, subtitle, watched), title: s.title };
     }
     subtitle = epLabel(d.season, d.episode, "");
@@ -116,6 +120,12 @@ export function rowCard(person: Person, r: lib.Row): Card {
 }
 
 /** "S1 E3 · Who's Your Daddy?" */
+/** 2011-11-15 as "15 Nov 2011". */
+export function dayOf(iso: string): string {
+  const t = new Date(iso + "T12:00:00Z");
+  return Number.isNaN(t.getTime()) ? iso : t.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+}
+
 function epLabel(season: unknown, episode: unknown, title: string): string {
   const sn = Number(season), en = Number(episode);
   const at = en ? (sn || sn === 0 ? `S${sn} E${en}` : `E${en}`) : "";
@@ -243,6 +253,15 @@ function castView(cast: unknown): { name: string; role: string; photo: string }[
   return (Array.isArray(cast) ? cast : []).map((c: any) => Array.isArray(c) ? { name: String(c[0] ?? ""), role: String(c[1] ?? ""), photo: "" } : { name: String(c?.name ?? ""), role: String(c?.role ?? ""), photo: img(c?.photo) }).filter((c) => c.name).slice(0, 12);
 }
 
+const EXTRA_NAMES: Record<string, string> = {
+  trailer: "Trailer", behindthescenes: "Behind the scenes", featurette: "Featurette", interview: "Interview", scene: "Scene", deleted: "Deleted scene", short: "Short", other: "Extra",
+};
+
+/** A film's or series' extras: trailers, behind the scenes, and so on. */
+function extrasOf(parent: string): { id: string; title: string; kind: string; type: string }[] {
+  return lib.rows("extra", parent).map((x) => ({ id: x.id, title: x.title, kind: "extra", type: EXTRA_NAMES[lib.data(x).type] ?? "Extra" }));
+}
+
 export function details(person: Person, id: string): Record<string, unknown> | null {
   const r = lib.getRow(id);
   if (r && (lib.isHidden(r) || !may(person, r))) return null;
@@ -263,11 +282,11 @@ export function details(person: Person, id: string): Record<string, unknown> | n
         const ed = lib.data(e);
         const ep = progressOf(person.id, e.id);
         const list = seasons.get(ed.season) ?? [];
-        list.push({ id: e.id, n: ed.episode, title: e.title, overview: ed.overview ?? "", runtime: ed.runtime ?? 0, thumb: lib.pictures(e).thumb, progress: frac(ep), watched: !!ep?.watched, position: ep && !ep.watched ? ep.position : 0, duration: ep?.duration ?? 0 });
+        list.push({ id: e.id, n: ed.episode, ...(ed.dated && ed.aired ? { date: dayOf(ed.aired) } : {}), title: e.title, overview: ed.overview ?? "", runtime: ed.runtime ?? 0, thumb: lib.pictures(e).thumb, progress: frac(ep), watched: !!ep?.watched, position: ep && !ep.watched ? ep.position : 0, duration: ep?.duration ?? 0 });
         seasons.set(ed.season, list);
       }
       const info = d.seasonInfo ?? {};
-      return { ...base, seasons: [...seasons.entries()].sort((a, b) => (a[0] === 0 ? 1 : b[0] === 0 ? -1 : a[0] - b[0])).map(([n, episodes]) => ({ n, title: info[n]?.title || (n === 0 ? "Specials" : `Season ${n}`), episodes })) };
+      return { ...base, extras: extrasOf(id), seasons: [...seasons.entries()].sort((a, b) => (a[0] === 0 ? 1 : b[0] === 0 ? -1 : a[0] - b[0])).map(([n, episodes]) => ({ n, title: info[n]?.title || (n === 0 ? "Specials" : `Season ${n}`), episodes })) };
     }
     if (r.kind === "album") {
       const tracks = lib.rows("track", id).map((t) => {
@@ -279,6 +298,12 @@ export function details(person: Person, id: string): Record<string, unknown> | n
     if (r.kind === "episode") {
       const s = lib.getRow(r.parent ?? "");
       return { ...base, series: r.parent, seriesTitle: s?.title ?? "", season: d.season, episode: d.episode };
+    }
+    if (r.kind === "film") {
+      // editions: the film's versions (the same list from any of them)
+      const main = d.versionOf ? lib.getRow(d.versionOf) : r;
+      const versions = (main ? lib.data(main).versions : null) as { id: string; edition: string }[] | null;
+      return { ...base, edition: d.edition ?? "", versions: versions ?? [], extras: extrasOf(main?.id ?? id) };
     }
     return base;
   }

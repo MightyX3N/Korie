@@ -5,6 +5,8 @@
 //   Music/Artist/Album/01 Title.flac           (tags win over folder names)
 // Kodi .nfo files and pictures next to the files (poster.jpg, fanart.jpg,
 // folder.jpg, <name>-poster.jpg) are used first.
+// Plex's naming too: {tmdb-…}/{imdb-…}/{tvdb-…} and {edition-…} in names, .plexmatch files,
+// date-based episodes (Show - 2011-11-15), and extras (Name-trailer.mkv, Trailers/…).
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
@@ -14,6 +16,11 @@ import { parseFile } from "music-metadata";
 export const VIDEO = new Set(["mkv", "mp4", "m4v", "avi", "mov", "wmv", "ts", "m2ts", "webm", "mpg", "mpeg", "iso", "vob", "flv", "ogv", "3gp"]);
 export const AUDIO = new Set(["mp3", "flac", "m4a", "aac", "ogg", "opus", "wav", "wma", "alac", "ape", "oga"]);
 const SUBS = new Set(["srt", "vtt", "ass", "ssa"]);
+/** Folders of extras (Plex's and Jellyfin's names): what kind of extra each holds. */
+const EXTRA_DIRS: Record<string, ExtraType> = {
+  "behind the scenes": "behindthescenes", "deleted scenes": "deleted", featurettes: "featurette", interviews: "interview",
+  scenes: "scene", shorts: "short", trailers: "trailer", other: "other", others: "other", extras: "other", featurette: "featurette", trailer: "trailer",
+};
 const SKIP_DIRS = new Set(["extras", "featurettes", "behind the scenes", "deleted scenes", "interviews", "scenes", "shorts", "trailers", "samples", "sample", "@eadir", ".actors", "$recycle.bin", "system volume information", "#recycle", "lost+found"]);
 
 export function idFor(prefix: string, key: string): string {
@@ -55,7 +62,7 @@ function art(dir: string, files: string[], base: string, names: string[]): strin
 // --- Kodi .nfo (only the fields Korie uses) ---------------------------------------------
 
 export interface Nfo {
-  root?: string; title?: string; year?: string; plot?: string; tmdb?: number; imdb?: string; genres?: string[]; rating?: number; director?: string; mpaa?: string;
+  root?: string; title?: string; year?: string; plot?: string; tmdb?: number; imdb?: string; tvdb?: number; genres?: string[]; rating?: number; director?: string; mpaa?: string;
   runtime?: number; poster?: string; fanart?: string; season?: number; episode?: number; aired?: string;
 }
 
@@ -84,6 +91,8 @@ export function readNfo(file: string): Nfo {
   if (tm && /^\d+$/.test(tm)) out.tmdb = Number(tm);
   const im = uid("imdb") ?? tag(xml, "imdbid") ?? tag(xml, "imdb") ?? tag(xml, "id");
   if (im && /^tt\d+$/.test(im)) out.imdb = im;
+  const tv = uid("tvdb") ?? tag(xml, "tvdbid");
+  if (tv && /^\d+$/.test(tv)) out.tvdb = Number(tv);
   // Kodi also writes a bare IMDb link or <id>tt...</id>
   if (!out.imdb) out.imdb = xml.match(/imdb\.com\/title\/(tt\d+)/i)?.[1];
   const genres = [...xml.matchAll(/<genre>([^<]+)<\/genre>/gi)].map((m) => m[1].trim()).filter(Boolean);
@@ -137,10 +146,146 @@ export function titleYear(raw: string): { title: string; year: string } {
   return { title, year: r.year ?? "" };
 }
 
-const SEASON_DIR = /^(?:season|series|staffel|sæson|saeson|saison|sezon|temporada|s)[\s._-]*(\d{1,3})(?:[^\d].*)?$/i;
+// --- Plex --------------------------------------------------------------------------------
 
-function episodeOf(name: string, seasonFromDir: number | null): { season: number; episode: number; episodeEnd?: number; title: string } | null {
+export type ExtraType = "behindthescenes" | "deleted" | "featurette" | "interview" | "scene" | "short" | "trailer" | "other";
+export interface FoundExtra { id: string; file: string; title: string; type: ExtraType }
+
+/** Plex's tags in a folder or file name: {tmdb-272}, {imdb-tt0372784}, {tvdb-74205}, {edition-Final Cut}
+ *  (also with square brackets or a colon, as Jellyfin and some tools write them). */
+export function plexTags(name: string): { tmdb?: number; imdb?: string; tvdb?: number; edition?: string } {
+  const out: { tmdb?: number; imdb?: string; tvdb?: number; edition?: string } = {};
+  for (const m of name.matchAll(/[{[]\s*(tmdb|tmdbid|imdb|imdbid|tvdb|tvdbid|edition)\s*[-=:]\s*([^}\]]+?)\s*[}\]]/gi)) {
+    const k = m[1].toLowerCase().replace(/id$/, "");
+    const v = m[2].trim();
+    if (k === "tmdb" && /^\d+$/.test(v)) out.tmdb = Number(v);
+    else if (k === "tvdb" && /^\d+$/.test(v)) out.tvdb = Number(v);
+    else if (k === "imdb" && /^(tt)?\d+$/i.test(v)) out.imdb = v.toLowerCase().startsWith("tt") ? v.toLowerCase() : "tt" + v;
+    else if (k === "edition" && v) out.edition = v.slice(0, 40);
+  }
+  return out;
+}
+
+/** An extra by its name's ending ("Making Of-behindthescenes.mkv"), with its title. */
+function extraOf(f: string): { type: ExtraType; title: string } | null {
+  const m = f.replace(/\.[^.]+$/, "").match(/^(.*?)[\s._]*-(behindthescenes|deleted|featurette|interview|scene|short|trailer|other)$/i);
+  return m ? { type: m[2].toLowerCase() as ExtraType, title: m[1].replace(/[._]/g, " ").trim() || m[2] } : null;
+}
+
+/** The extras in a folder's extras folders (Trailers/, Behind The Scenes/, …). */
+function extrasIn(dir: string, dirs: string[]): FoundExtra[] {
+  const out: FoundExtra[] = [];
+  for (const d of dirs) {
+    const type = EXTRA_DIRS[d.toLowerCase()];
+    if (!type) continue;
+    const full = path.join(dir, d);
+    for (const f of rawFiles(full).filter((x) => VIDEO.has(ext(x)))) {
+      const own = extraOf(f);
+      out.push({ id: idFor("x", path.join(full, f)), file: path.join(full, f), title: own?.title ?? f.replace(/\.[^.]+$/, "").replace(/[._]/g, " ").trim(), type: own?.type ?? type });
+    }
+  }
+  return out;
+}
+
+/** A folder's files without the skipping list() does (for the extras folders themselves). */
+function rawDirs(dir: string): string[] {
+  try {
+    return fs.readdirSync(dir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name);
+  } catch {
+    return [];
+  }
+}
+
+function rawFiles(dir: string): string[] {
+  try {
+    return fs.readdirSync(dir, { withFileTypes: true }).filter((e) => e.isFile() && !e.name.startsWith(".")).map((e) => e.name).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  } catch {
+    return [];
+  }
+}
+
+/** What a .plexmatch says: the show's or film's title, year and IDs, a season, and which episode a file is. */
+export interface PlexMatch { title?: string; year?: string; tmdb?: number; imdb?: string; tvdb?: number; season?: number; eps: Map<string, { season?: number; episode: number }> }
+
+function plexMatch(dir: string, files: string[]): PlexMatch | null {
+  const f = files.find((x) => x.toLowerCase() === ".plexmatch" || x.toLowerCase() === "plexmatch");
+  let text: string;
+  try {
+    text = fs.readFileSync(path.join(dir, f ?? ".plexmatch"), "utf8");
+  } catch {
+    return null;
+  }
+  const out: PlexMatch = { eps: new Map() };
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.replace(/^\uFEFF/, "").trim();
+    if (!line || line.startsWith("#")) continue;
+    const m = line.match(/^([A-Za-z]+)\s*:\s*(.*)$/);
+    if (!m) continue;
+    const k = m[1].toLowerCase();
+    const v = m[2].trim();
+    if (k === "title" || k === "show") out.title = v;
+    else if (k === "year" && /^\d{4}$/.test(v)) out.year = v;
+    else if (k === "tmdbid" && /^\d+$/.test(v)) out.tmdb = Number(v);
+    else if (k === "tvdbid" && /^\d+$/.test(v)) out.tvdb = Number(v);
+    else if (k === "imdbid" && /^(tt)?\d+$/i.test(v)) out.imdb = v.toLowerCase().startsWith("tt") ? v.toLowerCase() : "tt" + v;
+    else if (k === "guid") {
+      const g = v.match(/^(tmdb|tvdb|imdb):\/\/(\w+)/i);
+      if (g?.[1].toLowerCase() === "tmdb" && /^\d+$/.test(g[2])) out.tmdb = Number(g[2]);
+      if (g?.[1].toLowerCase() === "tvdb" && /^\d+$/.test(g[2])) out.tvdb = Number(g[2]);
+      if (g?.[1].toLowerCase() === "imdb") out.imdb = g[2];
+    } else if (k === "season" && /^\d+$/.test(v)) out.season = Number(v);
+    else if (k === "ep" || k === "episode") {
+      // "ep: 3: file.mkv", "ep: S01E03: file.mkv", "ep: SP02: Bonus/clip.mkv" (patterns with * or {…} aren't read)
+      const e = v.match(/^(?:s(\d+)e(\d+)|sp(\d+)|(\d+))\s*(?:-\s*\S+)?\s*:\s*(.+)$/i);
+      if (!e || /[*{]/.test(e[5])) continue;
+      const hint = e[1] ? { season: Number(e[1]), episode: Number(e[2]) } : e[3] ? { season: 0, episode: Number(e[3]) } : { episode: Number(e[4]) };
+      out.eps.set(e[5].trim().replace(/\\/g, "/").replace(/^\.?\//, "").toLowerCase(), hint);
+    }
+  }
+  return out;
+}
+
+/** .plexmatch hints and {…} tags as the Nfo fields Korie matches with (a real .nfo still wins). */
+function hinted(nfo: Nfo, pm: PlexMatch | null, ...names: string[]): Nfo {
+  const out = { ...nfo };
+  for (const n of names) {
+    const t = plexTags(n);
+    out.tmdb ??= t.tmdb;
+    out.imdb ??= t.imdb;
+    out.tvdb ??= t.tvdb;
+  }
+  if (pm) {
+    out.tmdb ??= pm.tmdb;
+    out.imdb ??= pm.imdb;
+    out.tvdb ??= pm.tvdb;
+  }
+  for (const k of Object.keys(out) as (keyof Nfo)[]) if (out[k] === undefined) delete out[k];
+  return out;
+}
+
+/** A date-based episode: "Show - 2011-11-15 - Guest", "Show.15.11.2011". */
+function dateOf(base: string): { aired: string; rest: string } | null {
+  let m = base.match(/(?:^|[\s._-])((?:19|20)\d{2})[\s._-](0[1-9]|1[0-2])[\s._-](0[1-9]|[12]\d|3[01])(?=$|[\s._-])(.*)$/);
+  if (m) return { aired: `${m[1]}-${m[2]}-${m[3]}`, rest: m[4] };
+  m = base.match(/(?:^|[\s._-])(0[1-9]|[12]\d|3[01])[\s._-](0[1-9]|1[0-2])[\s._-]((?:19|20)\d{2})(?=$|[\s._-])(.*)$/);
+  if (m) return { aired: `${m[3]}-${m[2]}-${m[1]}`, rest: m[4] };
+  return null;
+}
+
+// (a year is a season too: daily shows' "Season 2011")
+const SEASON_DIR = /^(?:season|series|staffel|sæson|saeson|saison|sezon|temporada|s)[\s._-]*(\d{1,3}|(?:19|20)\d{2})(?:[^\d].*)?$/i;
+
+type Ep = { season: number; episode: number; episodeEnd?: number; title: string; aired?: string };
+
+function episodeOf(name: string, seasonFromDir: number | null): Ep | null {
   const base = name.replace(/\.[^.]+$/, "");
+  // dated (talk shows, news): the year is the season and the date its place in it (TMDb's numbers come with the details)
+  const dated = /s\d{1,3}[\s._-]*e\d{1,3}/i.test(base) ? null : dateOf(base);
+  if (dated) {
+    const [y, mo, d] = dated.aired.split("-").map(Number);
+    const title = dated.rest.replace(/[._]/g, " ").replace(/\[[^\]]*\]/g, "").replace(/^[\s-]+|[\s-]+$/g, "").trim();
+    return { season: y, episode: mo * 100 + d, title, aired: dated.aired };
+  }
   const r = filenameParse(base, true) as any;
   if (r.episodeNumbers?.length) {
     const season = r.seasons?.[0] ?? seasonFromDir ?? 1;
@@ -153,7 +298,8 @@ function episodeOf(name: string, seasonFromDir: number | null): { season: number
       if (/^(\d{3,4}p|4k|uhd|web(-?dl|rip)?|blu-?ray|bdrip|brrip|hdtv|dvdrip|x26[45]|h\.?26[45]|hevc|avc|aac|ac3|dts|hdr\d*|remux|proper|repack|10bit|multi|nordic|danish|dansk)$/i.test(w)) break;
       words.push(w);
     }
-    const title = words.join(" ").replace(/^[\s-]+|[\s-]+$/g, "").trim();
+    // ([text in brackets] is for people, not the title: Plex's rule)
+    const title = words.join(" ").replace(/\[[^\]]*\]?/g, "").replace(/^[\s-]+|[\s-]+$/g, "").trim();
     return { season, episode: eps[0], episodeEnd: eps.length > 1 ? eps[eps.length - 1] : undefined, title };
   }
   // "03 - Name" or "E03" inside a Season folder
@@ -166,9 +312,14 @@ function episodeOf(name: string, seasonFromDir: number | null): { season: number
 
 export interface FoundFilm {
   id: string; file: string; title: string; year: string; nfo: Nfo; poster: string; backdrop: string; subs: string[]; disc?: "dvd" | "bluray" | "iso"; parts?: string[];
+  edition?: string; extras: FoundExtra[];
 }
-export interface FoundEpisode { id: string; file: string; season: number; episode: number; episodeEnd?: number; title: string; thumb: string; subs: string[]; nfo?: Nfo }
-export interface FoundSeries { id: string; dir: string; title: string; year: string; nfo: Nfo; poster: string; backdrop: string; episodes: FoundEpisode[] }
+export interface FoundEpisode { id: string; file: string; season: number; episode: number; episodeEnd?: number; title: string; thumb: string; subs: string[]; nfo?: Nfo; aired?: string }
+export interface FoundSeries { id: string; dir: string; title: string; year: string; nfo: Nfo; poster: string; backdrop: string; episodes: FoundEpisode[]; extras: FoundExtra[] }
+
+// Plex's and Kodi's picture names
+const POSTER = ["poster", "folder", "cover", "default", "movie", "show"];
+const BACKDROP = ["fanart", "backdrop", "background", "art", "landscape"];
 /** A song's genre tag, tidied ("electronic; dance" → "Electronic"; ID3's "(17)" numbers are left out). */
 function genreOf(g: unknown): string {
   const first = (Array.isArray(g) ? g : [g]).map((x) => String(x ?? "").split(/[;/,]/)[0].trim()).find((x) => x && !/^\(?\d+\)?$/.test(x));
@@ -214,10 +365,12 @@ export function scanFilms(root: string): FoundFilm[] {
     const name = path.basename(dir);
     const ty = titleYear(name);
     const inner = kind === "dvd" ? path.join(dir, "VIDEO_TS") : path.join(dir, "BDMV");
-    const nfo = nfoIn(dir, files, ["movie.nfo", name + ".nfo", "VIDEO_TS.nfo", "index.nfo"]) ?? nfoIn(inner, list(inner).files, ["VIDEO_TS.nfo", "index.nfo", "movie.nfo"]) ?? onlyNfo(dir, files) ?? {};
+    const pm = plexMatch(dir, files);
+    const nfo = hinted(nfoIn(dir, files, ["movie.nfo", name + ".nfo", "VIDEO_TS.nfo", "index.nfo"]) ?? nfoIn(inner, list(inner).files, ["VIDEO_TS.nfo", "index.nfo", "movie.nfo"]) ?? onlyNfo(dir, files) ?? {}, pm, name);
     out.push({
-      id: idFor("f", dir), file: dir, title: nfo.title || ty.title, year: nfo.year || ty.year, nfo,
-      poster: art(dir, files, name, ["poster", "folder", "cover"]), backdrop: art(dir, files, name, ["fanart", "backdrop", "landscape"]), subs: [], disc: kind,
+      id: idFor("f", dir), file: dir, title: nfo.title || pm?.title || ty.title, year: nfo.year || pm?.year || ty.year, nfo,
+      poster: art(dir, files, name, POSTER), backdrop: art(dir, files, name, BACKDROP), subs: [], disc: kind,
+      edition: plexTags(name).edition, extras: extrasIn(dir, rawDirs(dir)),
     });
   };
   const walk = (dir: string, depth: number): void => {
@@ -225,9 +378,18 @@ export function scanFilms(root: string): FoundFilm[] {
     // a DVD or Blu-ray folder is one film
     if (dirs.some((d) => d.toUpperCase() === "VIDEO_TS") || files.some((f) => f.toUpperCase() === "VIDEO_TS.IFO")) return disc(dir, files, "dvd");
     if (dirs.some((d) => d.toUpperCase() === "BDMV")) return disc(dir, files, "bluray");
-    const videos = files.filter((f) => VIDEO.has(ext(f)) && !/(^|[\s._-])(sample|trailer)([\s._-]|$)/i.test(f));
+    // extras next to the films ("Making Of-behindthescenes.mkv") aren't films
+    const inline: FoundExtra[] = [];
+    const videos = files.filter((f) => {
+      if (!VIDEO.has(ext(f)) || /(^|[\s._-])(sample|trailer)([\s._-]|$)/i.test(f) && !extraOf(f)) return false;
+      const x = extraOf(f);
+      if (x) inline.push({ id: idFor("x", path.join(dir, f)), file: path.join(dir, f), ...x });
+      return !x;
+    });
     const films = stacks(videos);
     const parent = path.basename(dir);
+    const pm = films.length === 1 ? plexMatch(dir, files) : null;
+    const extras = films.length ? [...extrasIn(dir, rawDirs(dir)), ...inline] : [];
     for (const parts of films) {
       const f = parts[0];
       const base = f.replace(/\.[^.]+$/, "");
@@ -241,17 +403,23 @@ export function scanFilms(root: string): FoundFilm[] {
       }
       const names = [base + ".nfo", ...(stem ? [stem + ".nfo"] : []), ...parts.slice(1).map((p) => p.replace(/\.[^.]+$/, "") + ".nfo")];
       if (alone) names.push("movie.nfo", parent + ".nfo");
-      const nfo = nfoIn(dir, files, names) ?? (alone ? onlyNfo(dir, files) : null) ?? {};
+      const nfo = hinted(nfoIn(dir, files, names) ?? (alone ? onlyNfo(dir, files) : null) ?? {}, alone ? pm : null, base, ...(depth > 0 && alone ? [parent] : []));
       const artBase = stem || base;
+      // the edition: in the file's name, or (one film in the folder) the folder's
+      const edition = plexTags(base).edition ?? (depth > 0 && alone ? plexTags(parent).edition : undefined);
+      // extras: all of the folder's when it's one film; otherwise those named after this one
+      const mine = alone ? extras : extras.filter((x) => path.basename(x.file).toLowerCase().startsWith((stem || base).toLowerCase()));
       out.push({
-        id: idFor("f", path.join(dir, f)), file: path.join(dir, f), title: nfo.title || ty.title, year: nfo.year || ty.year, nfo,
-        poster: art(dir, files, artBase, alone ? ["poster", "folder", "cover"] : ["poster"]) || (artBase !== base ? art(dir, files, base, ["poster"]) : ""),
-        backdrop: art(dir, files, artBase, alone ? ["fanart", "backdrop", "landscape"] : ["fanart"]),
+        id: idFor("f", path.join(dir, f)), file: path.join(dir, f), title: nfo.title || (alone ? pm?.title : "") || ty.title, year: nfo.year || (alone ? pm?.year : "") || ty.year, nfo,
+        poster: art(dir, files, artBase, alone ? POSTER : ["poster"]) || (artBase !== base ? art(dir, files, base, ["poster"]) : ""),
+        backdrop: art(dir, files, artBase, alone ? BACKDROP : ["fanart", "background"]),
         subs: subsFor(dir, files, base), disc: ext(f) === "iso" ? "iso" : undefined,
         parts: parts.length > 1 ? parts.map((p) => path.join(dir, p)) : undefined,
+        edition, extras: mine,
       });
     }
-    if (depth < 8) for (const d of dirs) walk(path.join(dir, d), depth + 1);
+    // a film's own "Other" folder is extras, not more films
+    if (depth < 8) for (const d of dirs) if (!(films.length && EXTRA_DIRS[d.toLowerCase()])) walk(path.join(dir, d), depth + 1);
   };
   walk(root, 0);
   return out;
@@ -272,23 +440,40 @@ function looksLikeShow(dir: string, l: Listing): boolean {
 }
 
 function showFrom(dir: string, l: Listing): FoundSeries {
-  const nfo = nfoIn(dir, l.files, ["tvshow.nfo"]) ?? {};
+  const pm = plexMatch(dir, l.files);
+  const nfo = hinted(nfoIn(dir, l.files, ["tvshow.nfo"]) ?? {}, pm, path.basename(dir));
   const ty = titleYear(path.basename(dir));
   const s: FoundSeries = {
-    id: idFor("s", dir), dir, title: nfo.title || ty.title, year: nfo.year || ty.year, nfo,
-    poster: art(dir, l.files, "", ["poster", "folder", "cover"]), backdrop: art(dir, l.files, "", ["fanart", "backdrop", "landscape"]), episodes: [],
+    id: idFor("s", dir), dir, title: nfo.title || pm?.title || ty.title, year: nfo.year || pm?.year || ty.year, nfo,
+    poster: art(dir, l.files, "", POSTER), backdrop: art(dir, l.files, "", BACKDROP), episodes: [], extras: [],
   };
   const walk = (d: string, season: number | null, depth: number): void => {
     const { files, dirs } = list(d);
+    s.extras.push(...extrasIn(d, rawDirs(d)));
+    // a season folder's own .plexmatch: its season, and which episode a file is
+    const here = d === dir ? null : plexMatch(d, files);
+    if (here?.season !== undefined) season = here.season;
     for (const f of files.filter((x) => VIDEO.has(ext(x)))) {
       const base = f.replace(/\.[^.]+$/, "");
+      const file = path.join(d, f);
+      // extras ("Interview-interview.mkv", "S01E01 - Pilot-trailer.mkv") belong to the show
+      const x = extraOf(f);
+      if (x) {
+        s.extras.push({ id: idFor("x", file), file, ...x });
+        continue;
+      }
       const enfo = nfoIn(d, files, [base + ".nfo"]);
-      let e = episodeOf(f, season);
+      let e: Ep | null = episodeOf(f, season);
+      // .plexmatch says which episode it is (the show's, by path from the show folder, or the season folder's)
+      const hint = pm?.eps.get(path.relative(dir, file).replace(/\\/g, "/").toLowerCase()) ?? here?.eps.get(f.toLowerCase());
+      if (hint) e = { season: hint.season ?? season ?? pm?.season ?? 1, episode: hint.episode, title: e?.title ?? "" };
       // an episode .nfo knows its own season and number
-      if (enfo?.episode) e = { season: enfo.season ?? e?.season ?? season ?? 1, episode: enfo.episode, episodeEnd: e?.episodeEnd, title: e?.title ?? "" };
+      if (enfo?.episode) e = { season: enfo.season ?? e?.season ?? season ?? 1, episode: enfo.episode, episodeEnd: e?.episodeEnd, title: e?.title ?? "", aired: e?.aired };
       if (!e) continue;
       if (enfo?.title) e.title = enfo.title;
-      s.episodes.push({ id: idFor("e", path.join(d, f)), file: path.join(d, f), ...e, thumb: art(d, files, base, ["thumb"]), subs: subsFor(d, files, base), nfo: enfo ?? undefined });
+      // its picture: Kodi's <name>-thumb.jpg or Plex's <name>.jpg
+      const thumb = art(d, files, base, ["thumb"]) || art(d, files, "", [base.toLowerCase()]);
+      s.episodes.push({ id: idFor("e", file), file, ...e, thumb, subs: subsFor(d, files, base), nfo: enfo ?? undefined });
     }
     if (depth < 4) {
       for (const sub of dirs) {
@@ -298,7 +483,7 @@ function showFrom(dir: string, l: Listing): FoundSeries {
       }
     }
   };
-  walk(dir, null, 0);
+  walk(dir, pm?.season ?? null, 0);
   s.episodes.sort((a, b) => a.season - b.season || a.episode - b.episode);
   return s;
 }
@@ -325,10 +510,12 @@ export function scanSeries(root: string): FoundSeries[] {
     for (const f of files.filter((x) => VIDEO.has(ext(x)))) {
       const e = episodeOf(f, null);
       if (!e) continue;
-      const show = filenameParse(f.replace(/\.[^.]+$/, ""), true).title || "Unknown";
+      const fb = f.replace(/\.[^.]+$/, "");
+      // a dated one: the show's name is what comes before the date
+      const show = (e.aired ? fb.slice(0, Math.max(0, fb.search(/(?:19|20)\d{2}[\s._-]\d{2}[\s._-]\d{2}|\d{2}[\s._-]\d{2}[\s._-](?:19|20)\d{2}/))).replace(/[._]/g, " ").replace(/[\s-]+$/, "").trim() : filenameParse(fb, true).title) || "Unknown";
       let s = groups.get(show.toLowerCase());
       if (!s) {
-        s = { id: idFor("s", path.join(dir, "#" + show.toLowerCase())), dir, title: show, year: "", nfo: {}, poster: "", backdrop: "", episodes: [] };
+        s = { id: idFor("s", path.join(dir, "#" + show.toLowerCase())), dir, title: show, year: "", nfo: {}, poster: "", backdrop: "", episodes: [], extras: [] };
         groups.set(show.toLowerCase(), s);
         out.push(s);
       }

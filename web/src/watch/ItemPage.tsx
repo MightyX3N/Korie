@@ -39,8 +39,14 @@ export function ItemPage({ id, me, ep }: { id: string; me: Me; ep?: string }) {
   if (!it) return <div className="page"><Loading /></div>;
 
   const play = (pid: string, from?: "start") => go(`/play/${encodeURIComponent(pid)}${from ? "?from=start" : ""}`);
+  // a film in several editions: which one
+  const playFilm = (from?: "start") => {
+    const vs = it?.versions ?? [];
+    if (vs.length < 2) return play(it!.id, from);
+    void ui.menu("Which version?", vs.map((v) => ({ label: v.edition, run: () => play(v.id, from) })));
+  };
   const asCard = { id: it.id, kind: it.kind, title: it.title, subtitle: it.subtitle ?? "", year: it.year, poster: it.poster, thumb: it.thumb, backdrop: it.backdrop, progress: it.duration ? it.position / it.duration : 0, watched: it.watched, source: it.source, favourite: it.favourite, local: it.local };
-  const meta = [it.year, minutes(it.runtime), it.rating ? `★ ${it.rating.toFixed(1)}` : "", it.cert, it.source && !it.local ? it.source : "", it.disc ? it.disc.toUpperCase() : ""].filter(Boolean);
+  const meta = [it.year, minutes(it.runtime), it.rating ? `★ ${it.rating.toFixed(1)}` : "", it.cert, it.source && !it.local ? it.source : "", it.disc ? it.disc.toUpperCase() : "", (it.versions?.length ?? 0) > 1 ? `${it.versions!.length} versions` : it.edition ?? ""].filter(Boolean);
   const isMusic = it.kind === "album" || it.kind === "playlist";
 
   // a series: the next episode to watch
@@ -49,12 +55,12 @@ export function ItemPage({ id, me, ep }: { id: string; me: Me; ep?: string }) {
     // the episode it was opened at, or one half watched, comes first
     for (const s of it.seasons) {
       const e = s.episodes.find((x) => !x.watched && (ep ? x.id === ep : x.position > 0));
-      if (e && !next) next = { id: e.id, label: `${e.position > 0 ? "Resume" : "Play"} S${s.n} E${e.n}` };
+      if (e && !next) next = { id: e.id, label: `${e.position > 0 ? "Resume" : "Play"} ${e.date ?? `S${s.n} E${e.n}`}` };
     }
     for (const s of next ? [] : it.seasons) {
       const e = s.episodes.find((x) => !x.watched);
       if (e) {
-        next = { id: e.id, label: `${e.position > 0 ? "Resume" : "Play"} S${s.n} E${e.n}` };
+        next = { id: e.id, label: `${e.position > 0 ? "Resume" : "Play"} ${e.date ?? `S${s.n} E${e.n}`}` };
         break;
       }
     }
@@ -115,8 +121,8 @@ export function ItemPage({ id, me, ep }: { id: string; me: Me; ep?: string }) {
           <div className="item-buttons">
             {(it.kind === "film" || it.kind === "episode" || it.kind === "live") && (
               <>
-                <button className="btn primary big" onClick={() => play(it.id)}><Play size={20} fill="currentColor" />{it.position > 0 ? `Resume from ${time(it.position)}` : "Play"}</button>
-                {it.position > 0 && <button className="btn big" onClick={() => play(it.id, "start")}><RotateCcw size={18} />From the start</button>}
+                <button className="btn primary big" onClick={() => (it.position > 0 ? play(it.id) : playFilm())}><Play size={20} fill="currentColor" />{it.position > 0 ? `Resume from ${time(it.position)}` : "Play"}</button>
+                {it.position > 0 && <button className="btn big" onClick={() => playFilm("start")}><RotateCcw size={18} />From the start</button>}
               </>
             )}
             {next && next.id && <button className="btn primary big" onClick={() => play(next!.id)}><Play size={20} fill="currentColor" />{next.label}</button>}
@@ -173,12 +179,12 @@ export function ItemPage({ id, me, ep }: { id: string; me: Me; ep?: string }) {
             {it.seasons[season]?.episodes.map((e) => (
               <li key={e.id} id={`ep-${e.id}`} className={`episode${e.id === ep ? " here" : ""}`}>
                 <button className="episode-pic" onClick={() => play(e.id)} aria-label={`Play episode ${e.n}`}>
-                  {e.thumb ? <img src={pic(e.thumb, 360)} alt="" loading="lazy" /> : <i className="episode-none">{e.n}</i>}
+                  {e.thumb ? <img src={pic(e.thumb, 360)} alt="" loading="lazy" /> : <i className="episode-none">{e.date ? "" : e.n}</i>}
                   <i className="episode-play"><Play size={22} fill="currentColor" /></i>
                   {e.progress > 0 && !e.watched && <span className="card-bar"><i style={{ width: `${Math.round(e.progress * 100)}%` }} /></span>}
                 </button>
                 <div className="episode-text">
-                  <h3>{e.n}. {e.title || `Episode ${e.n}`}{e.watched && <Check size={16} className="good" aria-label="watched" />}</h3>
+                  <h3>{e.date ? `${e.date}${e.title ? ": " + e.title : ""}` : `${e.n}. ${e.title || `Episode ${e.n}`}`}{e.watched && <Check size={16} className="good" aria-label="watched" />}</h3>
                   <p className="soft small">{minutes(e.runtime)}</p>
                   {e.overview && <p className="episode-overview">{e.overview}</p>}
                 </div>
@@ -200,6 +206,24 @@ export function ItemPage({ id, me, ep }: { id: string; me: Me; ep?: string }) {
 
       {it.tracks && it.tracks.length > 0 && <Tracks tracks={it.tracks.map((t) => ({ ...t, albumTitle: t.albumTitle || it.title, poster: t.poster || it.poster }))} playlist={it.kind === "playlist" ? it.id.slice(9) : undefined} done={reload} music={me.person.music} />}
       {isMusic && !it.tracks?.length && <p className="status">Nothing on it yet. Add songs and albums with their options menu (⋯).</p>}
+
+      {it.extras && it.extras.length > 0 && (
+        <section className="extras">
+          <h2 className="row-title">Extras</h2>
+          <div className="extras-list">
+            {it.extras.map((x) => (
+              <button key={x.id} className="extra-one" onClick={() => play(x.id)}>
+                <span className="extra-pic">
+                  {it.backdrop || it.thumb ? <img src={pic(it.backdrop || it.thumb, 360)} alt="" loading="lazy" /> : null}
+                  <i className="episode-play"><Play size={22} fill="currentColor" /></i>
+                </span>
+                <strong>{x.title}</strong>
+                <small>{x.type}</small>
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
 
       {it.cast?.length > 0 && (
         <section className="cast">

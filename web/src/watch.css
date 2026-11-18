@@ -361,3 +361,14 @@ button, input, select { font: inherit; color: inherit; }
 .guide-prog.locked strong { color: var(--soft); font-weight: 500; }
 .guide-prog:hover, .guide-prog:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; z-index: 1; }
 .guide-now { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--accent); pointer-events: none; z-index: 1; }
+
+/* a film's or series' extras: trailers, behind the scenes, … */
+.extras { margin-top: 2em; }
+.extras-list { display: flex; gap: 1em; overflow-x: auto; padding: .4em .2em .8em; }
+.extra-one { flex: none; width: clamp(160px, 18vw, 280px); display: flex; flex-direction: column; gap: .3em; padding: 0; border: 0; background: none; color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
+.extra-pic { position: relative; display: block; aspect-ratio: 16 / 9; border-radius: var(--radius); overflow: hidden; background: var(--panel); }
+.extra-pic img { width: 100%; height: 100%; object-fit: cover; display: block; filter: brightness(.7); }
+.extra-one strong { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.extra-one small { color: var(--soft); }
+.extra-one:hover .episode-play, .extra-one:focus-visible .episode-play { opacity: 1; }
+.extra-one:focus-visible .extra-pic { outline: 2px solid var(--accent); outline-offset: 2px; }

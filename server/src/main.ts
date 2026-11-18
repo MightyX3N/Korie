@@ -589,11 +589,14 @@ app.post("/api/play", async (req: Req) => {
     subFiles = d.subs ?? [];
     if (row.kind === "episode") {
       const s = lib.getRow(row.parent ?? "");
-      subtitle = `${s?.title ?? ""} · S${d.season}E${d.episode}`;
+      subtitle = `${s?.title ?? ""} · ${d.dated && d.aired ? views.dayOf(d.aired) : `S${d.season}E${d.episode}`}`;
       episode = { show: s?.title ?? "", season: Number(d.season) || 0, episode: Number(d.episode) || 0 };
       const eps = lib.rows("episode", row.parent ?? "");
       next = eps[eps.findIndex((e) => e.id === id) + 1]?.id ?? null;
     }
+    // an extra says whose it is; an edition says which
+    if (row.kind === "extra") subtitle = lib.getRow(row.parent ?? "")?.title ?? "";
+    if (row.kind === "film" && d.edition) subtitle = d.edition;
     if (row.kind === "track") {
       const al = lib.getRow(row.parent ?? "");
       subtitle = [d.artist, al?.title].filter(Boolean).join(" · ");

@@ -109,9 +109,17 @@ data class NavList(val items: List<NavItem> = emptyList())
 data class CastMember(val name: String = "", val role: String = "", val photo: String = "")
 
 @Serializable
+data class Version(val id: String = "", val edition: String = "")
+
+@Serializable
+data class Extra(val id: String = "", val title: String = "", val type: String = "")
+
+@Serializable
 data class Episode(
     val id: String,
     val n: Int = 0,
+    /** a dated episode (talk shows, news): its day instead of a number */
+    val date: String? = null,
     val title: String = "",
     val overview: String = "",
     val runtime: Double = 0.0,
@@ -146,6 +154,10 @@ data class Item(
     val duration: Double = 0.0,
     val watched: Boolean = false,
     val seasons: List<Season> = emptyList(),
+    /** a film's editions, and a film's or series' extras */
+    val versions: List<Version> = emptyList(),
+    val edition: String = "",
+    val extras: List<Extra> = emptyList(),
     val local: Boolean = false,
     val error: String = "",
     val artist: String? = null,
@@ -345,10 +357,20 @@ object Korie {
         setToken(ctx, json.parseToJsonElement(t).jsonObject["token"]!!.jsonPrimitive.content)
     }
 
-    /** Who this TV starts as by itself (Settings, This device). */
-    suspend fun autoStart(): AutoStart? = try {
-        post<AutoStart>("/api/auto", buildJsonObject { put("device", deviceName); put("deviceId", deviceId) })
-    } catch (_: Exception) { null }
+    /** Who this TV starts as by itself (Settings, This device). If the server can't be asked right
+     *  now, the last answer is used when it was "their PIN first": a hiccup mustn't skip the PIN. */
+    suspend fun autoStart(ctx: Context): AutoStart? {
+        val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        repeat(3) { n ->
+            try {
+                val a = post<AutoStart>("/api/auto", buildJsonObject { put("device", deviceName); put("deviceId", deviceId) })
+                prefs.edit().apply { if (a.needPin && a.person != null) putString("pinFirst", json.encodeToString(Person.serializer(), a.person)) else remove("pinFirst") }.apply()
+                return a
+            } catch (_: Exception) { if (n < 2) kotlinx.coroutines.delay(1500) }
+        }
+        val last = prefs.getString("pinFirst", null) ?: return null
+        return try { AutoStart(needPin = true, person = json.decodeFromString(Person.serializer(), last)) } catch (_: Exception) { null }
+    }
     suspend fun deviceAuto(): DeviceAuto = get("/api/device?deviceId=" + enc(deviceId))
     suspend fun setDeviceAuto(person: String?, set: Boolean, autoPin: Boolean? = null, pin: String? = null): DeviceAuto = post("/api/device", buildJsonObject {
         put("deviceId", deviceId)
@@ -359,7 +381,7 @@ object Korie {
     /** Back from standby or another app after a while: counts as a start (the PIN again, if this TV asks for it). */
     var restarted by androidx.compose.runtime.mutableStateOf(0)
 
-    suspend fun meOrNull(): Me? = try { get<Me>("/api/me") } catch (_: Exception) { null }
+    suspend fun meOrNull(): Me? = try { get<Me>("/api/me") } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { null }
 
     fun signOut(ctx: Context) {
         val t = token
