@@ -364,6 +364,8 @@ object Korie {
 
     suspend fun favourite(id: String): Boolean = json.parseToJsonElement(call("POST", "/api/favourite", buildJsonObject { put("id", id) })).jsonObject["favourite"]?.jsonPrimitive?.content == "true"
     suspend fun watched(id: String, watched: Boolean) { call("POST", "/api/watched", buildJsonObject { put("id", id); put("watched", watched) }) }
+    /** Several at once (a season's episodes). */
+    suspend fun watched(ids: List<String>, watched: Boolean) { call("POST", "/api/watched", buildJsonObject { put("ids", kotlinx.serialization.json.JsonArray(ids.map { kotlinx.serialization.json.JsonPrimitive(it) })); put("watched", watched) }) }
 
     fun enc(s: String) = java.net.URLEncoder.encode(s, "UTF-8")
 

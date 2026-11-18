@@ -82,7 +82,7 @@ fun Item(nav: Nav, me: Screen, who: Me) {
     val firstLabel = if (isSeries) {
         if (nextEp != null) {
             val sn = seasons.firstOrNull { it.episodes.contains(nextEp) }?.n
-            if (nextEp.progress > 0) "Resume S${cur?.n}E${nextEp.n}" else "Play S${sn}E${nextEp.n}"
+            if (nextEp.progress > 0) "Resume S${sn}E${nextEp.n}" else "Play S${sn}E${nextEp.n}"
         } else "Play"
     } else if (isAlbum) "Play" else if (d.position > 30) "Resume from ${fmtTime(d.position)}" else "Play"
 
@@ -131,14 +131,38 @@ fun Item(nav: Nav, me: Screen, who: Me) {
             // seasons and episodes
             if (isSeries && seasons.isNotEmpty() && cur != null) {
                 Column(Modifier.padding(top = r(2.2f))) {
-                    if (seasons.size > 1) {
-                        FlowRow(Modifier.padding(bottom = r(1.4f)), horizontalArrangement = Arrangement.spacedBy(r(0.6f)), verticalArrangement = Arrangement.spacedBy(r(0.6f))) {
-                            seasons.forEach { s -> Pill(s.title.ifEmpty { "Season ${s.n}" }, s === cur, onFocus = { season = s.n }) { season = s.n } }
+                    // the season pills, and marking the whole season shown as watched (or not)
+                    val seen = cur.episodes.isNotEmpty() && cur.episodes.all { it.watched }
+                    val sname = cur.title.ifEmpty { if (cur.n == 0) "Specials" else "Season ${cur.n}" }
+                    FlowRow(Modifier.padding(bottom = r(1.4f)), horizontalArrangement = Arrangement.spacedBy(r(0.6f)), verticalArrangement = Arrangement.spacedBy(r(0.6f))) {
+                        if (seasons.size > 1) seasons.forEach { s -> Pill(s.title.ifEmpty { "Season ${s.n}" }, s === cur, onFocus = { season = s.n }) { season = s.n } }
+                        Btn(if (seen) "$sname watched" else "Mark ${sname.lowercase()} as watched", if (seen) R.drawable.lc_eye_off else R.drawable.lc_check) {
+                            season = cur.n // stay on this season after it's reloaded
+                            scope.launch { try { Korie.watched(cur.episodes.map { it.id }, !seen) } catch (e: Exception) { Ui.toast(e.message ?: "") }; reload() }
                         }
                     }
                     Column(Modifier.widthIn(max = r(64)).padding(top = r(1)), verticalArrangement = Arrangement.spacedBy(r(0.5f))) {
                         cur.episodes.forEach { e ->
-                            Episode(e, Modifier.focusRequester(epReqs.getOrPut(e.id) { FocusRequester() })) { me.focused = e.id; nav.push("player", mapOf("id" to e.id, "mode" to "resume", "title" to d.title)) }
+                            Episode(e, Modifier.focusRequester(epReqs.getOrPut(e.id) { FocusRequester() }), onLong = {
+                                // hold OK: what can be done with it without playing it
+                                season = cur.n
+                                scope.launch {
+                                    val v = Ui.menu("${e.n}. ${e.title}", listOfNotNull(
+                                        Choice(if (e.progress > 0 && !e.watched) "Resume" else "Play", "play", R.drawable.lc_play),
+                                        if (e.progress > 0 && !e.watched) Choice("Play from the start", "start", R.drawable.lc_rotate_ccw) else null,
+                                        Choice(if (e.watched) "Mark as not watched" else "Mark as watched", "seen", if (e.watched) R.drawable.lc_eye_off else R.drawable.lc_check),
+                                        Choice("Mark everything up to here as watched", "upto", R.drawable.lc_check),
+                                    )) ?: return@launch
+                                    when (v) {
+                                        "play", "start" -> { me.focused = e.id; nav.push("player", mapOf("id" to e.id, "mode" to if (v == "start") "start" else "resume", "title" to d.title)) }
+                                        "seen" -> { try { Korie.watched(e.id, !e.watched) } catch (x: Exception) { Ui.toast(x.message ?: "") }; reload() }
+                                        "upto" -> {
+                                            val upTo = all.takeWhile { it.id != e.id }.map { it.id } + e.id
+                                            try { Korie.watched(upTo, true) } catch (x: Exception) { Ui.toast(x.message ?: "") }; reload()
+                                        }
+                                    }
+                                }
+                            }) { me.focused = e.id; nav.push("player", mapOf("id" to e.id, "mode" to "resume", "title" to d.title)) }
                         }
                     }
                 }
@@ -186,10 +210,10 @@ fun Item(nav: Nav, me: Screen, who: Me) {
 
 /** .ep: an episode's picture, number, title and story; focused: panel with an accent ring. */
 @Composable
-fun Episode(e: Episode, modifier: Modifier = Modifier, onClick: () -> Unit) {
+fun Episode(e: Episode, modifier: Modifier = Modifier, onLong: (() -> Unit)? = null, onClick: () -> Unit) {
     val r = rem()
     val shape = RoundedCornerShape(r(0.7f))
-    Focusable(modifier.fillMaxWidth(), onClick = onClick) { f ->
+    Focusable(modifier.fillMaxWidth(), onClick = onClick, onLong = onLong) { f ->
         Row(
             Modifier.fillMaxWidth().then(if (f) Modifier.border(r(0.2f), C.accent, shape) else Modifier).clip(shape).background(if (f) C.panel else Color(0x99102033)).padding(r(0.55f)),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(r(1.1f)),
@@ -201,7 +225,7 @@ fun Episode(e: Episode, modifier: Modifier = Modifier, onClick: () -> Unit) {
                 }
             }
             Column(Modifier.weight(1f)) {
-                Text("Episode ${e.n}${if (e.runtime > 0) " · " + fmtRuntime(e.runtime) else ""}${if (e.watched) " · Watched" else ""}", style = body(0.9f, C.dim))
+                Text("Episode ${e.n}${if (e.runtime > 0) " · " + fmtRuntime(e.runtime) else ""}${if (e.watched) " · Watched ✓" else ""}${if (f && onLong != null) " · Hold OK for more" else ""}", style = body(0.9f, if (e.watched) C.accent else C.dim))
                 Text(e.title, style = body(1.1f, C.ink, FontWeight.SemiBold))
                 if (e.overview.isNotEmpty()) Text(e.overview, style = body(0.92f, C.soft), maxLines = 2, overflow = TextOverflow.Ellipsis)
             }

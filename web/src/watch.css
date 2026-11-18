@@ -211,7 +211,8 @@ button, input, select { font: inherit; color: inherit; }
 .item-overview { color: var(--body); max-width: 46em; margin: .3em 0; font-size: 1.05em; }
 @media (max-width: 700px) { .item-top { flex-direction: column; align-items: flex-start; padding-top: clamp(30px, 14vh, 160px); } .item-poster { width: 46vw; } }
 .seasons { margin-bottom: 2.4em; }
-.seasons .chips { margin-bottom: 1.2em; }
+.season-bar { display: flex; gap: .8em 1.2em; align-items: center; justify-content: space-between; flex-wrap: wrap; margin-bottom: 1.2em; }
+.episode > .btn.round.small { align-self: center; }
 .episodes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: .4em; }
 .episode { display: flex; gap: clamp(12px, 1.6vw, 28px); align-items: flex-start; padding: .7em; border-radius: var(--radius); }
 .episode:hover { background: rgba(255, 255, 255, .04); }
@@ -321,3 +322,6 @@ button, input, select { font: inherit; color: inherit; }
 .icon.huge svg { width: 2em; height: 2em; }
 .osd-top .icon svg, .osd-row .icon svg { width: 1.45em; height: 1.45em; }
 .item.plain .item-top { padding-top: clamp(16px, 5vh, 70px); align-items: flex-start; }
+.btn.small { padding: .45em .95em; min-height: 0; font-size: .92em; gap: .45em; }
+.btn.small.on { color: var(--accent); border-color: var(--accent); }
+.btn.round.small { width: 2.5em; height: 2.5em; padding: 0; font-size: 1em; }

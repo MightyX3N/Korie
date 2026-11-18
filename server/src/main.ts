@@ -21,7 +21,7 @@ import * as browse from "./addons/browse.ts";
 import * as store from "./addons/store.ts";
 import * as playback from "./playback.ts";
 import { img, picture, valid } from "./images.ts";
-import { subscribe } from "./events.ts";
+import { emit, subscribe } from "./events.ts";
 import { serverId } from "./ident.ts";
 import { startDiscovery } from "./discovery.ts";
 import * as jellyfin from "./jellyfin.ts";
@@ -521,7 +521,10 @@ app.post("/api/progress", async (req: Req) => {
 
 app.post("/api/watched", async (req: Req) => {
   const p = who(req);
-  views.setWatched(p, String(body(req).id ?? ""), body(req).watched === true);
+  // one thing, or several (a season's episodes)
+  const ids = Array.isArray(body(req).ids) ? (body(req).ids as unknown[]).map(String).slice(0, 2000) : [String(body(req).id ?? "")];
+  for (const id of ids) if (id) views.setWatched(p, id, body(req).watched === true);
+  emit("library");
   return { ok: true };
 });
 

@@ -46,7 +46,7 @@ export function ItemPage({ id, me, ep }: { id: string; me: Me; ep?: string }) {
   if (it.seasons?.length) {
     // the episode it was opened at, or one half watched, comes first
     for (const s of it.seasons) {
-      const e = s.episodes.find((x) => (ep ? x.id === ep : x.position > 0 && !x.watched));
+      const e = s.episodes.find((x) => !x.watched && (ep ? x.id === ep : x.position > 0));
       if (e && !next) next = { id: e.id, label: `${e.position > 0 ? "Resume" : "Play"} S${s.n} E${e.n}` };
     }
     for (const s of next ? [] : it.seasons) {
@@ -61,6 +61,14 @@ export function ItemPage({ id, me, ep }: { id: string; me: Me; ep?: string }) {
 
   const toggleFav = async () => {
     await ui.attempt("Couldn't change it", () => api("/api/favourite", { id: it.id }));
+    reload();
+  };
+  // the season shown: all of it watched or not, and marking episodes (several at once)
+  const sel = it.seasons?.[season];
+  const seasonSeen = !!sel && sel.episodes.length > 0 && sel.episodes.every((e) => e.watched);
+  const seasonName = sel ? sel.title || (sel.n === 0 ? "Specials" : `Season ${sel.n}`) : "";
+  const seenAll = async (ids: string[], watched: boolean) => {
+    await ui.attempt("Couldn't change it", () => api("/api/watched", { ids, watched }));
     reload();
   };
   const toggleSeen = async () => {
@@ -116,11 +124,18 @@ export function ItemPage({ id, me, ep }: { id: string; me: Me; ep?: string }) {
 
       {it.seasons && it.seasons.length > 0 && (
         <section className="seasons">
-          {it.seasons.length > 1 && (
-            <div className="chips" role="tablist">
-              {it.seasons.map((s, i) => <button key={s.n} role="tab" aria-selected={i === season} className={`chip${i === season ? " on" : ""}`} onClick={() => setSeason(i)}>{s.title || `Season ${s.n}`}</button>)}
-            </div>
-          )}
+          <div className="season-bar">
+            {it.seasons.length > 1 && (
+              <div className="chips" role="tablist">
+                {it.seasons.map((s, i) => <button key={s.n} role="tab" aria-selected={i === season} className={`chip${i === season ? " on" : ""}`} onClick={() => setSeason(i)}>{s.title || `Season ${s.n}`}</button>)}
+              </div>
+            )}
+            {sel && sel.episodes.length > 0 && (
+              <button className={`btn small${seasonSeen ? " on" : ""}`} onClick={() => void seenAll(sel.episodes.map((e) => e.id), !seasonSeen)}>
+                <Check size={16} />{seasonSeen ? `${seasonName} watched` : `Mark ${seasonName.toLowerCase()} as watched`}
+              </button>
+            )}
+          </div>
           <ol className="episodes">
             {it.seasons[season]?.episodes.map((e) => (
               <li key={e.id} id={`ep-${e.id}`} className={`episode${e.id === ep ? " here" : ""}`}>
@@ -134,6 +149,10 @@ export function ItemPage({ id, me, ep }: { id: string; me: Me; ep?: string }) {
                   <p className="soft small">{minutes(e.runtime)}</p>
                   {e.overview && <p className="episode-overview">{e.overview}</p>}
                 </div>
+                <button className={`btn round small${e.watched ? " on" : ""}`} aria-pressed={e.watched} title={e.watched ? "Watched (click: not watched)" : "Mark as watched"}
+                  aria-label={e.watched ? `Episode ${e.n} watched` : `Mark episode ${e.n} as watched`} onClick={() => void seenAll([e.id], !e.watched)}>
+                  <Check size={16} />
+                </button>
                 <button className="card-more static" aria-label={`Options for ${e.title}`} onClick={() => void cardMenu({ id: e.id, kind: "episode", title: e.title, subtitle: "", year: "", poster: "", thumb: e.thumb, backdrop: "", progress: e.progress, watched: e.watched, source: "", local: it.local }, reload)}>
                   <MoreHorizontal size={18} />
                 </button>

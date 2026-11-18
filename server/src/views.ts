@@ -99,12 +99,31 @@ export function rowCard(person: Person, r: lib.Row): Card {
   } else if (r.kind === "album") {
     subtitle = [d.artist, r.year].filter(Boolean).join(" · ");
   } else if (r.kind === "episode") {
+    // an episode on a row (Continue watching, Next up) says what series it is: the series is the title
     const s = lib.getRow(r.parent ?? "");
-    subtitle = `${s?.title ?? ""} · S${d.season}E${d.episode}`;
+    if (s?.title) {
+      subtitle = epLabel(d.season, d.episode, r.title);
+      return { ...rowCardBase(person, r, subtitle, watched), title: s.title };
+    }
+    subtitle = epLabel(d.season, d.episode, "");
   } else if (r.kind === "track") {
     const al = lib.getRow(r.parent ?? "");
     subtitle = [d.artist || (al ? lib.data(al).artist : ""), al?.title].filter(Boolean).join(" · ");
   }
+  return rowCardBase(person, r, subtitle, watched);
+}
+
+/** "S1 E3 · Who's Your Daddy?" */
+function epLabel(season: unknown, episode: unknown, title: string): string {
+  const sn = Number(season), en = Number(episode);
+  const at = en ? (sn || sn === 0 ? `S${sn} E${en}` : `E${en}`) : "";
+  return [at, title].filter(Boolean).join(" · ");
+}
+
+function rowCardBase(person: Person, r: lib.Row, subtitle: string, watched: boolean): Card {
+  const d = lib.data(r);
+  const pics = lib.pictures(r);
+  const p = progressOf(person.id, r.id);
   return {
     id: r.id, kind: r.kind, title: r.title, subtitle, year: r.year, poster: pics.poster, thumb: pics.thumb, backdrop: pics.backdrop, progress: frac(p), watched, source: "",
     overview: d.overview ?? d.nfo?.plot ?? "", genres: d.genres ?? d.nfo?.genres ?? [], rating: d.rating ?? d.nfo?.rating ?? 0,
@@ -126,6 +145,10 @@ export function addonCard(person: Person, a: browse.AItem): Card {
     cast: (a.cast ?? []).slice(0, 10).map((c) => ({ name: c.name, role: c.role, photo: img(c.photo) })),
     position: p && !p.watched ? p.position : 0, duration: p?.duration ?? 0, favourite: isFavourite(person, a.id), local: false,
     ...(a.kind === "episode" && a.series ? { series: a.series } : {}),
+    // an episode says what series it is: the series is the title, the episode under it
+    ...(a.kind === "episode" && (browse.get(a.series ?? "")?.title || a.seriesTitle)
+      ? { title: (browse.get(a.series ?? "")?.title || a.seriesTitle)!, subtitle: epLabel(a.season, a.episode, a.title) }
+      : {}),
   };
 }
 
@@ -194,6 +217,9 @@ export function setWatched(person: Person, id: string, watched: boolean): void {
   const ids = [id];
   const r = lib.getRow(id);
   if (r?.kind === "series") ids.push(...lib.rows("episode", id).map((e) => e.id));
+  // an add-on's series: its episodes too (the ones known)
+  const a = r ? null : browse.get(id);
+  if (a?.kind === "series") for (const sn of a.seasons ?? []) ids.push(...sn.episodes.map((e) => e.id));
   for (const x of ids) {
     db.prepare(`INSERT INTO progress(person, item, position, duration, watched, updated, snapshot) VALUES(?, ?, 0, 0, ?, ?, ?)
       ON CONFLICT(person, item) DO UPDATE SET position = 0, watched = excluded.watched, updated = excluded.updated`).run(person.id, x, watched ? 1 : 0, now(), snapshotOf(x));

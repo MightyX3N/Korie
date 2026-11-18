@@ -28,6 +28,8 @@ export interface AItem {
   runtime: number; overview: string; poster: string; backdrop: string; thumb: string; genres: string[];
   rating: number; director: string; cast: { name: string; role: string; photo: string }[]; data: unknown;
   seasons?: ASeason[]; series?: string;
+  /** an episode: its series' name (from the add-on when the series itself isn't known yet), season and number */
+  seriesTitle?: string; season?: number; episode?: number;
   /** its age rating, when the add-on gives one ("DK 11", "PG-13", or just an age) */
   cert?: string; age?: number | null;
 }
@@ -132,8 +134,18 @@ export function item(aid: string, raw: unknown): AItem | null {
     it.cert = cert || ages.label(age);
   }
   if (kind === "episode" && r.series) it.series = `${aid}/${s(r.series, 500)}`;
+  if (kind === "episode") {
+    if (s(r.series_title, 300)) it.seriesTitle = s(r.series_title, 300);
+    if (n(r.season)) it.season = n(r.season);
+    if (n(r.episode) || n(r.n)) it.episode = n(r.episode) || n(r.n);
+  }
   const old = items.get(it.id);
   if (old?.seasons && !it.seasons) it.seasons = old.seasons; // keep what's known already
+  if (old && kind === "episode") {
+    it.seriesTitle ??= old.seriesTitle;
+    it.season ??= old.season;
+    it.episode ??= old.episode;
+  }
   items.set(it.id, it);
   return it;
 }
