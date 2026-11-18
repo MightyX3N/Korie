@@ -193,10 +193,11 @@ button, input, select { font: inherit; color: inherit; }
 
 /* --- a film's page ---------------------------------------------------------------------------- */
 .item { position: relative; padding: calc(var(--u) * 2.2) var(--pad) 0; min-height: 100vh; }
-.item-back { position: absolute; inset: 0 0 auto 0; height: min(78vh, 900px); background-size: cover; background-position: center top; z-index: 0; }
+.item-back { position: absolute; inset: 0 0 auto 0; height: min(72vh, 56vw, 820px); background-size: cover; background-position: center 20%; z-index: 0; }
 .item-back::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(10, 20, 32, .35), var(--ground) 92%), linear-gradient(90deg, rgba(10, 20, 32, .92) 0%, rgba(10, 20, 32, .3) 75%); }
-.item > * { position: relative; z-index: 1; }
-.item-top { display: flex; gap: clamp(18px, 3vw, 56px); align-items: flex-start; padding-top: clamp(20px, 8vh, 120px); margin-bottom: 2.4em; }
+.item > :not(.item-back) { position: relative; z-index: 1; }
+.item-top { display: flex; gap: clamp(18px, 3vw, 56px); align-items: flex-end; padding-top: clamp(40px, 22vh, 300px); margin-bottom: 2.4em; }
+.episode.here { outline: 2px solid var(--accent); outline-offset: 6px; border-radius: var(--radius); }
 .item-poster { width: clamp(140px, 17vw, 330px); aspect-ratio: 2 / 3; object-fit: cover; border-radius: var(--radius); box-shadow: 0 16px 50px rgba(0, 0, 0, .6); flex: none; }
 .item-poster.square { aspect-ratio: 1; }
 .item-info { max-width: 52em; display: flex; flex-direction: column; gap: .6em; min-width: 0; }
@@ -208,7 +209,7 @@ button, input, select { font: inherit; color: inherit; }
 .item-artist { font-size: 1.3em; color: var(--body); margin: 0; }
 .item-buttons { display: flex; gap: .7em; flex-wrap: wrap; margin: .8em 0; align-items: center; }
 .item-overview { color: var(--body); max-width: 46em; margin: .3em 0; font-size: 1.05em; }
-@media (max-width: 700px) { .item-top { flex-direction: column; } .item-poster { width: 46vw; } }
+@media (max-width: 700px) { .item-top { flex-direction: column; align-items: flex-start; padding-top: clamp(30px, 14vh, 160px); } .item-poster { width: 46vw; } }
 .seasons { margin-bottom: 2.4em; }
 .seasons .chips { margin-bottom: 1.2em; }
 .episodes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: .4em; }
@@ -319,3 +320,4 @@ button, input, select { font: inherit; color: inherit; }
 .icon.big svg { width: 1.5em; height: 1.5em; }
 .icon.huge svg { width: 2em; height: 2em; }
 .osd-top .icon svg, .osd-row .icon svg { width: 1.45em; height: 1.45em; }
+.item.plain .item-top { padding-top: clamp(16px, 5vh, 70px); align-items: flex-start; }

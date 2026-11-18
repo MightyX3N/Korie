@@ -345,6 +345,8 @@ app.get("/api/item", async (req: Req) => {
     return views.playlistDetails(p, pl);
   }
   let a = browse.get(id);
+  // an add-on's series known only by an episode pointing at it (Continue watching): ask the add-on
+  if (!a && !lib.getRow(id) && req.query.series === "1") a = browse.seriesById(id);
   if (a && a.kind === "series" && !a.seasons) {
     try {
       a = await browse.open(id, p.id);

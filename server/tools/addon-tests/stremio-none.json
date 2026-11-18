@@ -11,7 +11,9 @@
   }
  ],
  "ctx": {
-  "house": {}
+  "house": {
+   "addons": []
+  }
  },
  "answers": [],
  "expect": {

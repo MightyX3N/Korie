@@ -50,7 +50,7 @@ export function Watch({ me, route, signOut, refresh }: { me: Me; route: Route; s
     case "games": page = <Games />; break;
     case "search": page = <Search route={route} />; break;
     case "page": page = <AddonPage id={route.parts[1] ?? ""} />; break;
-    case "item": page = <ItemPage id={route.parts[1] ?? ""} me={me} />; break;
+    case "item": page = <ItemPage id={route.parts[1] ?? ""} me={me} ep={route.query.get("ep") ?? undefined} />; break;
     case "nowplaying": page = <NowPlaying />; break;
     case "you": page = <You me={me} refresh={refresh} signOut={signOut} />; break;
     default: page = <div className="page"><h1>Not found</h1><p className="soft">There's no page here.</p></div>;

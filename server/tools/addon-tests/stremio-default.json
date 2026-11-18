@@ -1,0 +1,16 @@
+{
+ "call": "browse",
+ "ctx": {
+  "house": {}
+ },
+ "answers": [
+  {
+   "match": "v3-cinemeta\\.strem\\.io/catalog/",
+   "live": true
+  }
+ ],
+ "expect": {
+  "films.0.id": "cat|https://v3-cinemeta.strem.io|movie|top",
+  "series.0.title": "Popular"
+ }
+}

@@ -22,6 +22,8 @@ export function cardPath(c: Card): string {
   if (c.kind === "artist") return `/music?artist=${encodeURIComponent(c.title)}`;
   if (c.kind === "genre") return `/music?genre=${encodeURIComponent(c.title)}`;
   if (c.kind === "playlist") return itemPath(c.id);
+  // an episode (Continue watching, Next up) opens its series, at that episode
+  if (c.kind === "episode" && c.series) return `${itemPath(c.series)}?ep=${encodeURIComponent(c.id)}`;
   return itemPath(c.id);
 }
 

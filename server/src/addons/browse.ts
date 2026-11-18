@@ -594,6 +594,16 @@ export function search(q: string, allowed: (aid: string) => boolean, pid?: strin
 
 // --- a series' seasons -----------------------------------------------------------------
 
+/** A series known only by its id (an episode from DR's Continue watching names its series): the
+ *  add-on is asked for it when it's opened. */
+export function seriesById(id: string): AItem | null {
+  const at = id.indexOf("/");
+  if (at <= 0) return items.get(id) ?? null;
+  const src = id.slice(0, at);
+  if (!addons.manifests.get(aidOf(src)) || !addons.enabledIds().includes(aidOf(src))) return null;
+  return items.get(id) ?? item(src, { id: id.slice(at + 1), kind: "series", title: "" });
+}
+
 export async function open(id: string, pid?: string | null): Promise<AItem> {
   const it = items.get(id);
   if (!it) throw new Error("This isn't known any more. Go back and open it again.");
@@ -604,6 +614,8 @@ export async function open(id: string, pid?: string | null): Promise<AItem> {
     const v = k === "poster" || k === "backdrop" ? url(res?.[k]) : s(res?.[k]);
     if (v && !it[k]) (it as any)[k] = v;
   }
+  if (s(res?.title) && (!it.title || it.title === "Untitled")) it.title = s(res.title, 300);
+  if (!it.thumb) it.thumb = it.backdrop || it.poster;
   if (!it.genres.length) it.genres = list(res?.genres).map((g) => s(g, 60)).filter(Boolean);
   it.seasons = list(res?.seasons).map((sn: any, i) => ({
     n: n(sn?.n) || (sn?.n === 0 ? 0 : i + 1),

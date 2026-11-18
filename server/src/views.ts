@@ -17,6 +17,8 @@ export interface Card {
   cast?: { name: string; role: string; photo: string }[]; position?: number; duration?: number;
   // for a client's options menu: in this person's favourites; in the library (so its details can be fixed)
   favourite?: boolean; local?: boolean;
+  /** an episode: its series (what a client opens from Continue watching) */
+  series?: string;
   // a song: its length in seconds, its album, and its number on the album
   length?: number; album?: string; n?: number;
   /** a film that's a disc folder or image: "dvd", "bluray" or "iso" */
@@ -111,6 +113,7 @@ export function rowCard(person: Person, r: lib.Row): Card {
     ...(d.cert ? { cert: String(d.cert) } : {}),
     ...(r.kind === "track" ? { length: Number(d.duration) || 0, album: r.parent ?? "", n: Number(d.track) || 0 } : {}),
     ...(r.kind !== "track" && typeof d.disc === "string" ? { disc: d.disc } : {}),
+    ...(r.kind === "episode" && r.parent ? { series: r.parent } : {}),
   };
 }
 
@@ -122,6 +125,7 @@ export function addonCard(person: Person, a: browse.AItem): Card {
     overview: a.overview ?? "", genres: a.genres ?? [], rating: a.rating ?? 0, runtime: a.runtime ?? 0, director: a.director ?? "",
     cast: (a.cast ?? []).slice(0, 10).map((c) => ({ name: c.name, role: c.role, photo: img(c.photo) })),
     position: p && !p.watched ? p.position : 0, duration: p?.duration ?? 0, favourite: isFavourite(person, a.id), local: false,
+    ...(a.kind === "episode" && a.series ? { series: a.series } : {}),
   };
 }
 

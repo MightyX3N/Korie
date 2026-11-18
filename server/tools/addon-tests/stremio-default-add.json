@@ -1,0 +1,20 @@
+{
+ "call": "add_house_addon",
+ "args": [
+  "https://opensubtitles-v3.strem.io/manifest.json"
+ ],
+ "ctx": {
+  "house": {}
+ },
+ "answers": [
+  {
+   "match": "opensubtitles",
+   "live": true
+  }
+ ],
+ "expect": {
+  "ok": true,
+  "save.addons.0.name": "Cinemeta",
+  "save.addons.1.name": "OpenSubtitles v3"
+ }
+}

@@ -21,15 +21,17 @@ function minutes(m: number): string {
   return h ? `${h} h ${Math.round(m % 60)} min` : `${Math.round(m)} min`;
 }
 
-export function ItemPage({ id, me }: { id: string; me: Me }) {
-  const { data: it, error, reload } = useData(() => api<Item>(`/api/item?id=${encodeURIComponent(id)}`), [id], ["library", "browse", "playlists"]);
+export function ItemPage({ id, me, ep }: { id: string; me: Me; ep?: string }) {
+  const { data: it, error, reload } = useData(() => api<Item>(`/api/item?id=${encodeURIComponent(id)}${ep ? "&series=1" : ""}`), [id], ["library", "browse", "playlists"]);
   const [season, setSeason] = useState(0);
   useEffect(() => {
     if (!it?.seasons?.length) return;
-    // the season with the next episode to watch
-    const at = it.seasons.findIndex((s) => s.episodes.some((e) => !e.watched));
-    setSeason(at >= 0 ? at : 0);
-  }, [it?.id]);
+    // the season of the episode it was opened at (Continue watching), or with the next episode to watch
+    const at = ep ? it.seasons.findIndex((s) => s.episodes.some((e) => e.id === ep)) : -1;
+    const next = it.seasons.findIndex((s) => s.episodes.some((e) => !e.watched));
+    setSeason(at >= 0 ? at : next >= 0 ? next : 0);
+    if (ep) window.setTimeout(() => document.getElementById(`ep-${ep}`)?.scrollIntoView({ block: "center" }), 50);
+  }, [it?.id, ep]);
 
   if (error) return <div className="page"><Status error={error} /><button className="btn" onClick={() => back()}>Back</button></div>;
   if (!it) return <div className="page"><Loading /></div>;
@@ -42,7 +44,12 @@ export function ItemPage({ id, me }: { id: string; me: Me }) {
   // a series: the next episode to watch
   let next: { id: string; label: string } | null = null;
   if (it.seasons?.length) {
+    // the episode it was opened at, or one half watched, comes first
     for (const s of it.seasons) {
+      const e = s.episodes.find((x) => (ep ? x.id === ep : x.position > 0 && !x.watched));
+      if (e && !next) next = { id: e.id, label: `${e.position > 0 ? "Resume" : "Play"} S${s.n} E${e.n}` };
+    }
+    for (const s of next ? [] : it.seasons) {
       const e = s.episodes.find((x) => !x.watched);
       if (e) {
         next = { id: e.id, label: `${e.position > 0 ? "Resume" : "Play"} S${s.n} E${e.n}` };
@@ -62,7 +69,7 @@ export function ItemPage({ id, me }: { id: string; me: Me }) {
   };
 
   return (
-    <div className="item">
+    <div className={`item${it.backdrop ? "" : " plain"}`}>
       {it.backdrop && <div className="item-back" style={{ backgroundImage: `url(${pic(it.backdrop, 1600)})` }} />}
       <div className="item-top">
         {(it.poster || it.thumb) && <img className={`item-poster${isMusic ? " square" : ""}`} src={pic(it.poster || it.thumb, 400)} alt="" />}
@@ -116,7 +123,7 @@ export function ItemPage({ id, me }: { id: string; me: Me }) {
           )}
           <ol className="episodes">
             {it.seasons[season]?.episodes.map((e) => (
-              <li key={e.id} className="episode">
+              <li key={e.id} id={`ep-${e.id}`} className={`episode${e.id === ep ? " here" : ""}`}>
                 <button className="episode-pic" onClick={() => play(e.id)} aria-label={`Play episode ${e.n}`}>
                   {e.thumb ? <img src={pic(e.thumb, 360)} alt="" loading="lazy" /> : <i className="episode-none">{e.n}</i>}
                   <i className="episode-play"><Play size={22} fill="currentColor" /></i>

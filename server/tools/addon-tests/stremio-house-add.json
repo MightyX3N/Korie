@@ -4,7 +4,9 @@
   "stremio://v3-cinemeta.strem.io/manifest.json"
  ],
  "ctx": {
-  "house": {}
+  "house": {
+   "addons": []
+  }
  },
  "answers": [
   {
