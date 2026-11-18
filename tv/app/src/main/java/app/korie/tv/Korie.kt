@@ -53,7 +53,7 @@ data class Me(val person: MePerson, val games: Boolean = false, val server: Serv
 data class Source(val id: String, val name: String)
 
 @Serializable
-data class Section(val sources: List<Source> = emptyList(), val source: String = "", val items: List<Card>? = null, val rows: List<Row>? = null, val status: String = "")
+data class Section(val sources: List<Source> = emptyList(), val source: String = "", val items: List<Card>? = null, val rows: List<Row>? = null, val status: String = "", val count: Int? = null)
 
 @Serializable
 data class Card(
@@ -76,6 +76,10 @@ data class Card(
     val length: Double = 0.0,
     val n: Int = 0,
     val cert: String = "",
+    /** a category opened from Films or Series: only that kind in it */
+    val only: String = "",
+    /** an episode: its series */
+    val series: String = "",
 )
 
 @Serializable
@@ -193,6 +197,9 @@ object Korie {
 
     /** What changed on Korie ("library", "browse", "search", …), from its event stream (api.ts connectEvents). */
     val changes = kotlinx.coroutines.flow.MutableSharedFlow<List<String>>(extraBufferCapacity = 16)
+
+    /** The TV's Home button was pressed with Korie as the home screen. */
+    val goHome = kotlinx.coroutines.flow.MutableSharedFlow<Unit>(extraBufferCapacity = 1)
 
     /** Listens to /api/events while signed in, and again after the connection drops. */
     suspend fun listen() = withContext(Dispatchers.IO) {
@@ -333,7 +340,7 @@ object Korie {
 
     suspend fun home(): Rows = get("/api/home")
     suspend fun live(): Rows = get("/api/live")
-    suspend fun page(id: String): PageRows = get("/api/page?id=" + enc(id))
+    suspend fun page(id: String, only: String = ""): PageRows = get("/api/page?id=" + enc(id) + if (only.isNotEmpty()) "&only=$only" else "")
     suspend fun item(id: String): Item = get("/api/item?id=" + enc(id))
     suspend fun search(q: String): Found = get("/api/search?q=" + enc(q))
 

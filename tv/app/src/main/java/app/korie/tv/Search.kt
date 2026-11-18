@@ -121,9 +121,10 @@ fun SearchScreen(nav: Nav, me: Screen) {
                     (SEARCH_KEYS + listOf("Space", "Delete", "Clear")).let { keys ->
                         val lines = keys.take(SEARCH_KEYS.size).chunked(6) + listOf(keys.drop(SEARCH_KEYS.size))
                         lines.forEach { line ->
-                            Row(horizontalArrangement = Arrangement.spacedBy(r(0.3f))) {
+                            // each row of keys its own height: a key fills its cell, not the screen
+                            Row(Modifier.fillMaxWidth().height(r(3.1f)), horizontalArrangement = Arrangement.spacedBy(r(0.3f))) {
                                 line.forEach { k ->
-                                    Key(k, Modifier.weight(if (k.length > 1) 2f else 1f).then(if (k == SEARCH_KEYS.first()) Modifier.focusRequester(firstKey) else Modifier), size = 1.15f, padV = 0.95f) {
+                                    Key(k, Modifier.weight(if (k.length > 1) 2f else 1f).fillMaxSize().then(if (k == SEARCH_KEYS.first()) Modifier.focusRequester(firstKey) else Modifier), size = 1.15f, padV = 0f) {
                                         when (k) { "Space" -> q += " "; "Delete" -> q = q.dropLast(1); "Clear" -> q = ""; else -> q += k }
                                     }
                                 }

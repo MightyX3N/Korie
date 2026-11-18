@@ -19,6 +19,8 @@ export interface Card {
   favourite?: boolean; local?: boolean;
   /** an episode: its series (what a client opens from Continue watching) */
   series?: string;
+  /** a category opened from Films or Series: only that kind in it */
+  only?: "film" | "series";
   // a song: its length in seconds, its album, and its number on the album
   length?: number; album?: string; n?: number;
   /** a film that's a disc folder or image: "dvd", "bluray" or "iso" */

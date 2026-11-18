@@ -17,7 +17,7 @@ export function shapeOf(kind: string): Shape {
 
 /** Where a card goes: a page of an add-on opens its rows, a channel or a game starts at once. */
 export function cardPath(c: Card): string {
-  if (c.kind === "page") return `/page/${encodeURIComponent(c.id)}`;
+  if (c.kind === "page") return `/page/${encodeURIComponent(c.id)}${c.only ? `?only=${c.only}` : ""}`;
   if (c.kind === "live" || c.kind === "game") return `/play/${encodeURIComponent(c.id)}`;
   if (c.kind === "artist") return `/music?artist=${encodeURIComponent(c.title)}`;
   if (c.kind === "genre") return `/music?genre=${encodeURIComponent(c.title)}`;

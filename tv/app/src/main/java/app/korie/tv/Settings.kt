@@ -458,6 +458,10 @@ private fun ThisDevice(nav: Nav, who: Me, signOut: () -> Unit, reqs: MutableMap<
             nav.replace(if (auto != null) mapOf("tab" to "people", "id" to auto.id) else mapOf("tab" to "people"))
         }) { Sel(auto?.name ?: "Nobody: asks who's watching", it) }
         SRow("dev-server", "Change server", "Look for Korie servers again, or type an address", reqs = reqs, onClick = { Korie.forgetServer(ctx) })
+        SRow("dev-android", "Android settings", "The TV's own settings: network, display, sound, apps", "android system settings", reqs = reqs, onClick = {
+            try { ctx.startActivity(android.content.Intent(android.provider.Settings.ACTION_SETTINGS).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (e: Exception) { Ui.toast(e.message ?: "") }
+        })
+        SRow("dev-home", if (isHomeApp(ctx)) "Korie is the home screen" else "Make Korie the home screen", if (isHomeApp(ctx)) "The Home button opens Korie. Change it in the TV's settings." else "The Home button opens Korie instead of the TV's own home screen", "launcher home app", reqs = reqs, onClick = { askToBeHome(ctx) })
     }
 }
 

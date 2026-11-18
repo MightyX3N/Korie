@@ -861,7 +861,7 @@ async function addonMediaSource(a: browse.AItem, body: Record<string, any>, pid?
     throw new JfError(502, `The add-on couldn't start "${a.title}": ${e instanceof Error ? e.message : e}`);
   }
   if (ans.web || !ans.url) throw new JfError(400, `"${a.title}" plays in a web browser, which Jellyfin's apps can't open.`);
-  const src: playback.Source = { url: ans.url, headers: ans.headers, live: ans.live };
+  const src: playback.Source = await playback.oneQuality({ url: ans.url, headers: ans.headers, live: ans.live });
   const probe = await playback.probe(src).catch(() => null);
   const id = jid(a.id);
   // a stream with several qualities (HLS from DRTV and most services) lists one picture per

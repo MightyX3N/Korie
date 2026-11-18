@@ -74,6 +74,12 @@ class MainActivity : ComponentActivity() {
         Music.init(this)
         setContent { Look { App() } }
     }
+
+    // the Home button, with Korie as the home screen: back to Korie's Home
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        if (intent.hasCategory(android.content.Intent.CATEGORY_HOME)) Korie.goHome.tryEmit(Unit)
+    }
 }
 
 @Composable
@@ -145,6 +151,12 @@ fun Signed(me: Me, refresh: () -> Unit, signOut: () -> Unit) {
     // Back: down the stack; on a section's first screen, to Home; on Home, out of the app
     BackHandler(enabled = !Ui.busy && (nav.stack.size > 1 || nav.stack[0].name != "home")) {
         if (!nav.back()) { nav.go("home"); scope.launch { delay(150); try { railFocus["home"]?.requestFocus() } catch (_: Exception) {} } }
+    }
+    // Korie as the home screen: Back on Home stays (there's nothing under it), Home goes to Home
+    val ctx = LocalContext.current
+    BackHandler(enabled = !Ui.busy && nav.stack.size == 1 && nav.stack[0].name == "home" && isHomeApp(ctx)) { }
+    LaunchedEffect(Unit) {
+        Korie.goHome.collect { nav.go("home"); delay(150); try { railFocus["home"]?.requestFocus() } catch (_: Exception) {} }
     }
     val top = nav.top
     val section = nav.stack[0].name
@@ -221,7 +233,7 @@ fun Signed(me: Me, refresh: () -> Unit, signOut: () -> Unit) {
 @Composable
 fun ScreenFor(nav: Nav, s: Screen, me: Me, refresh: () -> Unit, signOut: () -> Unit) {
     when (s.name) {
-        "home" -> Home(nav, s)
+        "home" -> Home(nav, s, me)
         "films" -> Library(nav, s, "films", "Films")
         "series" -> Library(nav, s, "series", "Series")
         "music" -> MusicScreen(nav, s)

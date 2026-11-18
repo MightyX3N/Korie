@@ -112,6 +112,33 @@ async function partsList(parts: string[]): Promise<string> {
   return file;
 }
 
+/** A web address with several qualities in one (an HLS master playlist, DRTV's channels): the
+ *  address of the best one up to 1080p, so FFmpeg reads one plain stream with its own sound and
+ *  never has to choose between qualities (which FFmpeg versions do differently). A master whose
+ *  sound is a separate playlist stays as it is. */
+export async function oneQuality(src: Source): Promise<Source> {
+  if (!src.url || !/\.m3u8(\?|$)/i.test(src.url)) return src;
+  const r = await fetchText(src.url, { headers: src.headers, cache: src.live ? 0 : 600 }).catch(() => null);
+  const text = r?.ok ? r.text : "";
+  if (!text.includes("#EXT-X-STREAM-INF")) return src;
+  if (/#EXT-X-MEDIA:[^\n]*TYPE=AUDIO[^\n]*URI=/i.test(text)) return src;
+  const lines = text.split(/\r?\n/);
+  const variants: { url: string; height: number; bw: number }[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    if (!lines[i].startsWith("#EXT-X-STREAM-INF")) continue;
+    const uri = lines.slice(i + 1).find((l) => l.trim() && !l.startsWith("#"));
+    if (!uri) continue;
+    const res = lines[i].match(/RESOLUTION=(\d+)x(\d+)/i);
+    const bw = lines[i].match(/[^-]BANDWIDTH=(\d+)/i) ?? lines[i].match(/BANDWIDTH=(\d+)/i);
+    variants.push({ url: new URL(uri.trim(), src.url).toString(), height: res ? Number(res[2]) : 0, bw: bw ? Number(bw[1]) : 0 });
+  }
+  if (!variants.length) return src;
+  const fit = variants.filter((v) => !v.height || v.height <= 1080);
+  const pool = fit.length ? fit : variants;
+  const best = pool.reduce((b, v) => (v.height > b.height || (v.height === b.height && v.bw > b.bw) ? v : b));
+  return { ...src, url: best.url };
+}
+
 export async function probe(src: Source): Promise<Probe> {
   const key = JSON.stringify(src) + (src.file ? ":" + safeMtime(src.file) : "");
   const hit = probes.get(key);
@@ -389,7 +416,15 @@ export async function stream(src: Source, start: number, q: { audio?: string; bu
   // AAC from an MPEG-TS source (live TV, HLS, .ts recordings) has ADTS headers that MP4 can't hold:
   // without this FFmpeg stops at the first sound packet (DRTV's channels played for a split second)
   const acodec = (audio !== null ? p0?.streams.find((s) => s.index === audio) : p0?.streams.find((s) => s.type === "audio"))?.codec;
-  if (q.a === "copy" && (acodec === "aac" || (!p0 && src.url))) args.splice(args.indexOf("-c:a") + 2, 0, "-bsf:a", "aac_adtstoasc");
+  // AAC from a web stream (HLS, MPEG-TS: DRTV's channels) has ADTS headers: copied into MP4 that's
+  // started before the first sound packet, the MP4's header has no AAC setup, which Android's player
+  // refuses ("couldn't make a stream") and some browsers play without sound. Encoding the sound
+  // again gives a complete header from the start (it costs little: the picture is still copied).
+  const ts = /mpegts|hls|applehttp/.test(p0?.container ?? "") || (!p0 && !!src.url);
+  if (q.a === "copy" && ts && (acodec === "aac" || !p0)) {
+    const i = args.indexOf("-c:a");
+    args.splice(i, 2, "-c:a", "aac", "-b:a", "192k", "-ac", "2");
+  } else if (q.a === "copy" && (acodec === "aac" || (!p0 && src.url))) args.splice(args.indexOf("-c:a") + 2, 0, "-bsf:a", "aac_adtstoasc");
   const ff = spawn(FFMPEG, args, { stdio: ["ignore", "pipe", "pipe"] });
   // closed by the player (it went away): not a problem with the stream
   let closed = false;

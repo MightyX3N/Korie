@@ -12,7 +12,7 @@ export interface Me { person: Person; server: { name: string; version: string; i
 export interface Card {
   id: string; kind: string; title: string; subtitle: string; year: string; poster: string; thumb: string; backdrop: string;
   progress: number; watched: boolean; source: string; overview?: string; genres?: string[]; rating?: number; runtime?: number;
-  favourite?: boolean; local?: boolean; series?: string; length?: number; album?: string; n?: number; cert?: string; playlist?: string;
+  favourite?: boolean; local?: boolean; series?: string; only?: "film" | "series"; length?: number; album?: string; n?: number; cert?: string; playlist?: string;
 }
 
 export interface Row { id: string; title: string; kind: string; items: Card[]; source?: string }

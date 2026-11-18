@@ -326,7 +326,7 @@ export function register(app: FastifyInstance): void {
       try {
         const ans = await browse.play(c.id, p.id);
         if (!ans.url) return { id: c.id, ok: false, error: "it gave no stream" };
-        const r = await playback.tryStream({ url: ans.url, headers: ans.headers, live: true });
+        const r = await playback.tryStream(await playback.oneQuality({ url: ans.url, headers: ans.headers, live: true }));
         if (!r.ok) log("stream", `${c.title} doesn't start: ${r.error}`);
         if (!r.ok && /403/.test(r.error)) return { id: c.id, ok: false, error: "said no (403): it only streams to its own country and thinks this server is outside it. A VPN on the server does that." };
         return { id: c.id, ...r };

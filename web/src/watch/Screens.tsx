@@ -24,14 +24,14 @@ export function Home() {
 }
 
 const SORTS: [string, string][] = [["added", "Newest"], ["title", "A–Z"], ["year", "Year"], ["rating", "Rating"]];
-const SHOWS: [string, string][] = [["all", "All"], ["unwatched", "Not watched"], ["progress", "Half watched"]];
+const SHOWS: [string, string][] = [["categories", "Categories"], ["all", "All"], ["unwatched", "Not watched"], ["progress", "Half watched"]];
 
 export function Library({ kind, route }: { kind: "films" | "series"; route: Route }) {
   const source = route.query.get("source") ?? "";
   const sort = route.query.get("sort") ?? "added";
-  const show = route.query.get("show") ?? "all";
+  const show = route.query.get("show") ?? "categories";
   const { data, error, reload } = useData(
-    () => api<{ sources: { id: string; name: string }[]; source: string; items?: Card[]; rows?: Row[]; status: string }>(`/api/${kind}?source=${encodeURIComponent(source)}&sort=${sort}&show=${show}`),
+    () => api<{ sources: { id: string; name: string }[]; source: string; items?: Card[]; rows?: Row[]; status: string; count?: number }>(`/api/${kind}?source=${encodeURIComponent(source)}&sort=${sort}&show=${show}`),
     [kind, source, sort, show], ["library", "browse", "progress"],
   );
   const set = (k: string, v: string) => {
@@ -59,17 +59,17 @@ export function Library({ kind, route }: { kind: "films" | "series"; route: Rout
       </header>
       {!source && (
         <div className="tools">
-          <label className="select"><span>Sort</span>
+          {show !== "categories" && <label className="select"><span>Sort</span>
             <select value={sort} onChange={(e) => set("sort", e.target.value === "added" ? "" : e.target.value)}>
               {SORTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
             </select>
-          </label>
+          </label>}
           <label className="select"><span>Show</span>
-            <select value={show} onChange={(e) => set("show", e.target.value === "all" ? "" : e.target.value)}>
+            <select value={show} onChange={(e) => set("show", e.target.value === "categories" ? "" : e.target.value)}>
               {SHOWS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
             </select>
           </label>
-          {data?.items && <span className="soft count">{data.items.length} {data.items.length === 1 ? (kind === "films" ? "film" : "series") : kind}</span>}
+          {(data?.items || data?.count !== undefined) && <span className="soft count">{data.items?.length ?? data.count} {(data.items?.length ?? data.count) === 1 ? (kind === "films" ? "film" : "series") : kind}</span>}
         </div>
       )}
       <Status error={error} text={data?.status} />
@@ -95,8 +95,8 @@ function RowsPage({ title, path, topics }: { title: string; path: string; topics
 export const Live = () => <RowsPage title="Live TV" path="/api/live" topics={["browse"]} />;
 export const Games = () => <RowsPage title="Games" path="/api/games" topics={["browse", "addons"]} />;
 
-export function AddonPage({ id }: { id: string }) {
-  const { data, error, reload } = useData(() => api<{ title: string; rows: Row[]; status: string }>(`/api/page?id=${encodeURIComponent(id)}`), [id], ["browse"]);
+export function AddonPage({ id, only }: { id: string; only?: string }) {
+  const { data, error, reload } = useData(() => api<{ title: string; rows: Row[]; status: string }>(`/api/page?id=${encodeURIComponent(id)}${only ? `&only=${only}` : ""}`), [id, only], ["browse"]);
   return (
     <div className="page">
       <header className="page-head"><h1>{data?.title ?? ""}</h1></header>

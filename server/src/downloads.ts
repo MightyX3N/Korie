@@ -261,7 +261,7 @@ async function run(d: Download): Promise<string> {
   const part = path.join(dir, base + ".part.mkv");
 
   // which picture and sound: one quality (the best up to 1080p) and its own sound tracks
-  const src: playback.Source = { url: ans.url, headers: ans.headers };
+  const src: playback.Source = await playback.oneQuality({ url: ans.url, headers: ans.headers });
   const p = await playback.probe(src).catch(() => null);
   const maps: string[] = [];
   if (p?.streams.length) {

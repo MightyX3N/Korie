@@ -104,7 +104,7 @@ class Opener(private val nav: Nav, private val scope: CoroutineScope, private va
     fun open(c: Card) {
         when (c.kind) {
             "film", "series", "album", "game" -> nav.push("item", mapOf("id" to c.id))
-            "page" -> nav.push("page", mapOf("id" to c.id, "title" to c.title))
+            "page" -> nav.push("page", mapOf("id" to c.id, "title" to c.title, "only" to c.only))
             "track" -> {
                 val album = c.album
                 if (!album.isNullOrEmpty()) scope.launch { Music.playList(album, c.id); nav.push("nowplaying") }
@@ -496,14 +496,6 @@ fun Face(name: String, color: Color?, lock: Boolean = false, add: Boolean = fals
 
 // --- Home ------------------------------------------------------------------------------------
 
-@Composable
-fun Home(nav: Nav, me: Screen) {
-    val (data, error) = useData("home", listOf("library", "browse", "status")) { Korie.home() }
-    val opener = rememberOpener(nav, me)
-    val empty = data != null && data.rows.isEmpty()
-    RowsPage(me, { Top("Home", date = true) }, data?.rows, error.ifEmpty { if (empty) "Nothing here yet. Add folders with films, series or music in Settings → Libraries, or get add-ons in the Store." else null }, opener)
-}
-
 // --- Live TV, Games, an add-on's page (Rows.tsx) ---------------------------------------------
 
 @Composable
@@ -532,7 +524,8 @@ fun BackLink(nav: Nav, modifier: Modifier = Modifier, label: String = "Back") {
 @Composable
 fun AddonPage(nav: Nav, me: Screen) {
     val id = me.params["id"] ?: ""
-    val (data, error) = useData(id) { Korie.page(id) }
+    val only = me.params["only"] ?: ""
+    val (data, error) = useData("$id|$only") { Korie.page(id, only) }
     val opener = rememberOpener(nav, me)
     val first = remember { FocusRequester() }
     RowsPage(me, {
@@ -545,7 +538,7 @@ fun AddonPage(nav: Nav, me: Screen) {
 // --- Films and Series (Library.tsx) ----------------------------------------------------------
 
 private val SORTS = listOf("added" to "Recently added", "title" to "A–Z", "year" to "Newest first", "rating" to "Best rated")
-private val SHOWS = listOf("all" to "All", "unwatched" to "Unwatched", "progress" to "In progress")
+private val SHOWS = listOf("categories" to "Categories", "all" to "All", "unwatched" to "Unwatched", "progress" to "In progress")
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -554,7 +547,7 @@ fun Library(nav: Nav, me: Screen, kind: String, title: String) {
     val scope = rememberCoroutineScope()
     val source = me.params["source"] ?: ""
     val sort = me.params["sort"] ?: "added"
-    val show = me.params["show"] ?: "all"
+    val show = me.params["show"] ?: "categories"
     val (data, _) = useData("$kind|$source|$sort|$show", listOf("library", "browse")) { Korie.section(kind, source, sort, show) }
     val opener = rememberOpener(nav, me)
     // the sources stay while another one loads, so the pill that was picked keeps the focus
@@ -572,7 +565,7 @@ fun Library(nav: Nav, me: Screen, kind: String, title: String) {
             if (source.isEmpty()) {
                 Spacer(Modifier.width(r(1)))
                 SHOWS.forEach { (id, label) -> Pill(label, id == show, modifier = req("show:$id")) { pick("show:$id", mapOf("show" to id)) } }
-                Pill(SORTS.first { it.first == sort }.second, false, icon = R.drawable.lc_arrow_down_up, modifier = req("sort")) {
+                if (show != "categories") Pill(SORTS.first { it.first == sort }.second, false, icon = R.drawable.lc_arrow_down_up, modifier = req("sort")) {
                     me.focused = "sort"
                     scope.launch {
                         val v = Ui.menu("Sort by", SORTS.map { (id, label) -> Choice((if (id == sort) "✓ " else "") + label, id) })
@@ -582,7 +575,7 @@ fun Library(nav: Nav, me: Screen, kind: String, title: String) {
             }
         }
     }
-    val count = if (items != null) "${items.size} $kind" else null
+    val count = if (items != null) "${items.size} $kind" else data?.count?.let { "$it $kind" }
     val bottom = if (Music.current != null) 7f else 5f
     Box(Modifier.fillMaxSize()) {
     if (items != null) {

@@ -221,8 +221,36 @@ function sectionView(req: Req, sec: "films" | "series", kind: "film" | "series")
   };
   if (src) {
     const s = browse.section(sec, allowed(p), p.id).find((x) => x.addon === src);
-    out.rows = (s?.rows ?? []).map((r) => ({ id: r.id, title: r.title, kind: rowKind(r.items), items: r.items.filter((a) => views.mayItem(p, a)).map((a) => views.addonCard(p, a)) }));
+    // a category opened from here shows only this kind
+    const only = kind;
+    out.rows = (s?.rows ?? []).map((r) => ({ id: r.id, title: r.title, kind: rowKind(r.items), items: r.items.filter((a) => views.mayItem(p, a)).map((a) => ({ ...views.addonCard(p, a), ...(a.kind === "page" ? { only } : {}) })) }));
     out.status = s ? (s.rows.length ? "" : s.loading ? `Loading ${s.name}…` : s.error || `${s.name} has nothing here.`) : "This add-on isn't on.";
+  } else if ((req.query.show ?? "categories") === "categories") {
+    // your own films or series in rows: newest, then one per category (genre), the biggest first
+    const all = (lib.rows(kind) as lib.Row[]).filter((r) => views.may(p, r));
+    const newest = [...all].sort(sorter("added")).slice(0, 24);
+    const by = new Map<string, lib.Row[]>();
+    for (const r of all) for (const g of (lib.data(r).genres ?? lib.data(r).nfo?.genres ?? []) as string[]) {
+      if (!g) continue;
+      const l = by.get(g) ?? [];
+      l.push(r);
+      by.set(g, l);
+    }
+    const genres = [...by.entries()].filter(([, l]) => l.length >= 2 || by.size < 4).sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]));
+    const card = (r: lib.Row) => views.rowCard(p, r);
+    const rows = [
+      ...(newest.length ? [{ id: "newest", title: "Recently added", kind: "poster", items: newest.map(card) }] : []),
+      ...genres.map(([g, l]) => ({ id: "g:" + g, title: g, kind: "poster", items: [...l].sort(sorter("added")).map(card) })),
+    ];
+    // ones in no category at all
+    const placed = new Set(genres.flatMap(([, l]) => l.map((r) => r.id)));
+    const rest = all.filter((r) => !placed.has(r.id));
+    if (rest.length && genres.length) rows.push({ id: "other", title: "Other", kind: "poster", items: [...rest].sort(sorter("title")).map(card) });
+    out.rows = rows;
+    out.count = all.length;
+    out.status = all.length ? "" : lib.folders().some((f) => f.kind === sec)
+      ? (lib.status.scanning ? "Looking through your folders…" : `No ${sec} found in your ${sec} folders yet.`)
+      : `No ${sec} yet. Add a folder with ${sec} in Settings → Libraries.`;
   } else {
     out.items = grid(req, kind);
     const shown = req.query.show ?? "all";
@@ -334,7 +362,14 @@ app.get("/api/games", async (req) => {
 app.get("/api/page", async (req: Req) => {
   const p = who(req);
   const pg = await browse.page(req.query.id ?? "", p.id);
-  return { title: pg.title, rows: pg.rows.map((r) => ({ id: r.id, title: r.title, kind: rowKind(r.items), items: r.items.filter((a) => views.mayItem(p, a)).map((a) => views.addonCard(p, a)) })), status: pg.rows.length ? "" : pg.error || "Nothing here." };
+  // opened from Films or Series: only that kind (and the categories inside it)
+  const only = req.query.only === "film" || req.query.only === "series" ? req.query.only : "";
+  const rows = pg.rows.map((r) => ({ ...r, items: r.items.filter((a) => views.mayItem(p, a) && (!only || a.kind === only || a.kind === "page")) })).filter((r) => r.items.length);
+  return {
+    title: pg.title,
+    rows: rows.map((r) => ({ id: r.id, title: r.title, kind: rowKind(r.items), items: r.items.map((a) => ({ ...views.addonCard(p, a), ...(only && a.kind === "page" ? { only } : {}) })) })),
+    status: rows.length ? "" : pg.rows.length && only ? `No ${only === "film" ? "films" : "series"} here.` : pg.error || "Nothing here.",
+  };
 });
 
 app.get("/api/item", async (req: Req) => {
@@ -430,7 +465,7 @@ app.post("/api/play", async (req: Req) => {
       throw new HttpError(502, `${addons.manifests.get(browse.aidOf(a.source))?.name ?? a.source} couldn't start "${a.title}": ${e instanceof Error ? e.message : e}.`);
     }
     if (ans.web) return { web: ans.web, title };
-    src = { url: ans.url!, headers: ans.headers, live: ans.live };
+    src = await playback.oneQuality({ url: ans.url!, headers: ans.headers, live: ans.live });
     extra = ans.subtitles;
     if (a.kind === "episode" && a.series) {
       const s = browse.get(a.series);

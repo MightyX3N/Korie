@@ -10,23 +10,33 @@
     <queries>
         <intent><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LEANBACK_LAUNCHER" /></intent>
         <intent><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent>
+        <!-- which app the Home button opens (Settings, This device) -->
+        <intent><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.HOME" /></intent>
     </queries>
 
     <application
         android:label="Korie"
-        android:icon="@drawable/banner"
-        android:banner="@drawable/banner"
+        android:icon="@mipmap/ic_launcher"
+        android:banner="@drawable/banner_art"
         android:usesCleartextTraffic="true"
         android:theme="@style/Korie">
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:screenOrientation="landscape"
+            android:launchMode="singleTask"
+            android:stateNotNeeded="true"
             android:configChanges="keyboard|keyboardHidden|navigation|screenSize|screenLayout|smallestScreenSize|orientation|uiMode">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+            </intent-filter>
+            <!-- Korie can be the TV's home screen (the launcher) -->
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.HOME" />
+                <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
         <activity android:name=".WebActivity" android:exported="false" android:configChanges="orientation|screenSize|keyboard|keyboardHidden|navigation" android:theme="@android:style/Theme.NoTitleBar.Fullscreen" />
