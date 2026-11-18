@@ -173,6 +173,11 @@ function Editor({ p, all, me, saved }: { p: Person; all: All; me: Me; saved: () 
             <option value="">None: the TVs ask Who's watching</option>
             {all.devices.map((d) => <option key={d.id} value={d.id}>{d.name} (seen {ago(d.seen * 1000)})</option>)}
           </select>
+          {v.autoDevice && p.hasPin && (
+            <div className="adm-checks">
+              <Check label={`Ask for ${name || p.name}'s PIN each time that TV starts or wakes up`} on={v.autoPin} flip={() => set("autoPin", !v.autoPin)} />
+            </div>
+          )}
         </div>
       )}
 

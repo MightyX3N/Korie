@@ -506,6 +506,17 @@ fun RowsScreen(nav: Nav, me: Screen, title: String, topics: List<String> = empty
     RowsPage(me, { Top(title) }, data?.rows, error.ifEmpty { data?.status ?: "" }, opener)
 }
 
+/** Live TV: the channels as rows; with channels from the library, a Guide button at the top. */
+@Composable
+fun LiveScreen(nav: Nav, me: Screen) {
+    val (data, error) = useData(me.name, listOf("browse", "channels")) { Korie.live() }
+    val opener = rememberOpener(nav, me)
+    val hasChannels = data?.rows?.any { it.id == "channels" } == true
+    RowsPage(me, {
+        Top("Live TV") { if (hasChannels) Btn("Guide", R.drawable.lc_layout_grid) { nav.push("guide") } }
+    }, data?.rows, error.ifEmpty { data?.status ?: "" }, opener)
+}
+
 @Composable
 fun BackLink(nav: Nav, modifier: Modifier = Modifier, label: String = "Back") {
     val r = rem()

@@ -8,7 +8,7 @@ import { WEB_DIR, PORT, VERSION, log } from "./config.ts";
 import * as adminPages from "./admin.ts";
 import * as watching from "./watching.ts";
 import * as downloads from "./downloads.ts";
-import { setting, setSetting, DEFAULTS } from "./db.ts";
+import { setting, setSetting, DEFAULTS, now } from "./db.ts";
 import * as people from "./people.ts";
 import * as lib from "./library.ts";
 import * as tmdb from "./tmdb.ts";
@@ -26,6 +26,7 @@ import { emit, subscribe } from "./events.ts";
 import { serverId } from "./ident.ts";
 import { startDiscovery } from "./discovery.ts";
 import * as jellyfin from "./jellyfin.ts";
+import * as channels from "./channels.ts";
 
 const app = Fastify({ logger: false, bodyLimit: 1024 * 1024, routerOptions: { maxParamLength: 8192 }, rewriteUrl: (req) => jellyfin.rewrite(req.url ?? "/") });
 
@@ -115,7 +116,42 @@ app.post("/api/auto", async (req: Req) => {
   people.noteDevice(deviceId, device);
   const p = typeof deviceId === "string" ? people.autoFor(deviceId) : null;
   if (!p) return { token: null };
+  // their PIN first, when the device asks for it at start
+  if (p.hasPin && p.autoPin) return { token: null, needPin: true, person: { id: p.id, name: p.name, color: p.color, hasPin: true, admin: p.admin } };
+  // already signed in as them: that session goes on
+  const h = req.headers.authorization ?? "";
+  if (h.startsWith("Bearer ") && people.fromToken(h.slice(7))?.id === p.id) return { token: h.slice(7), person: p };
   return { token: people.startSession(p.id, String(device ?? "")), person: p };
+});
+
+/** Who this device signs in as by itself, for Settings, This device (anyone signed in may look). */
+app.get("/api/device", async (req: Req) => {
+  who(req);
+  const id = String((req.query as Record<string, unknown>).deviceId ?? "");
+  const p = people.autoFor(id);
+  return { person: p ? { id: p.id, name: p.name, color: p.color, hasPin: p.hasPin, admin: p.admin } : null, autoPin: p ? p.autoPin : null };
+});
+
+/** Changes who this device signs in as by itself: anyone may set it to themselves (with their PIN)
+ *  or turn it off; only an admin may set it to someone else. */
+app.post("/api/device", async (req: Req) => {
+  const me = who(req);
+  const b = body(req);
+  const id = String(b.deviceId ?? "");
+  if (!people.device(id)) throw new HttpError(404, "Korie doesn't know this device yet.");
+  const now = people.autoFor(id);
+  const to = b.person === null ? null : b.person === undefined ? (now?.id ?? null) : String(b.person);
+  const target = to ? people.get(to) : null;
+  if (to && !target) throw new HttpError(404, "That person isn't here any more.");
+  const changing = (to ?? null) !== (now?.id ?? null);
+  if (changing && to && to !== me.id && !me.admin) throw new HttpError(403, "Only an admin can make this device start as someone else.");
+  // whose start-up PIN it is: theirs (or an admin's) to turn off
+  if (typeof b.autoPin === "boolean" && target && target.id !== me.id && !me.admin && b.autoPin === false) throw new HttpError(403, `Only ${target.name} or an admin can stop the PIN being asked.`);
+  if (target && target.id === me.id && !me.admin && me.hasPin && (changing || b.autoPin === false) && !people.checkPin(me.id, String(b.pin ?? ""))) throw new HttpError(403, "Wrong PIN.");
+  people.setAuto(id, to, typeof b.autoPin === "boolean" ? b.autoPin : undefined);
+  emit("people");
+  const p = people.autoFor(id);
+  return { person: p ? { id: p.id, name: p.name, color: p.color, hasPin: p.hasPin, admin: p.admin } : null, autoPin: p ? p.autoPin : null };
 });
 
 app.post("/api/logout", async (req) => {
@@ -348,6 +384,9 @@ app.get("/api/live", async (req) => {
   const p = who(req);
   const secs = browse.section("live", allowed(p), p.id);
   const rows = secs.filter((s) => s.rows.length).map((s) => ({ id: s.addon, title: s.name, kind: "wide", items: s.rows[0].items.filter((a) => views.mayItem(p, a)).map((a) => views.addonCard(p, a)) }));
+  // the channels made from the library come first
+  const own = channels.list().map((c) => channelCard(p, c)).filter((c): c is views.Card => !!c);
+  if (own.length) rows.unshift({ id: "channels", title: "Channels from your library", kind: "wide", items: own });
   return { rows, status: rows.length ? "" : secs.some((s) => s.loading) ? "Loading channels…" : "No channels yet. Add-ons with live TV (DRTV, Stremio TV add-ons) show their channels here. Get them in the Store." };
 });
 
@@ -420,9 +459,117 @@ app.get("/api/search", async (req: Req) => {
 
 // --- playing --------------------------------------------------------------------------------
 
+// --- channels made from the library (channels.ts) ---------------------------------------------
+
+/** A programme as the guide and the players show it; locked when it's above this person's age limit. */
+function programmeOf(p: people.Person, pr: channels.Programme) {
+  const r = lib.getRow(pr.item);
+  const top = r?.kind === "episode" ? lib.getRow(r.parent ?? "") : r;
+  const d = r ? lib.data(r) : {};
+  const locked = !!r && !views.may(p, r);
+  const pics = top ? lib.pictures(top) : { poster: "", backdrop: "", thumb: "" };
+  const own = r && r.kind === "episode" ? lib.pictures(r).thumb : "";
+  return {
+    id: pr.item, start: pr.start, end: pr.end, locked,
+    title: top?.title ?? "Not in the library any more",
+    subtitle: r?.kind === "episode" ? `S${d.season}E${d.episode}${r.title && r.title !== top?.title ? " · " + r.title : ""}` : (r?.year ?? ""),
+    // a locked programme's pictures aren't shown either
+    thumb: locked ? "" : own || pics.backdrop || pics.thumb || pics.poster, poster: locked ? "" : pics.poster,
+    overview: locked ? "" : String((top ? lib.data(top).overview : "") ?? ""),
+    cert: top ? String(lib.data(top).cert ?? "") : "",
+  };
+}
+
+function channelCard(p: people.Person, c: channels.Channel): views.Card | null {
+  const pr = channels.at(c.id);
+  if (!pr) return null;
+  const g = programmeOf(p, pr);
+  const t = now();
+  const hm = (x: number) => new Date(x * 1000).toTimeString().slice(0, 5);
+  return {
+    id: "chan:" + c.id, kind: "live", title: c.name,
+    subtitle: g.locked ? `Now: for older viewers · until ${hm(pr.end)}` : `Now: ${g.title} · until ${hm(pr.end)}`,
+    year: "", poster: g.poster, thumb: g.thumb, backdrop: g.thumb, progress: Math.min(1, Math.max(0, (t - pr.start) / (pr.end - pr.start))), watched: false, source: "Korie",
+  };
+}
+
+/** Unlocked programmes: a PIN given for one stays good until it ends (person:channel:start). */
+const unlocked = new Map<string, number>();
+
+/** Playing a channel: what's on now, from the point it's at. Above the person's age limit it's
+ *  covered until someone without that limit types their PIN. */
+async function playChannel(p: people.Person, id: string, b: Record<string, unknown>) {
+  const c = channels.get(id.slice(5));
+  if (!c || !c.enabled) throw new HttpError(404, "That channel isn't there any more.");
+  let pr = channels.at(c.id);
+  if (!pr) {
+    await channels.ensure();
+    pr = channels.at(c.id);
+  }
+  if (!pr) throw new HttpError(404, `Nothing is on ${c.name} right now. An admin can make the schedules again (Admin, Libraries, TV channels).`);
+  const t = now();
+  const g = programmeOf(p, pr);
+  const next = channels.between(c.id, pr.end, pr.end + 1).map((x) => programmeOf(p, x))[0] ?? null;
+  const channel = { id: c.id, name: c.name, programme: g, next: next ? { title: next.locked ? "For older viewers" : next.title, start: next.start } : null };
+  const key = `${p.id}:${c.id}:${pr.start}`;
+  for (const [k, until] of unlocked) if (until < t) unlocked.delete(k);
+  if (g.locked && !unlocked.has(key)) {
+    const pin = b.pin != null ? String(b.pin) : "";
+    if (!pin) return { id, title: c.name, subtitle: "", channel, locked: true, mode: "stream", url: "", duration: 0, live: false, seekable: false, audio: [], audioIndex: null, subs: [], why: "", resume: 0, next: null, episode: null, intro: null };
+    // someone without that age limit, with a PIN, says it's alright
+    const r = lib.getRow(pr.item)!;
+    const ok = people.list().some((x) => x.hasPin && views.may(x, r) && people.checkPin(x.id, pin));
+    if (!ok) throw new HttpError(403, "That PIN can't unlock this. It has to be the PIN of someone who may watch it.");
+    unlocked.set(key, pr.end);
+  }
+  const r = lib.getRow(pr.item);
+  if (!r?.file) throw new HttpError(404, `"${g.title}" isn't in the library any more. ${next ? `Something else starts at ${new Date(next.start * 1000).toTimeString().slice(0, 5)}.` : ""}`);
+  const d = lib.data(r);
+  const caps = playback.parseCaps(String(b.caps ?? ""));
+  const audio = b.audio != null ? Number(b.audio) : null;
+  const burn = b.burn != null ? Number(b.burn) : null;
+  let pl: playback.Plan;
+  try {
+    pl = await playback.plan({ file: r.file }, caps, audio, burn, d.subs ?? [], [], { audio: p.audio, subs: p.subs });
+  } catch (e) {
+    throw new HttpError(422, e instanceof Error ? e.message : String(e));
+  }
+  return { ...pl, id, title: g.title, subtitle: `${c.name}${g.subtitle ? " · " + g.subtitle : ""}`, episode: null, resume: Math.max(0, t - pr.start), next: null, intro: null, channel, locked: false };
+}
+
+/** Admin: the channels made from the library, to turn on and off, and making the schedules again. */
+app.get("/api/admin/channels", async (req) => {
+  admin(req);
+  channels.sync();
+  return { channels: channels.list(true).map((c) => ({ ...c, now: channels.at(c.id) ? programmeOf(admin(req), channels.at(c.id)!).title : "" })), week: channels.weekStart() };
+});
+app.post("/api/admin/channels", async (req: Req) => {
+  admin(req);
+  const b = body(req);
+  if (typeof b.id === "string" && typeof b.enabled === "boolean") {
+    if (!channels.setEnabled(b.id, b.enabled)) throw new HttpError(404, "That channel isn't there any more.");
+    if (b.enabled) void channels.ensure();
+  }
+  if (b.redo === true) await channels.ensure(true);
+  return { ok: true };
+});
+
+/** The guide: every channel's programmes from `from` for `hours` hours (default: from an hour ago, a day ahead). */
+app.get("/api/guide", async (req: Req) => {
+  const p = who(req);
+  const q = req.query as Record<string, string>;
+  const from = Number(q.from) || now() - 3600;
+  const to = from + Math.min(7 * 24, Math.max(1, Number(q.hours) || 24)) * 3600;
+  return {
+    now: now(),
+    channels: channels.list().map((c) => ({ id: "chan:" + c.id, name: c.name, programmes: channels.between(c.id, from, to).map((x) => programmeOf(p, x)) })),
+  };
+});
+
 app.post("/api/play", async (req: Req) => {
   const p = who(req);
   const id = String(body(req).id ?? "");
+  if (id.startsWith("chan:")) return playChannel(p, id, body(req));
   const caps = playback.parseCaps(String(body(req).caps ?? ""));
   const audio = body(req).audio != null ? Number(body(req).audio) : null;
   const burn = body(req).burn != null ? Number(body(req).burn) : null;
@@ -547,6 +694,8 @@ app.post("/api/progress", async (req: Req) => {
   const { id, position, duration, ended, paused, stopped } = body(req);
   if (typeof id !== "string") throw new HttpError(400, "No id.");
   const tok = tokenOf(req);
+  // a channel from the library: nothing to come back to
+  if (id.startsWith("chan:")) return { ok: true };
   watching.note(tok, p, people.sessionDevice(tok), id, Number(position) || 0, Number(duration) || 0, paused === true, stopped === true || ended === true);
   browse.progress(id, p.id, Number(position) || 0, Number(duration) || 0, stopped === true || ended === true || paused === true);
   // a live channel has no place to come back to, and a song isn't continued
@@ -941,6 +1090,7 @@ browse.load();
 await app.listen({ port: PORT, host: "0.0.0.0" });
 log("korie", `Korie ${VERSION} on http://0.0.0.0:${PORT} (${tmdb.key() ? "TMDb on" : "no TMDb key"})`);
 startDiscovery();
+channels.start();
 browse.refreshAll();
 setInterval(() => browse.refreshAll(), 5 * 60 * 1000).unref();
 void store.refresh();

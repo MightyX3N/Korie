@@ -450,13 +450,40 @@ private fun AddonsList(nav: Nav, reqs: MutableMap<String, FocusRequester>) {
 @Composable
 private fun ThisDevice(nav: Nav, who: Me, signOut: () -> Unit, reqs: MutableMap<String, FocusRequester>) {
     val ctx = LocalContext.current
-    val (data, _) = useData(if (who.person.admin) "people-all" else null, listOf("people")) { if (who.person.admin) Korie.read<PeopleData>(Korie.api("/api/people/all")) else null }
-    val auto = data?.people?.firstOrNull { it.autoDevice == Korie.deviceId }
+    val scope = rememberCoroutineScope()
+    val (dev, _, reload) = useData("device-auto", listOf("people")) { Korie.deviceAuto() }
+    val auto = dev?.person
+    val me = who.person
+    /** Who this TV starts as: anyone may pick themselves (with their PIN) or nobody; an admin may pick anyone. */
+    fun pickAuto() = scope.launch {
+        val all = if (me.admin) try { Korie.people() } catch (_: Exception) { emptyList() } else emptyList()
+        val others = all.filter { it.id != me.id }
+        val v = Ui.menu("${Korie.deviceName} starts as", listOf(
+            Choice((if (auto == null) "✓ " else "") + "Nobody: asks who's watching", "@none"),
+            Choice((if (auto?.id == me.id) "✓ " else "") + "${me.name} (you)", me.id),
+        ) + others.map { Choice((if (auto?.id == it.id) "✓ " else "") + it.name, it.id) }) ?: return@launch
+        val to = if (v == "@none") null else v
+        if (to == auto?.id) return@launch
+        // your own PIN, to show it's you (an admin's sign-in is enough)
+        var pin: String? = null
+        if (to == me.id && !me.admin && me.hasPin) pin = Ui.pin("${me.name}'s PIN") ?: return@launch
+        try { Korie.setDeviceAuto(to, true, pin = pin); reload() } catch (e: Exception) { Ui.toast(e.message ?: "") }
+    }
+    fun flipPin() = scope.launch {
+        val a = auto ?: return@launch
+        val on = dev.autoPin != true
+        var pin: String? = null
+        if (!on && a.id == me.id && !me.admin) pin = Ui.pin("${me.name}'s PIN") ?: return@launch
+        try { Korie.setDeviceAuto(null, false, autoPin = on, pin = pin); reload() } catch (e: Exception) { Ui.toast(e.message ?: "") }
+    }
     Rows {
         SRow("dev-who", "Switch person", "Back to Who's watching", "profile sign out", reqs, signOut) { Val(who.person.name, it) }
-        if (who.person.admin) SRow("dev-auto", "Signs in by itself as", "${Korie.deviceName}: skip Who's watching and start as one person (set in People)", "automatic sign in", reqs, {
-            nav.replace(if (auto != null) mapOf("tab" to "people", "id" to auto.id) else mapOf("tab" to "people"))
-        }) { Sel(auto?.name ?: "Nobody: asks who's watching", it) }
+        SRow("dev-auto", "Starts as", "${Korie.deviceName} skips Who's watching and starts as one person. Anyone can pick themselves; only an admin can pick someone else.", "automatic sign in default person", reqs, { pickAuto() }) {
+            Sel(auto?.name ?: "Nobody: asks who's watching", it)
+        }
+        if (auto != null && auto.hasPin) SRow("dev-autopin", "Ask for the PIN at every start", "${auto.name}'s PIN each time Korie starts, and when the TV wakes up", "pin code kids lock", reqs, { flipPin() }) { f ->
+            Tick(dev.autoPin == true, f)
+        }
         SRow("dev-server", "Change server", "Look for Korie servers again, or type an address", reqs = reqs, onClick = { Korie.forgetServer(ctx) })
         SRow("dev-android", "Android settings", "The TV's own settings: network, display, sound, apps", "android system settings", reqs = reqs, onClick = {
             try { ctx.startActivity(android.content.Intent(android.provider.Settings.ACTION_SETTINGS).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (e: Exception) { Ui.toast(e.message ?: "") }

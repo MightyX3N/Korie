@@ -6,6 +6,7 @@ import { api, caps } from "../api";
 import { back, go, itemPath } from "../router";
 import type { Plan } from "../types";
 import { music } from "./music";
+import { ui } from "../ui";
 import { time } from "./ItemPage";
 
 interface Cue { start: number; end: number; text: string }
@@ -57,7 +58,8 @@ export function Player({ id }: { id: string }) {
   const duration = plan?.duration || (video.current && Number.isFinite(video.current.duration) ? video.current.duration + offset : 0);
 
   const report = useCallback((stopped = false, ended = false) => {
-    if (!plan) return;
+    // a channel from the library has nothing to come back to
+    if (!plan || plan.channel) return;
     lastReport.current = Date.now();
     const pos = offset + (video.current?.currentTime ?? 0);
     void api("/api/progress", { id: plan.id, position: pos, duration: plan.duration || pos, paused: video.current?.paused ?? false, stopped, ended }).catch(() => {});
@@ -87,12 +89,12 @@ export function Player({ id }: { id: string }) {
     v.play().catch(() => setPaused(true));
   }, []);
 
-  const load = useCallback(async (opts: { audio?: number | null; burn?: number | null; at?: number; forceStream?: boolean } = {}) => {
+  const load = useCallback(async (opts: { audio?: number | null; burn?: number | null; at?: number; forceStream?: boolean; pin?: string; nextProgramme?: boolean } = {}) => {
     setWaiting(true);
     setProblem("");
     let p: Plan;
     try {
-      p = await api<Plan>("/api/play", { id, caps: opts.forceStream ? "v:h264;a:aac;c:none" : caps(), audio: opts.audio ?? null, burn: opts.burn ?? null });
+      p = await api<Plan>("/api/play", { id, caps: opts.forceStream ? "v:h264;a:aac;c:none" : caps(), audio: opts.audio ?? null, burn: opts.burn ?? null, ...(opts.pin ? { pin: opts.pin } : {}) });
     } catch (e) {
       setWaiting(false);
       setProblem(e instanceof Error ? e.message : String(e));
@@ -105,9 +107,18 @@ export function Player({ id }: { id: string }) {
       return;
     }
     setPlan(p);
+    // a programme above this person's age limit: covered until someone types their PIN
+    if (p.locked) {
+      const v = video.current;
+      if (v) { v.removeAttribute("src"); v.load(); }
+      setWaiting(false);
+      return;
+    }
     const def = p.subs.find((s) => s.isDefault && !s.burn);
     if (opts.at === undefined && def) setSubId(def.id);
-    await start(p, opts.at ?? (fromStart ? 0 : p.resume));
+    // a channel is always where it's at now
+    // (the next programme after one ended: from its start when it's only just begun, so nothing is missed)
+    await start(p, p.channel ? (opts.nextProgramme && p.resume < 20 ? 0 : p.resume) : opts.at ?? (fromStart ? 0 : p.resume));
   }, [id, start]);
 
   useEffect(() => {
@@ -145,7 +156,7 @@ export function Player({ id }: { id: string }) {
   useEffect(() => { poke(); }, [poke]);
 
   const seekTo = useCallback((t: number) => {
-    if (!plan || plan.live) return;
+    if (!plan || plan.live || plan.channel) return;
     t = Math.max(0, Math.min(t, (duration || t) - 1));
     const v = video.current!;
     if (plan.mode === "direct") v.currentTime = t;
@@ -175,7 +186,7 @@ export function Player({ id }: { id: string }) {
 
   const leave = useCallback(() => {
     if (document.fullscreenElement) void document.exitFullscreen();
-    back(plan?.live ? "/live" : itemPath(id));
+    back(plan?.live || plan?.channel ? "/live" : itemPath(id));
   }, [plan, id]);
 
   const playNext = useCallback(() => {
@@ -241,6 +252,11 @@ export function Player({ id }: { id: string }) {
 
   const onEnded = () => {
     if (!plan) return;
+    // a channel: the next programme
+    if (plan.channel) {
+      void load({ nextProgramme: true });
+      return;
+    }
     if (plan.live) {
       void failed("ended");
       return;
@@ -254,6 +270,21 @@ export function Player({ id }: { id: string }) {
     if (plan.next) playNext();
     else leave();
   };
+
+  // covered: when the programme ends, see whether the next one is alright
+  const lockedUntil = plan?.locked ? plan.channel?.programme.end ?? 0 : 0;
+  useEffect(() => {
+    if (!lockedUntil) return;
+    const t = window.setTimeout(() => void load(), Math.max(1000, lockedUntil * 1000 - Date.now() + 800));
+    return () => clearTimeout(t);
+  }, [lockedUntil, load]);
+  // a wrong PIN shows as a problem; Try again covers it again
+  const unlock = async () => {
+    const pin = await ui.pin("A PIN to watch this", "The PIN of someone who may watch it.");
+    if (pin !== null) await load({ pin });
+  };
+  const chan = plan?.channel;
+  const hm = (t: number) => new Date(t * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
   const cue = cues.find((c) => now >= c.start && now <= c.end + 0.05);
   const left = duration ? Math.min(1, now / duration) : 0;
@@ -288,6 +319,17 @@ export function Player({ id }: { id: string }) {
       {(waiting && !problem) && <div className="spinner" aria-label="Loading" />}
       {reconnecting > 0 && !problem && <div className="note">Connecting again ({reconnecting} of {RETRIES})…</div>}
 
+      {plan?.locked && chan && !problem && (
+        <div className="problem locked" role="alert">
+          <h2>{chan.name}: for older viewers</h2>
+          <p>What's on now until {hm(chan.programme.end)} is above your age limit.{chan.next ? ` Next at ${hm(chan.next.start)}: ${chan.next.title}.` : ""}</p>
+          <div className="buttons center">
+            <button className="btn" onClick={leave}>Back</button>
+            <button className="btn primary" autoFocus onClick={() => void unlock()}>Type a PIN</button>
+          </div>
+        </div>
+      )}
+
       {problem && (
         <div className="problem" role="alert">
           <h2>Couldn't play this</h2>
@@ -305,14 +347,20 @@ export function Player({ id }: { id: string }) {
           <strong>{plan?.title ?? ""}</strong>
           {plan?.subtitle && <span>{plan.subtitle}</span>}
         </div>
-        {plan?.live && <span className="live-tag">LIVE</span>}
+        {(plan?.live || chan) && <span className="live-tag">LIVE</span>}
       </div>
 
       {inIntro && !plan?.intro?.auto && <button className="btn skip" onClick={() => seekTo(plan!.intro!.end)}>Skip intro</button>}
       {nearEnd && <button className="btn skip" onClick={playNext}><SkipForward size={18} />Next episode</button>}
 
-      <div className="osd-bottom" onClick={(e) => e.stopPropagation()}>
-        {plan && !plan.live && (
+      {!plan?.locked && <div className="osd-bottom" onClick={(e) => e.stopPropagation()}>
+        {chan && !plan?.locked && (
+          <div className="chan-now">
+            <div className="seek-track"><i style={{ width: `${Math.min(100, Math.max(0, ((Date.now() / 1000 - chan.programme.start) / (chan.programme.end - chan.programme.start)) * 100))}%` }} /></div>
+            <span className="osd-time">{chan.name} · until {hm(chan.programme.end)}{chan.next ? ` · Next: ${chan.next.title} at ${hm(chan.next.start)}` : ""}</span>
+          </div>
+        )}
+        {plan && !plan.live && !chan && (
           <div
             className="seek"
             onMouseMove={(e) => {
@@ -331,7 +379,7 @@ export function Player({ id }: { id: string }) {
         )}
         <div className="osd-row">
           <button className="icon" onClick={toggle} aria-label={paused ? "Play" : "Pause"}>{paused ? <Play size={26} fill="currentColor" /> : <Pause size={26} fill="currentColor" />}</button>
-          {plan && !plan.live && <span className="osd-time">{time(now)} / {time(duration)}</span>}
+          {plan && !plan.live && !chan && <span className="osd-time">{time(now)} / {time(duration)}</span>}
           <span className="grow" />
           <button className="icon" onClick={() => { const v = video.current!; v.muted = !v.muted; setMuted(v.muted); }} aria-label={muted ? "Sound on" : "Mute"}>{muted ? <VolumeX size={22} /> : <Volume2 size={22} />}</button>
           {plan && plan.audio.length > 1 && <button className={`icon${panel === "audio" ? " on" : ""}`} onClick={() => setPanel(panel === "audio" ? "" : "audio")} aria-label="Sound track"><AudioLines size={22} /></button>}
@@ -357,7 +405,7 @@ export function Player({ id }: { id: string }) {
             )}
           </div>
         )}
-      </div>
+      </div>}
     </div>
   );
 }

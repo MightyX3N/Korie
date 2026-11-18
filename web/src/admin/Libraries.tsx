@@ -5,6 +5,7 @@ import { api } from "../api";
 import { go } from "../router";
 import { ui, useData } from "../ui";
 import { DownloadsPart } from "./Downloads";
+import { ChannelsPart } from "./Channels";
 import { Dot, GOOD, BUSY, BAD, ago } from "./Admin";
 
 interface Folder { id: number; path: string; kind: "films" | "series" | "music"; scanned: number; error: string; counts: Record<string, number> }
@@ -86,6 +87,7 @@ export function Libraries() {
       {!!data?.missing && <p className="adm-soft">Getting posters and descriptions: {data.missing} films and series still to do. Everything is already watchable.</p>}
 
       <DownloadsPart />
+      <ChannelsPart />
 
       {!!removed.data?.items.length && (
         <section className="adm-card adm-list">

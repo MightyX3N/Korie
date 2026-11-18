@@ -31,6 +31,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -134,7 +135,8 @@ fun Player(nav: Nav, me: Screen) {
 
     fun save(ended: Boolean = false) {
         val p = plan ?: return
-        if (p.live) return
+        // live, and a channel from the library: nothing to come back to
+        if (p.live || p.channel != null) return
         val position = time()
         if (!ended && position < 5) return
         val dur = if (p.duration > 0) p.duration else position
@@ -163,11 +165,13 @@ fun Player(nav: Nav, me: Screen) {
         exo.playWhenReady = true
     }
 
-    suspend fun load(audio: Int? = null, burn: Int? = null, at: Double? = null, forceStream: Boolean = false) {
+    suspend fun load(audio: Int? = null, burn: Int? = null, at: Double? = null, forceStream: Boolean = false, pin: String? = null, nextProgramme: Boolean = false) {
         waiting = true
         val p = try {
-            Korie.play(id, audio, burn, forceStream)
+            Korie.play(id, audio, burn, forceStream, pin)
         } catch (e: Exception) {
+            // a PIN that can't unlock it: the programme stays covered
+            if (pin != null) { waiting = false; Ui.message("That PIN can't unlock this", e.message ?: ""); return }
             Ui.message("Couldn't play this", e.message ?: "")
             nav.back()
             return
@@ -179,7 +183,11 @@ fun Player(nav: Nav, me: Screen) {
             return
         }
         plan = p
-        val start = at ?: if (mode == "resume" && p.resume > 30) p.resume else 0.0
+        // above this person's age limit: covered until someone types their PIN
+        if (p.locked) { exo.stop(); exo.clearMediaItems(); waiting = false; return }
+        // a channel is where it's at now (the next programme from its start, when it's only just begun)
+        val start = if (p.channel != null) (if (nextProgramme && p.resume < 20) 0.0 else p.resume)
+            else at ?: if (mode == "resume" && p.resume > 30) p.resume else 0.0
         if (audio == null && burn == null) subId = p.subs.firstOrNull { it.isDefault && !it.burn }?.id
         start(p, start)
     }
@@ -206,7 +214,7 @@ fun Player(nav: Nav, me: Screen) {
 
     fun seekTo(t: Double, after: Boolean = false) {
         val p = plan ?: return
-        if (p.live) return
+        if (p.live || p.channel != null) return
         val target = maxOf(0.0, minOf(t, (if (p.duration > 0) p.duration else Double.MAX_VALUE) - 2))
         if (p.mode == "direct") exo.seekTo((target * 1000).toLong()) else scope.launch { start(p, target, after) }
         now = target
@@ -247,7 +255,11 @@ fun Player(nav: Nav, me: Screen) {
             override fun onIsPlayingChanged(isPlaying: Boolean) { paused = !isPlaying && exo.playbackState == Player.STATE_READY && !exo.playWhenReady; if (!isPlaying) poke() }
             override fun onPlaybackStateChanged(state: Int) {
                 waiting = state == Player.STATE_BUFFERING || state == Player.STATE_IDLE
-                if (state == Player.STATE_ENDED) { save(true); if (!next()) nav.back() }
+                if (state == Player.STATE_ENDED) {
+                    // a channel: the next programme
+                    if (plan?.channel != null) { scope.launch { load(nextProgramme = true) }; return }
+                    save(true); if (!next()) nav.back()
+                }
             }
             override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) { paused = !playWhenReady }
             override fun onPlayerError(e: PlaybackException) {
@@ -283,12 +295,24 @@ fun Player(nav: Nav, me: Screen) {
 
     // with the controls hidden the player itself holds the focus, so the remote's keys reach it
     val root = remember { FocusRequester() }
-    LaunchedEffect(osd, showSkip) {
+    LaunchedEffect(osd, showSkip, plan?.locked) {
         delay(30)
+        if (plan?.locked == true) return@LaunchedEffect
         try { if (osd && !panel) playBtn.requestFocus() else if (!osd && !showSkip) root.requestFocus() } catch (_: Exception) {}
     }
 
     val p = plan
+    val chan = p?.channel
+    val locked = p?.locked == true
+    val coverBtn = remember { FocusRequester() }
+    // covered: when the programme ends, see whether the next one is alright
+    LaunchedEffect(locked, chan?.programme?.end) {
+        if (!locked || chan == null) return@LaunchedEffect
+        delay(80)
+        try { coverBtn.requestFocus() } catch (_: Exception) {}
+        delay(maxOf(1000L, chan.programme.end * 1000 - System.currentTimeMillis() + 800))
+        load()
+    }
     val dur = duration()
     val progress = if (dur > 0) minOf(1.0, (pendingSeek ?: now) / dur) else 0.0
     val sub = cues.firstOrNull { now >= it.start && now <= it.end + 0.05 }
@@ -296,7 +320,7 @@ fun Player(nav: Nav, me: Screen) {
     Box(
         Modifier.fillMaxSize().background(Color.Black)
             .onPreviewKeyEvent { e ->
-                if (e.type != KeyEventType.KeyDown || Ui.busy) return@onPreviewKeyEvent false
+                if (e.type != KeyEventType.KeyDown || Ui.busy || locked) return@onPreviewKeyEvent false
                 when (e.key) {
                     Key.MediaPlayPause, Key.Spacebar -> { togglePause(); return@onPreviewKeyEvent true }
                     Key.MediaNext -> { next(); return@onPreviewKeyEvent true }
@@ -339,9 +363,28 @@ fun Player(nav: Nav, me: Screen) {
             }
         }
         if (waiting) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Spinner() }
+        // covered: above this person's age limit
+        if (locked && chan != null) {
+            Box(Modifier.fillMaxSize().background(C.ground), contentAlignment = Alignment.Center) {
+                Column(Modifier.widthIn(max = r(50)).padding(r(2)), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(r(1.2f))) {
+                    Text("${chan.name}: for older viewers", style = heading(2.4f))
+                    Text("What's on now until ${hhmm(chan.programme.end)} is above your age limit.${chan.next?.let { " Next at ${hhmm(it.start)}: ${it.title}." } ?: ""}",
+                        style = body(1.2f, C.body).copy(textAlign = androidx.compose.ui.text.style.TextAlign.Center))
+                    Row(horizontalArrangement = Arrangement.spacedBy(r(0.8f))) {
+                        Btn("Type a PIN", R.drawable.lc_lock, primary = true, modifier = Modifier.focusRequester(coverBtn)) {
+                            scope.launch {
+                                val pin = Ui.pin("The PIN of someone who may watch it") ?: return@launch
+                                load(pin = pin)
+                            }
+                        }
+                        Btn("Back") { nav.back() }
+                    }
+                }
+            }
+        }
         // .osd
         // .osd, fading in and out in 0.25s
-        androidx.compose.animation.AnimatedVisibility(osd, enter = androidx.compose.animation.fadeIn(tween(250)), exit = androidx.compose.animation.fadeOut(tween(250))) {
+        androidx.compose.animation.AnimatedVisibility(osd && !locked, enter = androidx.compose.animation.fadeIn(tween(250)), exit = androidx.compose.animation.fadeOut(tween(250))) {
             Column(
                 Modifier.fillMaxSize().background(Brush.verticalGradient(0f to Color(0xAA000000), 0.25f to Color(0x00000000), 0.6f to Color(0x00000000), 1f to Color(0xDD000000))),
                 verticalArrangement = Arrangement.SpaceBetween,
@@ -354,7 +397,16 @@ fun Player(nav: Nav, me: Screen) {
                     Modifier.padding(start = gutter(), end = gutter(), bottom = r(2.4f)).trapFocus(),
                     verticalArrangement = Arrangement.spacedBy(r(1)),
                 ) {
-                    if (p?.live != true) {
+                    // a channel: how far into the programme, and what's next
+                    if (chan != null) {
+                        val nowS = System.currentTimeMillis() / 1000.0
+                        val frac = ((nowS - chan.programme.start) / maxOf(1L, chan.programme.end - chan.programme.start)).coerceIn(0.0, 1.0)
+                        Box(Modifier.fillMaxWidth().height(r(0.45f)).clip(RoundedCornerShape(r(0.3f))).background(Color(0x33FFFFFF))) {
+                            Box(Modifier.fillMaxHeight().fillMaxWidth(frac.toFloat()).clip(RoundedCornerShape(r(0.3f))).background(C.accent))
+                        }
+                        Text("${chan.name} · until ${hhmm(chan.programme.end)}${chan.next?.let { " · Next: ${it.title} at ${hhmm(it.start)}" } ?: ""}", style = body(1.1f, C.soft))
+                    }
+                    if (p?.live != true && chan == null) {
                         // .seek: focused, Left/Right jump and OK pauses
                         Focusable(
                             Modifier.fillMaxWidth().onPreviewKeyEvent { e ->
@@ -381,9 +433,9 @@ fun Player(nav: Nav, me: Screen) {
                     }
                     // .ctl
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(r(0.7f))) {
-                        if (p?.live != true) Btn(null, R.drawable.lc_rotate_ccw) { jump(-10.0) }
+                        if (p?.live != true && chan == null) Btn(null, R.drawable.lc_rotate_ccw) { jump(-10.0) }
                         Btn(null, if (paused) R.drawable.lc_play else R.drawable.lc_pause, modifier = Modifier.focusRequester(playBtn)) { togglePause() }
-                        if (p?.live != true) Btn(null, R.drawable.lc_rotate_cw) { jump(30.0) }
+                        if (p?.live != true && chan == null) Btn(null, R.drawable.lc_rotate_cw) { jump(30.0) }
                         if (p?.next != null) Btn("Next", R.drawable.lc_skip_forward) { next() }
                         Box(Modifier.weight(1f))
                         if (p != null && (p.audio.size > 1 || p.subs.isNotEmpty())) {
@@ -468,3 +520,6 @@ fun Spinner() {
         drawArc(C.accent, a - 90f, 90f, false, topLeft = Offset(w / 2, w / 2), size = Size(size.width - w, size.height - w), style = Stroke(w))
     })
 }
+
+/** A clock time in this TV's own way of writing it (13:20 or 1:20 PM). */
+fun hhmm(t: Long): String = java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT).format(java.util.Date(t * 1000))

@@ -34,6 +34,14 @@ data class Person(
     val admin: Boolean = false,
 )
 
+/** Who a device signs in as by itself (Settings, This device), and whether it asks their PIN at start. */
+@Serializable
+data class DeviceAuto(val person: Person? = null, val autoPin: Boolean? = null)
+
+/** A device starting: its own person's session, or their PIN first (needPin), or nobody (token and person null). */
+@Serializable
+data class AutoStart(val token: String? = null, val needPin: Boolean = false, val person: Person? = null)
+
 @Serializable
 data class MePerson(
     val id: String, val name: String, val color: String = "#e8a33d", val admin: Boolean = false, val canSettings: Boolean = false, val music: Boolean? = null,
@@ -170,7 +178,29 @@ data class Play(
     val web: String? = null,
     val audioIndex: Int? = null,
     val intro: Intro? = null,
+    /** a channel made from the library (what's on and what's next); locked = above the person's age limit */
+    val channel: ChannelNow? = null,
+    val locked: Boolean = false,
 )
+
+/** A programme on a channel from the library (times in seconds since 1970). */
+@Serializable
+data class Programme(
+    val id: String = "", val start: Long = 0, val end: Long = 0, val locked: Boolean = false, val title: String = "", val subtitle: String = "",
+    val thumb: String = "", val poster: String = "", val overview: String = "", val cert: String = "",
+)
+
+@Serializable
+data class NextUp(val title: String = "", val start: Long = 0)
+
+@Serializable
+data class ChannelNow(val id: String = "", val name: String = "", val programme: Programme = Programme(), val next: NextUp? = null)
+
+@Serializable
+data class GuideChannel(val id: String = "", val name: String = "", val programmes: List<Programme> = emptyList())
+
+@Serializable
+data class Guide(val now: Long = 0, val channels: List<GuideChannel> = emptyList())
 
 @Serializable
 data class Group(val id: String = "", val title: String = "", val items: List<Card> = emptyList(), val loading: Boolean = false)
@@ -315,6 +345,20 @@ object Korie {
         setToken(ctx, json.parseToJsonElement(t).jsonObject["token"]!!.jsonPrimitive.content)
     }
 
+    /** Who this TV starts as by itself (Settings, This device). */
+    suspend fun autoStart(): AutoStart? = try {
+        post<AutoStart>("/api/auto", buildJsonObject { put("device", deviceName); put("deviceId", deviceId) })
+    } catch (_: Exception) { null }
+    suspend fun deviceAuto(): DeviceAuto = get("/api/device?deviceId=" + enc(deviceId))
+    suspend fun setDeviceAuto(person: String?, set: Boolean, autoPin: Boolean? = null, pin: String? = null): DeviceAuto = post("/api/device", buildJsonObject {
+        put("deviceId", deviceId)
+        if (set) { if (person == null) put("person", kotlinx.serialization.json.JsonNull) else put("person", person) }
+        if (autoPin != null) put("autoPin", autoPin)
+        if (pin != null) put("pin", pin)
+    })
+    /** Back from standby or another app after a while: counts as a start (the PIN again, if this TV asks for it). */
+    var restarted by androidx.compose.runtime.mutableStateOf(0)
+
     suspend fun meOrNull(): Me? = try { get<Me>("/api/me") } catch (_: Exception) { null }
 
     fun signOut(ctx: Context) {
@@ -344,8 +388,10 @@ object Korie {
     suspend fun item(id: String): Item = get("/api/item?id=" + enc(id))
     suspend fun search(q: String): Found = get("/api/search?q=" + enc(q))
 
-    suspend fun play(id: String, audio: Int? = null, burn: Int? = null, forceStream: Boolean = false): Play = post("/api/play", buildJsonObject {
+    suspend fun guide(from: Long, hours: Int): Guide = get("/api/guide?from=$from&hours=$hours")
+    suspend fun play(id: String, audio: Int? = null, burn: Int? = null, forceStream: Boolean = false, pin: String? = null): Play = post("/api/play", buildJsonObject {
         put("id", id)
+        if (pin != null) put("pin", pin)
         put("caps", if (forceStream) "v:h264;a:aac;c:none" else caps)
         if (audio != null) put("audio", audio)
         if (burn != null) put("burn", burn)

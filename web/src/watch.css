@@ -283,6 +283,9 @@ button, input, select { font: inherit; color: inherit; }
 .seek-track { height: .32em; border-radius: 1em; background: rgba(255, 255, 255, .25); transition: height .1s; }
 .seek:hover .seek-track { height: .5em; }
 .seek-track i { display: block; height: 100%; border-radius: 1em; background: var(--accent); }
+/* a channel from the library: how far into the programme, and what's next */
+.chan-now { padding: .8em 0 .2em; display: flex; flex-direction: column; gap: .6em; }
+.chan-now .osd-time { opacity: .85; }
 .seek-hover { position: absolute; bottom: 2em; transform: translateX(-50%); background: rgba(0, 0, 0, .85); padding: .15em .5em; border-radius: .3em; font-variant-numeric: tabular-nums; }
 .osd-panel { position: absolute; right: var(--pad); bottom: 100%; background: rgba(16, 32, 51, .97); border-radius: var(--radius); padding: .4em; min-width: 16em; max-height: 50vh; overflow-y: auto; }
 .subs { position: absolute; left: 0; right: 0; bottom: 6%; display: flex; flex-direction: column; align-items: center; gap: .15em; z-index: 2; transition: bottom .25s; pointer-events: none; }
@@ -327,3 +330,34 @@ button, input, select { font: inherit; color: inherit; }
 .btn.round.small { width: 2.5em; height: 2.5em; padding: 0; font-size: 1em; }
 .dl-state { display: inline-flex; align-items: center; gap: .4em; color: var(--accent); font-weight: 600; font-size: .95em; padding: 0 .4em; }
 .dl-state.small { align-self: center; min-width: 2.5em; justify-content: center; font-size: .85em; }
+
+/* Live TV: Channels or Guide */
+.page-head .seg { display: inline-flex; gap: .3em; padding: .25em; border-radius: calc(var(--radius) * 1.2); background: var(--panel2); margin-left: auto; }
+.seg button { background: none; border: 0; color: var(--soft); padding: .5em 1em; border-radius: var(--radius); font: inherit; cursor: pointer; }
+.seg button.on { background: var(--accent); color: var(--on-accent); font-weight: 600; }
+.seg button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* the guide: channels down the side, time across, a line for now */
+.guide-wrap { --guide-side: clamp(7em, 16vw, 12em); }
+.guide { overflow-x: auto; border-radius: calc(var(--radius) * 1.4); background: var(--panel2); padding-bottom: .4em; }
+.guide-grid { position: relative; }
+.guide-row { display: flex; align-items: stretch; min-height: 4.2em; border-bottom: 1px solid var(--line); }
+.guide-times { min-height: 2.4em; position: sticky; top: 0; z-index: 2; background: var(--panel2); }
+.guide-side {
+  position: sticky; left: 0; z-index: 1; flex: 0 0 var(--guide-side); width: var(--guide-side); display: flex; align-items: center;
+  padding: 0 1em; background: var(--panel2); border: 0; border-right: 1px solid var(--line); color: var(--ink); font: inherit; font-weight: 600; text-align: left; cursor: pointer;
+}
+.guide-times .guide-side { cursor: default; }
+.guide-line { position: relative; flex: none; }
+.guide-time { position: absolute; top: .7em; padding-left: .5em; border-left: 1px solid var(--line); color: var(--soft); font-size: .85em; white-space: nowrap; }
+.guide-prog {
+  position: absolute; top: .3em; bottom: .3em; display: flex; flex-direction: column; justify-content: center; gap: .15em; overflow: hidden;
+  padding: 0 .7em; border: 0; border-radius: calc(var(--radius) * .8); background: var(--panel); color: var(--ink); font: inherit; text-align: left; cursor: pointer;
+  box-shadow: inset -2px 0 0 var(--panel2);
+}
+.guide-prog strong, .guide-prog span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.guide-prog span { color: var(--soft); font-size: .85em; }
+.guide-prog.on { background: #1d4664; }
+.guide-prog.locked strong { color: var(--soft); font-weight: 500; }
+.guide-prog:hover, .guide-prog:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; z-index: 1; }
+.guide-now { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--accent); pointer-events: none; z-index: 1; }

@@ -30,9 +30,11 @@ export interface Person {
   maxAge: number | null;
   /** the device (its id) that signs in as this person by itself, without Who's watching */
   autoDevice: string | null;
+  /** that device still asks for their PIN each time it starts (on by default when the house has a child) */
+  autoPin: boolean;
 }
 
-interface Perms { music?: boolean; canInstall?: boolean; canDelete?: boolean; apps?: "all" | string[]; maxAge?: number | null; autoDevice?: string | null }
+interface Perms { music?: boolean; canInstall?: boolean; canDelete?: boolean; apps?: "all" | string[]; maxAge?: number | null; autoDevice?: string | null; autoPin?: boolean }
 
 /** The languages a person can choose for audio and subtitles (ISO 639-2 codes, as ffprobe and Kodi
  *  report them; matched by name, so ger/deu and the like are the same). */
@@ -47,7 +49,13 @@ interface Row {
   admin: number; can_settings: number; addons: string; playback: string | null; perms: string | null;
 }
 
-function view(r: Row): Person {
+/** Is there someone with an age limit in the house? (then a TV asks for the PIN at start, unless told not to) */
+function hasChild(): boolean {
+  return (db.prepare("SELECT admin, perms FROM people").all() as { admin: number; perms: string | null }[])
+    .some((x) => !x.admin && json<Perms>(x.perms, {}).maxAge != null);
+}
+
+function view(r: Row, child?: boolean): Person {
   const pb = json<{ audio?: string; subs?: string; skipIntro?: string }>(r.playback, {});
   const pm = json<Perms>(r.perms, {});
   return {
@@ -61,6 +69,7 @@ function view(r: Row): Person {
     apps: r.admin ? "all" : pm.apps ?? "all",
     maxAge: r.admin ? null : pm.maxAge ?? null,
     autoDevice: pm.autoDevice ?? null,
+    autoPin: pm.autoPin ?? (child ?? hasChild()),
   };
 }
 
@@ -78,7 +87,8 @@ export function setPlayback(id: string, change: { audio?: string; subs?: string;
 }
 
 export function list(): Person[] {
-  return (db.prepare("SELECT * FROM people ORDER BY created, rowid").all() as Row[]).map(view);
+  const child = hasChild();
+  return (db.prepare("SELECT * FROM people ORDER BY created, rowid").all() as Row[]).map((r) => view(r, child));
 }
 
 export function get(id: string): Person | null {
@@ -122,6 +132,7 @@ export function update(id: string, change: Partial<{ name: string; color: string
     }
     pm.autoDevice = change.autoDevice;
   }
+  if (typeof change.autoPin === "boolean") pm.autoPin = change.autoPin;
   if (change.apps === "all" || (Array.isArray(change.apps) && change.apps.every((a) => typeof a === "string"))) pm.apps = change.apps;
   db.prepare("UPDATE people SET perms = ? WHERE id = ?").run(JSON.stringify(pm), id);
   return get(id);
@@ -221,6 +232,12 @@ export function devices(): Device[] {
   const all = db.prepare("SELECT * FROM devices ORDER BY seen DESC").all() as Device[];
   for (const d of all) if (d.seen < old && !kept.has(d.id)) db.prepare("DELETE FROM devices WHERE id = ?").run(d.id);
   return all.filter((d) => d.seen >= old || kept.has(d.id)).slice(0, 50);
+}
+
+/** Sets who a device signs in as by itself (null = nobody), and whether it asks for their PIN at start. */
+export function setAuto(deviceId: string, person: string | null, autoPin?: boolean): void {
+  for (const o of list()) if (o.autoDevice === deviceId && o.id !== person) setPerm(o.id, { autoDevice: null });
+  if (person) setPerm(person, { autoDevice: deviceId, ...(typeof autoPin === "boolean" ? { autoPin } : {}) });
 }
 
 /** Who this device signs in as by itself (null = it asks Who's watching). */

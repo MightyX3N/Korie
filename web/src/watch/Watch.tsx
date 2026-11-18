@@ -46,7 +46,7 @@ export function Watch({ me, route, signOut, refresh }: { me: Me; route: Route; s
     case "films": page = <Library kind="films" route={route} />; break;
     case "series": page = <Library kind="series" route={route} />; break;
     case "music": page = <MusicPage route={route} />; break;
-    case "live": page = <Live />; break;
+    case "live": page = <Live route={route} />; break;
     case "games": page = <Games />; break;
     case "search": page = <Search route={route} />; break;
     case "page": page = <AddonPage id={route.parts[1] ?? ""} only={route.query.get("only") ?? ""} />; break;

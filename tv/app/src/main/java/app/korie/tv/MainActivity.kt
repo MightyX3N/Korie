@@ -76,6 +76,15 @@ class MainActivity : ComponentActivity() {
     }
 
     // the Home button, with Korie as the home screen: back to Korie's Home
+    // away for 5 minutes or more (standby, another app) counts as a new start
+    private var awayAt = 0L
+    override fun onStop() { super.onStop(); awayAt = System.currentTimeMillis() }
+    override fun onStart() {
+        super.onStart()
+        if (awayAt > 0 && System.currentTimeMillis() - awayAt >= 5 * 60_000) Korie.restarted++
+        awayAt = 0
+    }
+
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
         if (intent.hasCategory(android.content.Intent.CATEGORY_HOME)) Korie.goHome.tryEmit(Unit)
@@ -88,11 +97,40 @@ fun App() {
     var stage by remember { mutableStateOf(if (Korie.server.isEmpty()) "connect" else "check") }
     var me by remember { mutableStateOf<Me?>(null) }
     val scope = rememberCoroutineScope()
+    // the PIN of the person this TV starts as, when it asks for it at start
+    var pinFor by remember { mutableStateOf<Person?>(null) }
+    // only when the app starts: after that, whoever picks themselves in Who's watching is who it is
+    var started by remember { mutableStateOf(false) }
     LaunchedEffect(stage) {
         if (stage == "check") {
+            val first = !started
+            started = true
+            // this TV's own person (Settings, This device) comes first
+            val a = if (first) Korie.autoStart() else null
+            if (a?.needPin == true && a.person != null) { pinFor = a.person; stage = "pin"; return@LaunchedEffect }
+            if (a?.token != null) Korie.setToken(ctx, a.token)
             me = if (Korie.token.isNotEmpty()) Korie.meOrNull() else null
             stage = if (me != null) "signed" else "people"
         }
+        if (stage == "pin") {
+            val p = pinFor ?: run { stage = "people"; return@LaunchedEffect }
+            while (true) {
+                val pin = Ui.pin("${p.name}'s PIN")
+                if (pin == null) { Music.stop(); Korie.signOut(ctx); me = null; stage = "people"; return@LaunchedEffect }
+                try { Korie.login(ctx, p.id, pin); stage = "check2"; break } catch (e: Exception) { Ui.toast(e.message ?: "") }
+            }
+        }
+        if (stage == "check2") {
+            me = Korie.meOrNull()
+            stage = if (me != null) "signed" else "people"
+        }
+    }
+    // back after a while (the TV slept, or another app was open): the PIN again when this TV asks for it
+    LaunchedEffect(Korie.restarted) {
+        if (Korie.restarted == 0 || stage != "signed") return@LaunchedEffect
+        val a = Korie.autoStart() ?: return@LaunchedEffect
+        // only when it's still this TV's own person (someone who switched to themselves stays)
+        if (a.needPin && a.person != null && me?.person?.id == a.person.id) { Music.stop(); pinFor = a.person; me = null; stage = "pin" }
     }
     // a new TV app is offered on any screen, even before there's a Korie to talk to
     LaunchedEffect(Unit) { delay(4000); Update.offer(ctx) }
@@ -240,7 +278,8 @@ fun ScreenFor(nav: Nav, s: Screen, me: Me, refresh: () -> Unit, signOut: () -> U
         "films" -> Library(nav, s, "films", "Films")
         "series" -> Library(nav, s, "series", "Series")
         "music" -> MusicScreen(nav, s)
-        "live" -> RowsScreen(nav, s, "Live TV", listOf("browse")) { Korie.live() }
+        "live" -> LiveScreen(nav, s)
+        "guide" -> GuideScreen(nav, s)
         "games" -> RowsScreen(nav, s, "Games", listOf("browse", "addons")) { Korie.read(Korie.api("/api/games")) }
         "apps" -> Apps(me)
         "page" -> AddonPage(nav, s)

@@ -4,7 +4,7 @@ export interface PersonBrief { id: string; name: string; color: string; hasPin: 
 
 export interface Person extends PersonBrief {
   canSettings: boolean; addons: "all" | string[]; audio: string; subs: string; skipIntro: "button" | "auto" | "off";
-  music: boolean; canInstall: boolean; canDelete: boolean; apps: "all" | string[]; maxAge: number | null; autoDevice: string | null;
+  music: boolean; canInstall: boolean; canDelete: boolean; apps: "all" | string[]; maxAge: number | null; autoDevice: string | null; autoPin: boolean;
 }
 
 export interface Me { person: Person; server: { name: string; version: string; id: string }; games: boolean; languages: [string, string][] }
@@ -35,6 +35,14 @@ export interface Plan {
   subs: Choice[]; why: string; id: string; title: string; subtitle: string; resume: number; next: string | null;
   intro: { start: number; end: number; auto: boolean } | null; web?: string;
   episode?: { show: string; season: number; episode: number } | null;
+  /** a channel made from the library: what's on, and what's next; locked = above the person's age limit */
+  channel?: { id: string; name: string; programme: Programme; next: { title: string; start: number } | null };
+  locked?: boolean;
+}
+
+/** A programme on a channel from the library (the guide; times in seconds since 1970). */
+export interface Programme {
+  id: string; start: number; end: number; locked: boolean; title: string; subtitle: string; thumb: string; poster: string; overview: string; cert: string;
 }
 
 export interface AddonView {
