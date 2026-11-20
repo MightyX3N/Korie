@@ -139,8 +139,19 @@ interface RunData {
 let checking: NodeJS.Timeout | null = null;
 
 /** Makes sure the account has Korie's tunnel (TCP, to 127.0.0.1 and the outside port), and keeps its address. */
+let ensuring = false;
+
 async function ensureTunnel(): Promise<void> {
-  if (!secret()) return;
+  if (!secret() || ensuring) return;
+  ensuring = true;
+  try {
+    await ensureTunnelOnce();
+  } finally {
+    ensuring = false;
+  }
+}
+
+async function ensureTunnelOnce(): Promise<void> {
   const again = (ms: number) => {
     if (checking) clearTimeout(checking);
     checking = setTimeout(() => void ensureTunnel(), ms);
@@ -150,8 +161,20 @@ async function ensureTunnel(): Promise<void> {
     const d = await api<RunData>("/v1/agents/rundata", {});
     const field = (t: RunData["tunnels"][number], n: string) => t.agent_config?.fields?.find((f) => f.name === n)?.value?.trim() ?? "";
     const port = String(OUTSIDE_PORT);
-    const mine = d.tunnels.find((t) => field(t, "local_port") === port || field(t, "http_port") === port);
+    const made = String(setting("playit_tunnel") ?? "");
+    const ours = d.tunnels.filter((t) => t.id === made || t.name === "Korie" || field(t, "local_port") === port || field(t, "http_port") === port);
+    // the one Korie made (or else an HTTPS one); any other of Korie's is one too many: removed
+    const mine = ours.find((t) => t.id === made) ?? ours.find((t) => t.tunnel_type === "https") ?? ours[0];
+    for (const extra of ours.filter((t) => t !== mine && t.name === "Korie")) {
+      try {
+        await api("/tunnels/delete", { tunnel_id: extra.id });
+        log("playit", `removed a second tunnel Korie had made (${extra.display_address})`);
+      } catch (e) {
+        log("playit", `couldn't remove a second tunnel: ${e instanceof Error ? e.message : e}`);
+      }
+    }
     if (mine) {
+      if (mine.id !== made) setSetting("playit_tunnel", mine.id);
       tunnelNote = mine.disabled_reason ? `playit.gg has turned the tunnel off: ${mine.disabled_reason}` : "";
       // an HTTPS tunnel is reached as https://<its name>; a TCP one as http://<address>:<port>
       const a = (mine.tunnel_type === "https" ? "https://" : "http://") + mine.display_address;
@@ -163,8 +186,16 @@ async function ensureTunnel(): Promise<void> {
       again(10 * 60_000);
       return;
     }
-    const waiting = d.pending.find((t) => t.name === "Korie");
-    if (waiting) {
+    const waiting = d.pending.find((t) => t.id === made || t.name === "Korie");
+    // just made, and not listed yet: wait for it rather than make another
+    const recent = Date.now() - Number(setting("playit_tunnel_at") ?? 0) < 10 * 60_000;
+    if (waiting || (made && recent)) {
+      if (!waiting) {
+        tunnelNote = "playit.gg is setting up the tunnel.";
+        emit("playit");
+        again(10_000);
+        return;
+      }
       tunnelNote = `playit.gg is setting up the tunnel${waiting.status_msg ? `: ${waiting.status_msg}` : "."}`;
       emit("playit");
       again(10_000);
@@ -176,15 +207,18 @@ async function ensureTunnel(): Promise<void> {
       endpoint: { type: "region", details: { region: "global", port: null } },
       enabled: true,
     });
+    let id = "";
     try {
-      await make({ type: "tunnel-type", details: "https" }, [
+      id = (await make({ type: "tunnel-type", details: "https" }, [
         // the requests go to Korie's outside port as plain HTTP (playit holds the certificate)
         { name: "http_port", value: port }, { name: "https_port", value: port }, { name: "tls_termination", value: "letsencrypt" },
-      ]);
+      ]) as { id?: string })?.id ?? "";
     } catch (e) {
       log("playit", `an HTTPS tunnel couldn't be made (${e instanceof Error ? e.message : e}); trying a TCP one`);
-      await make({ type: "raw-ports", details: { port_type: "tcp", port_count: 1, software_description: "Korie, a media server (its web pages and video streams)" } }, [{ name: "local_port", value: port }]);
+      id = (await make({ type: "raw-ports", details: { port_type: "tcp", port_count: 1, software_description: "Korie, a media server (its web pages and video streams)" } }, [{ name: "local_port", value: port }]) as { id?: string })?.id ?? "";
     }
+    setSetting("playit_tunnel", id);
+    setSetting("playit_tunnel_at", Date.now());
     log("playit", `made a tunnel on playit.gg to port ${OUTSIDE_PORT}`);
     tunnelNote = "playit.gg is setting up the tunnel.";
     emit("playit");
@@ -236,6 +270,8 @@ export function forget(): void {
   stop();
   setSetting("playit_secret", "");
   setSetting("playit_address", "");
+  setSetting("playit_tunnel", "");
+  setSetting("playit_tunnel_at", 0);
   tunnelNote = "";
   setPhase("off");
 }
