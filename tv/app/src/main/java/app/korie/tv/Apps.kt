@@ -195,7 +195,7 @@ fun Apps(me: Me) {
         item(span = { GridItemSpan(maxLineSpan) }) {
             Column {
                 Top("Apps")
-                Text("Hold OK on an app to put it on Home, move it, or hide it.", style = body(0.95f, C.dim), modifier = Modifier.padding(bottom = r(0.4f)))
+                Text("Hold OK (or press and hold) on an app to put it on Home, move it, or hide it.", style = body(0.95f, C.dim), modifier = Modifier.padding(bottom = r(0.4f)))
             }
         }
         if (fav.isNotEmpty()) {

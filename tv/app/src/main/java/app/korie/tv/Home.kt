@@ -57,15 +57,19 @@ private fun Hero(c: Card, nav: Nav, opener: Opener) {
     val r = rem()
     val w = LocalConfiguration.current.screenWidthDp
     val shape = RoundedCornerShape(r(1))
-    Box(Modifier.fillMaxWidth().height(r(20)).clip(shape).background(C.panel)) {
+    // (at most half the screen's height, so rows show under it on a short screen)
+    val cfgH = androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp
+    // (and then without the overview, so the buttons still fit)
+    val short = r(20) > cfgH * 0.5f
+    Box(Modifier.fillMaxWidth().height(minOf(r(20), cfgH * 0.5f)).clip(shape).background(C.panel)) {
         AsyncImage(model = Korie.pic(c.backdrop.ifEmpty { c.thumb }, pxOf(w.dp)), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
         Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(0f to Color(0xF20A1420), 0.45f to Color(0xB30A1420), 1f to Color(0x100A1420))))
         Column(Modifier.padding(r(2)).widthIn(max = r(34)), verticalArrangement = Arrangement.spacedBy(r(0.7f))) {
             val half = c.progress > 0 && !c.watched
             Text(if (half) "Continue watching" else if (c.kind == "series") "New series" else "New film", style = body(0.95f, C.accent))
-            Text(c.title, style = heading(2.6f), maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(c.title, style = heading(2.6f), maxLines = if (short) 1 else 2, overflow = TextOverflow.Ellipsis)
             if (c.subtitle.isNotEmpty()) Text(c.subtitle, style = body(1.05f, C.soft), maxLines = 1)
-            if (c.overview.isNotEmpty()) Text(c.overview, style = body(1f, C.body), maxLines = 3, overflow = TextOverflow.Ellipsis)
+            if (c.overview.isNotEmpty() && !short) Text(c.overview, style = body(1f, C.body), maxLines = 3, overflow = TextOverflow.Ellipsis)
             Row(Modifier.padding(top = r(0.4f)), horizontalArrangement = Arrangement.spacedBy(r(0.7f))) {
                 if (c.kind == "film" || c.kind == "episode") Btn(if (half) "Resume" else "Play", R.drawable.lc_play, primary = true) {
                     nav.push("player", mapOf("id" to c.id, "mode" to "resume", "title" to c.title))

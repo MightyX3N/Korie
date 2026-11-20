@@ -4,6 +4,10 @@ package app.korie.tv
 // Films and Series (Library.tsx), Live TV and an add-on's page (Rows.tsx), and opening a card
 // or holding OK on it (common.tsx).
 
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import android.content.Context
 import android.net.wifi.WifiManager
 import androidx.compose.foundation.background
@@ -449,8 +453,10 @@ fun Profiles(onSignedIn: () -> Unit, onOtherServer: () -> Unit, onManage: (Strin
             Spacer(Modifier.weight(1f))
             Clock(2f)
         }
+        // (scrolls when it doesn't fit, as on a short car screen)
+        androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize().padding(top = r(5.4f)).clipToBounds()) {
         Column(
-            Modifier.fillMaxSize().padding(top = r(6), bottom = r(3), start = gutter(), end = gutter()),
+            Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).heightIn(min = maxHeight).padding(top = r(0.6f), bottom = r(1), start = gutter(), end = gutter()),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(r(2.6f), Alignment.CenterVertically),
         ) {
@@ -496,11 +502,11 @@ fun Profiles(onSignedIn: () -> Unit, onOtherServer: () -> Unit, onManage: (Strin
                     }
                 }
             }
+            if (!needHousehold && hello?.outside != true) Text(
+                "This TV can also sign in as one person by itself: Settings, This device.", style = body(0.95f, C.dim).copy(textAlign = TextAlign.Center),
+            )
         }
-        if (!needHousehold && hello?.outside != true) Text(
-            "This TV can also sign in as one person by itself: Settings, This device.", style = body(0.95f, C.dim).copy(textAlign = TextAlign.Center),
-            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = r(2)),
-        )
+        }
     }
     LaunchedEffect(people, error, needHousehold) { if (!people.isNullOrEmpty() || error.isNotEmpty() || needHousehold) { delay(80); try { first.requestFocus() } catch (_: Exception) {} } }
     // a wrong or cancelled PIN: back on the face that was picked

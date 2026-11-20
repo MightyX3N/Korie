@@ -487,7 +487,7 @@ private fun ThisDevice(nav: Nav, who: Me, signOut: () -> Unit, reqs: MutableMap<
         SRow("dev-size", "Size", "How big text and pictures are on this screen (bigger on a small screen close by, like a car's)", "zoom scale text size display car", reqs, {
             scope.launch {
                 val cur = UiSize.choice.intValue
-                val v = Ui.menu("Size", listOf(0, 100, 115, 130, 150, 175).map { Choice((if (it == cur) "✓ " else "") + if (it == 0) "Automatic" else "$it %", it.toString()) }) ?: return@launch
+                val v = Ui.menu("Size", listOf(0, 100, 115, 130, 150, 175, 200).map { Choice((if (it == cur) "✓ " else "") + if (it == 0) "Automatic" else "$it %", it.toString()) }) ?: return@launch
                 UiSize.set(ctx, v.toInt())
             }
         }) { Sel(UiSize.choice.intValue.let { if (it == 0) "Automatic" else "$it %" }, it) }

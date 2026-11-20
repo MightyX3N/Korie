@@ -106,11 +106,12 @@ fun Look(content: @Composable () -> Unit) {
     // where the TV's sizes come out small
     val ctx = androidx.compose.ui.platform.LocalContext.current
     val tv = (cfg.uiMode and android.content.res.Configuration.UI_MODE_TYPE_MASK) == android.content.res.Configuration.UI_MODE_TYPE_TELEVISION
-    val pick = UiSize.choice.intValue
-    // (automatic: a very wide screen, as cars have, or one that isn't a TV and is short)
-    val wide = cfg.screenWidthDp > cfg.screenHeightDp * 2.1f
-    val scale = if (pick > 0) pick / 100f else if (wide || (!tv && cfg.screenHeightDp < 520)) 1.3f else 1f
     UiSize.load(ctx)
+    val pick = UiSize.choice.intValue
+    // (automatic: a screen that isn't a TV is looked at from close by, like a car's or a tablet's, so
+    // everything is 1.75 times as big; a very wide TV screen a bit bigger too)
+    val wide = cfg.screenWidthDp > cfg.screenHeightDp * 2.1f
+    val scale = if (pick > 0) pick / 100f else if (!tv) 1.75f else if (wide) 1.3f else 1f
     val base = minOf(cfg.screenWidthDp / 96f, cfg.screenHeightDp / 54f) * scale
     CompositionLocalProvider(LocalRem provides Rem(base, LocalDensity.current.fontScale)) {
         androidx.tv.material3.MaterialTheme(content = content)
@@ -164,7 +165,7 @@ fun Focusable(
             else -> false
         }
     }
-    Box(modifier.focusRequester(mine).then(keys).combinedClickable(interactionSource = src, indication = null, onClick = onClick)) { content(focused) }
+    Box(modifier.focusRequester(mine).then(keys).combinedClickable(interactionSource = src, indication = null, onLongClick = onLong, onClick = onClick)) { content(focused) }
 }
 
 /** .btn: panel, ink; .primary: ink on ground; focused: accent with a glow. .icon: square. */

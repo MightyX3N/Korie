@@ -5,6 +5,10 @@ package app.korie.tv
 // are drawn here, so they look the same everywhere. OK pauses, Left/Right jump, Up/Down show the
 // controls, Back leaves.
 
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
+import androidx.compose.ui.input.pointer.pointerInput
 import android.net.Uri
 import android.view.ViewGroup
 import androidx.activity.compose.BackHandler
@@ -359,6 +363,14 @@ fun Player(nav: Nav, me: Screen) {
             },
             modifier = Modifier.fillMaxSize().focusProperties { canFocus = false },
         )
+        // a touch screen (a car's): a tap shows the controls, or hides them (a tap on a control is the control's)
+        Box(Modifier.fillMaxSize().pointerInput(Unit) {
+            // (any touch let go again, however long it was held)
+            awaitEachGesture {
+                awaitFirstDown(requireUnconsumed = false)
+                if (waitForUpOrCancellation() != null) { if (osd) osd = false else poke() }
+            }
+        })
         // .subs: drawn here, higher up while the controls show
         if (sub != null) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {

@@ -74,6 +74,29 @@ class MainActivity : ComponentActivity() {
         Korie.load(this)
         Music.init(this)
         setContent { Look { App() } }
+        fullScreen()
+    }
+
+    // the whole screen: the device's own bars (a car box's side bar, a tablet's) out of the way;
+    // a swipe from the edge brings them back for a moment
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) fullScreen()
+    }
+
+    private fun fullScreen() {
+        if (android.os.Build.VERSION.SDK_INT >= 30) {
+            window.setDecorFitsSystemWindows(false)
+            window.insetsController?.let {
+                it.hide(android.view.WindowInsets.Type.systemBars())
+                it.systemBarsBehavior = android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            }
+        } else {
+            @Suppress("DEPRECATION")
+            window.decorView.systemUiVisibility = (android.view.View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or android.view.View.SYSTEM_UI_FLAG_FULLSCREEN
+                or android.view.View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or android.view.View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                or android.view.View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or android.view.View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN)
+        }
     }
 
     // the Home button, with Korie as the home screen: back to Korie's Home
