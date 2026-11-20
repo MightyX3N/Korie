@@ -54,7 +54,7 @@ export function Addons({ tab }: { tab: string }) {
       <header className="adm-head">
         <div>
           <h1 className="adm-h1">Add-ons</h1>
-          <p className="adm-soft max">What they offer shows up in Films, Series, Live TV and Games on every TV and in Jellyfin's apps. Installing takes a second, no restart.</p>
+          <p className="adm-soft max">What they offer shows up in Films, Series, Live and Games on every TV and in Jellyfin's apps. Installing takes a second, no restart.</p>
         </div>
       </header>
       <div role="tablist" aria-label="Add-ons" className="adm-tabs">

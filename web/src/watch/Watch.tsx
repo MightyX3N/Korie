@@ -19,7 +19,7 @@ const SECTIONS = [
   { id: "films", label: "Films", icon: Film },
   { id: "series", label: "Series", icon: Tv },
   { id: "music", label: "Music", icon: Music2 },
-  { id: "live", label: "Live TV", icon: Radio },
+  { id: "live", label: "Live", icon: Radio },
   { id: "calendar", label: "Calendar", icon: CalendarDays },
   { id: "games", label: "Games", icon: Gamepad2 },
   { id: "search", label: "Search", icon: SearchIcon },

@@ -25,7 +25,7 @@ function about(id: string): { title: string; subtitle: string; live: boolean } {
   const a = browse.get(id);
   if (a) {
     const where = browse.aidOf(a.source).split(".").pop() ?? a.source;
-    return { title: a.title, subtitle: a.kind === "live" ? `Live TV · ${where.toUpperCase()}` : a.subtitle || where, live: a.kind === "live" };
+    return { title: a.title, subtitle: a.kind === "live" ? `Live · ${where.toUpperCase()}` : a.subtitle || where, live: a.kind === "live" };
   }
   return { title: id, subtitle: "", live: false };
 }

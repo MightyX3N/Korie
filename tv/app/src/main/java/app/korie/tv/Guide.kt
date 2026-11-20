@@ -1,6 +1,6 @@
 package app.korie.tv
 
-// The guide (Live TV › Guide): the channels made from the library down the side, time across, a line
+// The guide (Live › Guide): the channels made from the library down the side, time across, a line
 // for now. The programme on now plays its channel; one later says what it is.
 
 import android.content.Context
@@ -86,7 +86,7 @@ fun GuideScreen(nav: Nav, me: Screen) {
     val firstNow = remember { FocusRequester() }
     val scope = rememberCoroutineScope()
     Column(Modifier.fillMaxSize().padding(start = gutter(), end = gutter(), top = r(2.2f), bottom = r(1.5f))) {
-        BackLink(nav, label = "Live TV")
+        BackLink(nav, label = "Live")
         Top("Guide")
         Status(error.ifEmpty { if (data != null && data.channels.isEmpty()) "No channels yet. They're made from the films and series in your library." else if (data == null) "Loading…" else "" })
         val d = data ?: return@Column

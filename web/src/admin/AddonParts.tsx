@@ -206,7 +206,7 @@ export function ChannelsPart({ v, channels, changed }: { v: AddonView; channels:
   return (
     <section aria-labelledby="chans" className="adm-card adm-list flex-half">
       <h2 id="chans" className="adm-h2">Live channels</h2>
-      <p className="adm-soft small">In this order in Live TV. Drag to move. Untick one to hide it.</p>
+      <p className="adm-soft small">In this order in Live. Drag to move. Untick one to hide it.</p>
       <ol className="adm-chans">
         {list.map((c, i) => {
           const r = test.results[c.id];

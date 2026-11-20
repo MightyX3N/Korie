@@ -35,7 +35,7 @@ export function Overview() {
           <section aria-label="Status" className="adm-stats">
             <Stat label="Films" n={o.counts.films} note={o.fromAddons.films ? `+ ${o.fromAddons.films} from add-ons` : o.folders ? "in your folders" : "No folders yet"} />
             <Stat label="Series" n={o.counts.series} note={o.fromAddons.series ? `+ ${o.fromAddons.series} from add-ons` : "in your folders"} />
-            <Stat label="Live TV channels" n={o.fromAddons.live} note={o.fromAddons.liveFrom.length ? `from ${o.fromAddons.liveFrom.join(", ")}` : "No add-on with live TV"} />
+            <Stat label="Live channels" n={o.fromAddons.live} note={o.fromAddons.liveFrom.length ? `from ${o.fromAddons.liveFrom.join(", ")}` : "No add-on with live channels"} />
             <div className="adm-card adm-stat">
               <span className="adm-soft small">TVs can find Korie</span>
               <span className="adm-yes" style={{ color: findable ? GOOD : BAD }}><Dot color={findable ? GOOD : BAD} />{findable ? "Yes" : "Not by themselves"}</span>

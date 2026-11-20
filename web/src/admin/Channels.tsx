@@ -34,7 +34,7 @@ export function ChannelsPart() {
         {data.channels.length > 0 && <button className="adm-btn small" disabled={busy} onClick={() => void redo()}>{busy ? "Making them…" : "Make the schedules again"}</button>}
       </div>
       <p className="adm-soft small">
-        Channels in Live TV that play your own films and series around the clock: one for each genre with 3 or more titles, plus Classics and Kids.
+        Channels in Live that play your own films and series around the clock: one for each genre with 3 or more titles, plus Classics and Kids.
         Each week's schedule is worked out on Monday; something added during the week joins next week's, or now with Make the schedules again.
         Something above a person's age limit is covered until someone who may watch it types their PIN.
       </p>

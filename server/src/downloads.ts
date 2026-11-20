@@ -229,7 +229,7 @@ async function run(d: Download): Promise<string> {
   const who = people.get(d.person);
   const ans = await browse.play(a.id, who?.id ?? null);
   if (ans.web || !ans.url) throw new Error("It only plays in a web page, which can't be downloaded.");
-  if (ans.live) throw new Error("Live TV can't be downloaded.");
+  if (ans.live) throw new Error("Live channels can't be downloaded.");
 
   // where it goes
   let dir: string, base: string;

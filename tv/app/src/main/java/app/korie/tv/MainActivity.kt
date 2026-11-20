@@ -195,7 +195,7 @@ private val SECTIONS = listOf(
     RailItem("films", "Films", R.drawable.lc_film),
     RailItem("series", "Series", R.drawable.lc_tv),
     RailItem("music", "Music", R.drawable.lc_music),
-    RailItem("live", "Live TV", R.drawable.lc_radio),
+    RailItem("live", "Live", R.drawable.lc_radio),
     RailItem("calendar", "Calendar", R.drawable.lc_calendar_days),
     RailItem("games", "Games", R.drawable.lc_gamepad_2),
     RailItem("store", "Add-ons", R.drawable.lc_puzzle),

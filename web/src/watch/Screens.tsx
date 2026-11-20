@@ -1,4 +1,4 @@
-// Home, Films and Series, Live TV, Games and an add-on's page (a category).
+// Home, Films and Series, Live, Games and an add-on's page (a category).
 import { api } from "../api";
 import { go, type Route } from "../router";
 import { useEffect, useRef, useState } from "react";
@@ -93,7 +93,7 @@ function RowsPage({ title, path, topics }: { title: string; path: string; topics
   );
 }
 
-/** Live TV: the channels as rows, or the guide (what's on each channel, through the week). */
+/** Live: the channels as rows, or the guide (what's on each channel, through the week). */
 export function Live({ route }: { route: Route }) {
   const guide = route.query.get("view") === "guide";
   const { data, error, reload } = useData(() => api<{ rows: Row[]; status: string }>("/api/live"), [], ["browse", "channels"]);
@@ -101,7 +101,7 @@ export function Live({ route }: { route: Route }) {
   return (
     <div className="page">
       <header className="page-head">
-        <h1>Live TV</h1>
+        <h1>Live</h1>
         {(hasChannels || guide) && (
           <div className="seg" role="tablist">
             <button role="tab" aria-selected={!guide} className={!guide ? "on" : ""} onClick={() => go("/live", true)}>Channels</button>

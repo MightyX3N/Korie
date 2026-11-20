@@ -1,7 +1,7 @@
 package app.korie.tv
 
 // The screens, as the web pages have them: Who's watching (Profiles.tsx), Home (Home.tsx),
-// Films and Series (Library.tsx), Live TV and an add-on's page (Rows.tsx), and opening a card
+// Films and Series (Library.tsx), Live and an add-on's page (Rows.tsx), and opening a card
 // or holding OK on it (common.tsx).
 
 import androidx.compose.ui.draw.clipToBounds
@@ -219,7 +219,7 @@ fun rememberOpener(nav: Nav, me: Screen, onChange: (() -> Unit)? = null): Opener
 }
 
 /**
- * Rows of cards under the screen's title (Home, Live TV, a page). The card that opened what's on
+ * Rows of cards under the screen's title (Home, Live, a page). The card that opened what's on
  * top gets the focus back.
  */
 @Composable
@@ -548,7 +548,7 @@ fun Face(name: String, color: Color?, lock: Boolean = false, add: Boolean = fals
 
 // --- Home ------------------------------------------------------------------------------------
 
-// --- Live TV, Games, an add-on's page (Rows.tsx) ---------------------------------------------
+// --- Live, Games, an add-on's page (Rows.tsx) ---------------------------------------------
 
 @Composable
 fun RowsScreen(nav: Nav, me: Screen, title: String, topics: List<String> = emptyList(), load: suspend () -> Rows) {
@@ -572,14 +572,14 @@ fun RowsScreen(nav: Nav, me: Screen, title: String, topics: List<String> = empty
     }
 }
 
-/** Live TV: the channels as rows; with channels from the library, a Guide button at the top. */
+/** Live: the channels as rows; with channels from the library, a Guide button at the top. */
 @Composable
 fun LiveScreen(nav: Nav, me: Screen) {
     val (data, error) = useData(me.name, listOf("browse", "channels")) { Korie.live() }
     val opener = rememberOpener(nav, me)
     val hasChannels = data?.rows?.any { it.id == "channels" } == true
     RowsPage(me, {
-        Top("Live TV") { if (hasChannels) Btn("Guide", R.drawable.lc_layout_grid) { nav.push("guide") } }
+        Top("Live") { if (hasChannels) Btn("Guide", R.drawable.lc_layout_grid) { nav.push("guide") } }
     }, data?.rows, error.ifEmpty { data?.status ?: "" }, opener)
 }
 
