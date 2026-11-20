@@ -117,7 +117,7 @@ export function Households() {
         <div className="adm-field">
           <h2 id="away" className="adm-h2">Watching away from home</h2>
           <span className="adm-soft">With playit.gg, Korie can be reached from outside without opening anything on your router. Everything that comes in through it counts as outside the home.</span>
-          {p && !p.installed && <span className="adm-soft small">playit.gg's program isn't in this install of Korie. It comes with Korie's Docker image; otherwise put <span className="adm-mono">playit</span> on the PATH (or set KORIE_PLAYIT).</span>}
+          {p && !p.installed && <span className="adm-soft small">playit.gg's program isn't in this install of Korie. It comes with Korie's Docker image; otherwise put playit's <span className="adm-mono">playitd</span> and <span className="adm-mono">playit-cli</span> on the PATH.</span>}
           {p?.installed && (
             <>
               <span className="adm-state" style={{ color: p.phase === "running" ? GOOD : p.phase === "failed" ? BAD : BUSY }}>

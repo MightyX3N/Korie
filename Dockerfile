@@ -8,19 +8,23 @@ RUN npm ci --no-audit --no-fund
 COPY web/ ./
 RUN npm run build
 
-# playit.gg's agent (BSD-2-Clause, Developed Methods LLC), for watching away from home
+# playit.gg's agent (BSD-2-Clause, Developed Methods LLC), for watching away from home:
+# playitd (the agent) and playit-cli (to link it to the admin's playit account)
 FROM node:22-trixie-slim AS playit
 ARG TARGETARCH
-ADD --checksum=sha256:db7f02937fbfd8a6b3bf74d3dea730825e24196c6b7dcc028aa410d9ead9865d https://github.com/playit-cloud/playit-agent/releases/download/v0.15.26/playit-linux-amd64 /playit/amd64
-ADD --checksum=sha256:db07c541695dd1937c40bf7e99a480bc4513f9a97018dcab485f96d52e692a2f https://github.com/playit-cloud/playit-agent/releases/download/v0.15.26/playit-linux-aarch64 /playit/arm64
-ADD --checksum=sha256:d0d3c219b8b78b346057cc846d74f32c9964ad39a4f91948509d5a285c3abe7a https://github.com/playit-cloud/playit-agent/releases/download/v0.15.26/playit-linux-armv7 /playit/arm
-RUN cp /playit/${TARGETARCH} /usr/local/bin/playit && chmod 755 /usr/local/bin/playit
+ADD --checksum=sha256:9d27a8dbb4d2d8a7107fcabfa33028c789a30a64c97a36447fe4afb94e08dde9 https://github.com/playit-cloud/playit-agent/releases/download/v2.0.2/playit-linux-amd64 /playit/amd64/playitd
+ADD --checksum=sha256:aed86fc2b82a772ca0e1d5cddec6c3123f96e12a099f7ae45aaa59a9a430a2cd https://github.com/playit-cloud/playit-agent/releases/download/v2.0.2/playit-linux-aarch64 /playit/arm64/playitd
+ADD --checksum=sha256:a3b3990c40669f93a333b0b16cb8ea2bcfdac9564a420d952a58d4aebe9e87e3 https://github.com/playit-cloud/playit-agent/releases/download/v2.0.2/playit-linux-armv7 /playit/arm/playitd
+ADD --checksum=sha256:28dbb93f52acda04af99418d03042659356b33fa4279ef8e431f22cf84378a36 https://github.com/playit-cloud/playit-agent/releases/download/v2.0.2/playit-cli-linux-amd64 /playit/amd64/playit-cli
+ADD --checksum=sha256:bf7215ae4f67abe81bcb4871046c11b0080ba012c6c98aad6d148d346b631d78 https://github.com/playit-cloud/playit-agent/releases/download/v2.0.2/playit-cli-linux-aarch64 /playit/arm64/playit-cli
+ADD --checksum=sha256:ddbb0edc0c2b241676ca1ad5b998e755c4ca07ce21980d5da28381cbf3f88281 https://github.com/playit-cloud/playit-agent/releases/download/v2.0.2/playit-cli-linux-armv7 /playit/arm/playit-cli
+RUN cp /playit/${TARGETARCH}/playitd /playit/${TARGETARCH}/playit-cli /usr/local/bin/ && chmod 755 /usr/local/bin/playitd /usr/local/bin/playit-cli
 
 FROM node:22-trixie-slim
 RUN apt-get update \
  && apt-get install -y --no-install-recommends ffmpeg libchromaprint-tools ca-certificates tini \
  && rm -rf /var/lib/apt/lists/*
-COPY --from=playit /usr/local/bin/playit /usr/local/bin/playit
+COPY --from=playit /usr/local/bin/playitd /usr/local/bin/playit-cli /usr/local/bin/
 COPY server/licenses/playit-agent.txt /usr/share/doc/playit/LICENSE
 WORKDIR /korie/server
 COPY server/package.json server/package-lock.json ./
