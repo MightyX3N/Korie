@@ -767,6 +767,19 @@ app.post("/api/play", async (req: Req) => {
 });
 
 
+// a stream's own playlist made by playback.oneQuality, for FFmpeg here
+app.get("/api/hls-master/:tok/index.m3u8", async (req: Req, reply: FastifyReply) => {
+  const text = playback.masterText(req.params.tok, Number(req.query.from ?? 0) || 0);
+  if (!text) throw new HttpError(404, "Not found.");
+  return reply.header("Content-Type", "application/vnd.apple.mpegurl").send(text);
+});
+
+app.get("/api/hls-media/:tok/index.m3u8", async (req: Req, reply: FastifyReply) => {
+  const text = await playback.mediaText(req.params.tok, Number(req.query.from ?? 0) || 0);
+  if (!text) throw new HttpError(404, "Not found.");
+  return reply.header("Content-Type", "application/vnd.apple.mpegurl").send(text);
+});
+
 app.get("/api/media/:tok/:name", async (req: Req, reply: FastifyReply) => mediaFile(req, reply));
 
 app.get("/api/media/:tok", async (req: Req, reply: FastifyReply) => mediaFile(req, reply));

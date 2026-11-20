@@ -3,6 +3,7 @@
 // account once (a claim link they approve), and keeps it running. The admin then makes a TCP
 // tunnel on playit.gg pointed at Korie's outside port; everything that comes through it counts
 // as outside the home (households.ts).
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { spawn, type ChildProcess } from "node:child_process";
@@ -26,11 +27,17 @@ let claimUrl = "";
 let problem = "";
 const lines: string[] = [];
 
+/** playit's terminal codes (colours, cursor moves) out */
+function plain(s: string): string {
+  // eslint-disable-next-line no-control-regex
+  return s.replace(/\x1b\[[0-9;?]*[A-Za-z]|\x1b[78]|\x1b\][^\x07]*\x07/g, "");
+}
+
 function note(text: string): void {
   for (const l of text.split(/\r?\n/)) {
     // playit's own colours and cursor codes out
     // eslint-disable-next-line no-control-regex
-    const t = l.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "").trim();
+    const t = plain(l).trim();
     if (!t) continue;
     lines.push(t);
     if (lines.length > 200) lines.shift();
@@ -53,22 +60,6 @@ function run(args: string[], onOut: (s: string) => void): ChildProcess {
   return c;
 }
 
-/** One short command (claim generate / claim url), its output. */
-function once(args: string[]): Promise<string> {
-  return new Promise((resolve, reject) => {
-    let out = "";
-    const c = run(args, (s) => (out += s));
-    const t = setTimeout(() => c.kill(), 30_000);
-    c.on("error", (e) => reject(e));
-    c.on("close", (code) => {
-      clearTimeout(t);
-      note(out);
-      if (code === 0) resolve(out.trim());
-      else reject(new Error(out.trim().split("\n").pop() || `playit stopped (${code})`));
-    });
-  });
-}
-
 export function status() {
   const has = !!binary();
   return {
@@ -85,20 +76,20 @@ function secret(): string {
 export async function link(): Promise<string> {
   if (!binary()) throw new Error("playit isn't installed here.");
   if (linking) return claimUrl;
-  const code = (await once(["claim", "generate"])).split(/\s+/).pop() ?? "";
-  if (!/^[A-Za-z0-9]+$/.test(code)) throw new Error("playit didn't give a code to link with.");
-  const url = (await once(["claim", "url", code])).match(/https:\/\/\S+/)?.[0] ?? `https://playit.gg/claim/${code}`;
+  // a claim code is five random bytes in hex, made the way playit's own "claim generate" does
+  const code = crypto.randomBytes(5).toString("hex");
+  const url = `https://playit.gg/claim/${code}`;
   claimUrl = url;
   setPhase("linking");
   let out = "";
   // waits (up to 15 minutes) until the admin approves it on playit.gg
   // (what it prints is the agent's key: not in the log)
-  linking = run(["claim", "exchange", code, "900"], (s) => (out += s));
+  // (-s: it writes plain lines, not a terminal screen)
+  linking = run(["-s", "claim", "exchange", code, "900"], (s) => (out += plain(s)));
   linking.on("error", (e) => setPhase("failed", e.message));
   linking.on("close", (codeOut) => {
     linking = null;
-    const words = out.trim().split(/\s+/);
-    const key = [...words].reverse().find((w) => /^[0-9a-f]{32,}$/i.test(w)) ?? "";
+    const key = [...out.matchAll(/\b[0-9a-f]{32,}\b/gi)].pop()?.[0] ?? "";
     if (codeOut === 0 && key) {
       setSetting("playit_secret", key);
       setSetting("playit_on", true);

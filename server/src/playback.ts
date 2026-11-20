@@ -8,7 +8,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { spawn, execFile } from "node:child_process";
 import type { ServerResponse } from "node:http";
-import { DATA, FFMPEG, FFPROBE, SECRET, log } from "./config.ts";
+import { DATA, FFMPEG, FFPROBE, PORT, SECRET, log } from "./config.ts";
 import { fetchText } from "./net.ts";
 
 // --- what a source is ---------------------------------------------------------------------
@@ -121,22 +121,146 @@ export async function oneQuality(src: Source): Promise<Source> {
   const r = await fetchText(src.url, { headers: src.headers, cache: src.live ? 0 : 600 }).catch(() => null);
   const text = r?.ok ? r.text : "";
   if (!text.includes("#EXT-X-STREAM-INF")) return src;
-  if (/#EXT-X-MEDIA:[^\n]*TYPE=AUDIO[^\n]*URI=/i.test(text)) return src;
   const lines = text.split(/\r?\n/);
-  const variants: { url: string; height: number; bw: number }[] = [];
+  const variants: { url: string; height: number; bw: number; line: string }[] = [];
   for (let i = 0; i < lines.length; i++) {
     if (!lines[i].startsWith("#EXT-X-STREAM-INF")) continue;
     const uri = lines.slice(i + 1).find((l) => l.trim() && !l.startsWith("#"));
     if (!uri) continue;
     const res = lines[i].match(/RESOLUTION=(\d+)x(\d+)/i);
     const bw = lines[i].match(/[^-]BANDWIDTH=(\d+)/i) ?? lines[i].match(/BANDWIDTH=(\d+)/i);
-    variants.push({ url: new URL(uri.trim(), src.url).toString(), height: res ? Number(res[2]) : 0, bw: bw ? Number(bw[1]) : 0 });
+    variants.push({ url: new URL(uri.trim(), src.url).toString(), height: res ? Number(res[2]) : 0, bw: bw ? Number(bw[1]) : 0, line: lines[i] });
   }
   if (!variants.length) return src;
   const fit = variants.filter((v) => !v.height || v.height <= 1080);
   const pool = fit.length ? fit : variants;
   const best = pool.reduce((b, v) => (v.height > b.height || (v.height === b.height && v.bw > b.bw) ? v : b));
-  return { ...src, url: best.url };
+  const group = best.line.match(/AUDIO="([^"]+)"/i)?.[1];
+  const renditions = lines.filter((l) => /^#EXT-X-MEDIA:/i.test(l) && /TYPE=AUDIO/i.test(l) && /URI="/i.test(l));
+  if (!renditions.length) return { ...src, url: best.url };
+  // the sound comes separately (DRTV's newer streams): a playlist of its own with just that
+  // quality and its sound, which this server hands to FFmpeg, so it reads two streams, not all of them
+  const mine = renditions.filter((l) => !group || l.includes(`GROUP-ID="${group}"`));
+  if (!mine.length) return src;
+  const abs = (l: string) => l.replace(/URI="([^"]+)"/i, (_, u) => `URI="${new URL(u, src.url).toString()}"`);
+  const master = [
+    "#EXTM3U", "#EXT-X-VERSION:6", "#EXT-X-INDEPENDENT-SEGMENTS",
+    ...mine.map(abs),
+    best.line.replace(/,?SUBTITLES="[^"]*"/i, "").replace(/,?CLOSED-CAPTIONS="[^"]*"/i, ""),
+    best.url, "",
+  ].join("\n");
+  return { ...src, url: `http://127.0.0.1:${PORT}/api/hls-master/${seal("m3u8", { text: master, h: src.headers ?? {} })}/index.m3u8` };
+}
+
+// --- a stream whose sound comes separately (HLS with fMP4 parts): its own playlists ---------------
+// FFmpeg can't jump into such a stream (after a jump it reads the parts without their start), so
+// to start further in, the playlists themselves start at the part that has that moment.
+
+function seal(kind: string, v: unknown): string {
+  const body = Buffer.from(JSON.stringify(v)).toString("base64url");
+  return body + "." + crypto.createHmac("sha256", SECRET).update(kind + ":" + body).digest("base64url").slice(0, 22);
+}
+
+function unseal<T>(kind: string, tok: string): T | null {
+  const [body, sig] = tok.split(".");
+  if (!body || !sig) return null;
+  const want = crypto.createHmac("sha256", SECRET).update(kind + ":" + body).digest("base64url").slice(0, 22);
+  if (want.length !== sig.length || !crypto.timingSafeEqual(Buffer.from(want), Buffer.from(sig))) return null;
+  try {
+    return JSON.parse(Buffer.from(body, "base64url").toString("utf8")) as T;
+  } catch {
+    return null;
+  }
+}
+
+type Master = { text: string; h: Record<string, string> };
+const MASTER = /\/api\/hls-master\/([^/]+)\/index\.m3u8/;
+
+/** The playlist oneQuality made, for FFmpeg here; from: starting at that part (seconds). */
+export function masterText(tok: string, from = 0): string | null {
+  const m = unseal<Master>("m3u8", tok);
+  if (!m) return null;
+  if (!(from > 0)) return m.text;
+  const local = (u: string) => `http://127.0.0.1:${PORT}/api/hls-media/${seal("media", { u, h: m.h })}/index.m3u8?from=${from}`;
+  return m.text.split("\n").map((l) => (l.startsWith("#") ? l.replace(/URI="([^"]+)"/i, (_, u) => `URI="${local(u)}"`) : l.trim() ? local(l.trim()) : l)).join("\n");
+}
+
+interface Part { start: number; end: number; lines: string[] }
+
+/** A media playlist's parts, with their addresses made whole (and byte ranges given in full). */
+async function parts(u: string, h: Record<string, string>): Promise<{ head: string[]; parts: Part[]; tail: string[] } | null> {
+  const r = await fetchText(u, { headers: h, cache: 600 }).catch(() => null);
+  if (!r?.ok) return null;
+  const head: string[] = [];
+  const list: Part[] = [];
+  let pending: string[] = [];
+  let t = 0;
+  let dur = 0;
+  const next = new Map<string, number>();
+  let range: [number, number | null] | null = null;
+  let seen = false;
+  for (const raw of r.text.split(/\r?\n/)) {
+    const l = raw.trim();
+    if (!l) continue;
+    if (l.startsWith("#EXT-X-MAP")) {
+      head.push(l.replace(/URI="([^"]+)"/i, (_, x) => `URI="${new URL(x, u).toString()}"`));
+      continue;
+    }
+    if (l.startsWith("#EXTINF:")) {
+      seen = true;
+      dur = Number(l.slice(8).split(",")[0]) || 0;
+      pending.push(l);
+      continue;
+    }
+    if (l.startsWith("#EXT-X-BYTERANGE:")) {
+      const [len, off] = l.slice(17).split("@");
+      range = [Number(len), off !== undefined ? Number(off) : null];
+      continue;
+    }
+    if (l.startsWith("#EXT-X-ENDLIST")) continue;
+    if (l.startsWith("#")) {
+      (seen ? pending : head).push(l);
+      continue;
+    }
+    const abs = new URL(l, u).toString();
+    if (range) {
+      const off = range[1] ?? next.get(abs) ?? 0;
+      pending.push(`#EXT-X-BYTERANGE:${range[0]}@${off}`);
+      next.set(abs, off + range[0]);
+      range = null;
+    }
+    pending.push(abs);
+    list.push({ start: t, end: t + dur, lines: pending });
+    t += dur;
+    pending = [];
+  }
+  return { head: head.filter((x) => !/^#EXT-X-(MEDIA-SEQUENCE|DISCONTINUITY-SEQUENCE)/.test(x)), parts: list, tail: ["#EXT-X-ENDLIST"] };
+}
+
+/** A media playlist starting at the part that has the moment from. */
+export async function mediaText(tok: string, from: number): Promise<string | null> {
+  const m = unseal<{ u: string; h: Record<string, string> }>("media", tok);
+  if (!m) return null;
+  const p = await parts(m.u, m.h);
+  if (!p) return null;
+  const keep = p.parts.filter((x) => x.end > from + 0.001);
+  return [...p.head, "#EXT-X-MEDIA-SEQUENCE:0", ...keep.flatMap((x) => x.lines), ...p.tail, ""].join("\n");
+}
+
+/** Where such a stream really starts when asked for t: the picture's part (video) and the sound's (audio). */
+export async function partStart(src: Source, t: number): Promise<{ video: number; audio: number } | null> {
+  const k = src.url?.match(MASTER)?.[1];
+  const m = k ? unseal<Master>("m3u8", k) : null;
+  if (!m || t <= 0) return null;
+  const lines = m.text.split("\n");
+  const v = lines.filter((l) => l.trim() && !l.startsWith("#")).pop();
+  const a = lines.find((l) => /TYPE=AUDIO/i.test(l))?.match(/URI="([^"]+)"/i)?.[1];
+  const pv = v ? await parts(v, m.h) : null;
+  if (!pv?.parts.length) return null;
+  const video = (pv.parts.find((x) => x.end > t + 0.001) ?? pv.parts[pv.parts.length - 1]).start;
+  const pa = a ? await parts(a, m.h) : null;
+  const audio = pa?.parts.find((x) => x.end > video + 0.001)?.start ?? video;
+  return { video, audio };
 }
 
 export async function probe(src: Source): Promise<Probe> {
@@ -334,6 +458,7 @@ export function pickSubs(subs: { lang: string; isDefault: boolean; burn?: boolea
 
 /** Where a copied (not converted) stream really starts when asked to start at t: the key frame before it. */
 export async function keyframeBefore(src: Source, t: number, after = false): Promise<number> {
+  if (src.url && MASTER.test(src.url) && t > 0) return (await partStart(src, t))?.video ?? t;
   if (!src.file || src.disc || t <= 0) return t;
   try {
     const input = (await inputArgs(src)).filter((a) => a !== "-i");
@@ -381,8 +506,18 @@ export async function stream(src: Source, start: number, q: { audio?: string; bu
   const args = ["-hide_banner", "-loglevel", "error", "-nostdin"];
   // a copied picture starts at a key frame: asked for exactly one, FFmpeg can land on the one
   // before it, so aim a hair past it
-  if (start > 0 && !src.live) args.push("-ss", String(q.v === "copy" && q.burn === undefined ? start + 0.05 : start));
-  args.push(...(await inputArgs(src)));
+  const ps = start > 0 && !src.live ? await partStart(src, start) : null;
+  if (ps) {
+    // its playlists start at the parts that have that moment; the sound may start a little before
+    // the picture, so it's cut to the picture's start (copied), or everything to the moment itself
+    src = { ...src, url: src.url!.replace(/index\.m3u8$/, `index.m3u8?from=${ps.video}`) };
+    args.push(...(await inputArgs(src)));
+    const cut = q.v === "copy" && q.burn === undefined ? ps.video - ps.audio : start - ps.audio;
+    if (cut > 0.01) args.push("-ss", cut.toFixed(3));
+  } else {
+    if (start > 0 && !src.live) args.push("-ss", String(q.v === "copy" && q.burn === undefined ? start + 0.05 : start));
+    args.push(...(await inputArgs(src)));
+  }
   const audio = q.audio !== undefined && /^\d+$/.test(q.audio) ? Number(q.audio) : null;
   const burn = q.burn !== undefined && /^\d+$/.test(q.burn) ? Number(q.burn) : null;
   // which picture: a stream with several qualities (HLS) says which one, else the first

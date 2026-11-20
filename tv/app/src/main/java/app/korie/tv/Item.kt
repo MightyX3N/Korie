@@ -171,8 +171,14 @@ fun Item(nav: Nav, me: Screen, who: Me) {
                     // the season pills, and marking the whole season shown as watched (or not)
                     val seen = cur.episodes.isNotEmpty() && cur.episodes.all { it.watched }
                     val sname = cur.title.ifEmpty { if (cur.n == 0) "Specials" else "Season ${cur.n}" }
+                    // a season opens when it's picked (OK), not when focus passes over it
+                    if (seasons.size > 1) FlowRow(
+                        Modifier.padding(bottom = r(0.8f)),
+                        horizontalArrangement = Arrangement.spacedBy(r(0.6f)), verticalArrangement = Arrangement.spacedBy(r(0.6f)),
+                    ) {
+                        seasons.forEach { s -> Pill(s.title.ifEmpty { "Season ${s.n}" }, s === cur) { season = s.n } }
+                    }
                     FlowRow(Modifier.padding(bottom = r(1.4f)), horizontalArrangement = Arrangement.spacedBy(r(0.6f)), verticalArrangement = Arrangement.spacedBy(r(0.6f))) {
-                        if (seasons.size > 1) seasons.forEach { s -> Pill(s.title.ifEmpty { "Season ${s.n}" }, s === cur, onFocus = { season = s.n }) { season = s.n } }
                         Btn(if (seen) "$sname watched" else "Mark ${sname.lowercase()} as watched", if (seen) R.drawable.lc_eye_off else R.drawable.lc_check) {
                             season = cur.n // stay on this season after it's reloaded
                             scope.launch { try { Korie.watched(cur.episodes.map { it.id }, !seen) } catch (e: Exception) { Ui.toast(e.message ?: "") }; reload() }

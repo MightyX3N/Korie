@@ -61,6 +61,8 @@ function perPerson(aid: string): boolean {
 export function sources(pid?: string | null): string[] {
   const out: string[] = [];
   for (const aid of addons.enabledIds()) {
+    // (one that only looks after something, like households, has nothing to watch)
+    if (addons.manifests.get(aid)?.type === "service") continue;
     // an add-on with an account per person: their own view if they signed in (the house's things
     // in it too), otherwise the house's (Stremio add-ons added for everyone)
     if (!perPerson(aid)) out.push(aid);
@@ -78,6 +80,7 @@ export function srcFor(aid: string, pid?: string | null): string {
 function allSources(): string[] {
   const out: string[] = [];
   for (const aid of addons.enabledIds()) {
+    if (addons.manifests.get(aid)?.type === "service") continue;
     out.push(aid);
     if (perPerson(aid)) for (const pid of addons.signedIn(aid)) out.push(`${aid}@${pid}`);
   }
@@ -97,6 +100,19 @@ const pages = new Map<string, { at: number; loading: boolean; error: string; tit
 
 function s(v: unknown, max = 2000): string {
   return typeof v === "string" ? v.slice(0, max) : typeof v === "number" ? String(v) : "";
+}
+/** text an add-on gave, with HTML's character codes (&amp; &#39; &#xA;) turned into the characters */
+function t(v: unknown, max = 2000): string {
+  const x = s(v, max * 2);
+  if (!x.includes("&")) return x.slice(0, max);
+  const named: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: "\u00a0" };
+  return x.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (m, c: string) => {
+    if (c[0] === "#") {
+      const code = c[1] === "x" || c[1] === "X" ? parseInt(c.slice(2), 16) : Number(c.slice(1));
+      return code > 0 && code < 0x110000 ? String.fromCodePoint(code) : m;
+    }
+    return named[c.toLowerCase()] ?? m;
+  }).slice(0, max);
 }
 function n(v: unknown): number {
   const x = typeof v === "number" ? v : typeof v === "string" ? Number(v) : NaN;
@@ -120,9 +136,9 @@ export function item(aid: string, raw: unknown): AItem | null {
   if (!sid) return null;
   const kind = KINDS.has(s(r.kind)) ? s(r.kind) : "film";
   const it: AItem = {
-    id: `${aid}/${sid}`, source: aid, sourceId: sid, kind, title: s(r.title, 300) || "Untitled", subtitle: s(r.subtitle, 300),
-    year: s(r.year, 10), runtime: n(r.runtime), overview: s(r.overview, 5000), poster: url(r.poster), backdrop: url(r.backdrop),
-    thumb: url(r.thumb) || url(r.still), genres: list(r.genres).map((g) => s(g, 60)).filter(Boolean).slice(0, 10),
+    id: `${aid}/${sid}`, source: aid, sourceId: sid, kind, title: t(r.title, 300) || "Untitled", subtitle: t(r.subtitle, 300),
+    year: s(r.year, 10), runtime: n(r.runtime), overview: t(r.overview, 5000), poster: url(r.poster), backdrop: url(r.backdrop),
+    thumb: url(r.thumb) || url(r.still), genres: list(r.genres).map((g) => t(g, 60)).filter(Boolean).slice(0, 10),
     rating: n(r.rating), director: s(r.director, 200),
     cast: list(r.cast).map((c: any) => Array.isArray(c) ? { name: s(c[0], 100), role: s(c[1], 100), photo: "" } : { name: s(c?.name, 100), role: s(c?.role, 100), photo: url(c?.photo) }).filter((c) => c.name).slice(0, 12),
     data: r.data ?? null,
@@ -135,7 +151,7 @@ export function item(aid: string, raw: unknown): AItem | null {
   }
   if (kind === "episode" && r.series) it.series = `${aid}/${s(r.series, 500)}`;
   if (kind === "episode") {
-    if (s(r.series_title, 300)) it.seriesTitle = s(r.series_title, 300);
+    if (t(r.series_title, 300)) it.seriesTitle = t(r.series_title, 300);
     if (n(r.season)) it.season = n(r.season);
     if (n(r.episode) || n(r.n)) it.episode = n(r.episode) || n(r.n);
   }
@@ -623,15 +639,15 @@ export async function open(id: string, pid?: string | null): Promise<AItem> {
   const res = await callFor(it.source, "open", [{ id: it.sourceId, kind: it.kind, title: it.title, data: it.data }], pid);
   if (res?.error) throw new Error(s(res.error));
   for (const k of ["overview", "poster", "backdrop", "year"] as const) {
-    const v = k === "poster" || k === "backdrop" ? url(res?.[k]) : s(res?.[k]);
+    const v = k === "poster" || k === "backdrop" ? url(res?.[k]) : k === "overview" ? t(res?.[k], 5000) : s(res?.[k]);
     if (v && !it[k]) (it as any)[k] = v;
   }
-  if (s(res?.title) && (!it.title || it.title === "Untitled")) it.title = s(res.title, 300);
+  if (s(res?.title) && (!it.title || it.title === "Untitled")) it.title = t(res.title, 300);
   if (!it.thumb) it.thumb = it.backdrop || it.poster;
   if (!it.genres.length) it.genres = list(res?.genres).map((g) => s(g, 60)).filter(Boolean);
   it.seasons = list(res?.seasons).map((sn: any, i) => ({
     n: n(sn?.n) || (sn?.n === 0 ? 0 : i + 1),
-    title: s(sn?.title, 100),
+    title: t(sn?.title, 100),
     episodes: list(sn?.episodes).map((e: any) => {
       const ep = item(it.source, { ...e, kind: "episode", series: it.sourceId, subtitle: e?.subtitle ?? "" });
       if (ep) Object.assign(ep, { season: n(sn?.n), episode: n(e?.n) });
