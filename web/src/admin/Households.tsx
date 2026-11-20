@@ -73,7 +73,7 @@ export function Households() {
 
   const p = pl.data;
   const signUp = `${location.origin}/web/register`;
-  const outside = p?.address ? `http://${p.address}` : "";
+  const outside = p?.address ? (/^https?:\/\//.test(p.address) ? p.address : `http://${p.address}`) : "";
   return (
     <>
       <header className="adm-head">
@@ -150,8 +150,8 @@ export function Households() {
           {p?.address ? (
             <>
               <div className="adm-row">
-                <span className="adm-mono adm-address">{p.address}</span>
-                <CopyButton text={p.address} />
+                <span className="adm-mono adm-address">{outside}</span>
+                <CopyButton text={outside} />
               </div>
               <span className="adm-soft small">In a browser: <span className="adm-mono">{outside}/web</span>. In Korie's TV app and Jellyfin's apps: <span className="adm-mono">{outside}</span>.</span>
             </>

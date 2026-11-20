@@ -8,7 +8,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawn, type ChildProcess } from "node:child_process";
-import { log } from "./config.ts";
+import { DATA, log } from "./config.ts";
 import { setting, setSetting } from "./db.ts";
 import { emit } from "./events.ts";
 import { OUTSIDE_PORT } from "./households.ts";
@@ -109,9 +109,11 @@ export async function link(): Promise<string> {
   return claimUrl;
 }
 
-// --- the tunnel: Korie makes it on the admin's playit account (TCP, to the outside port) ---------
-// playit's API as playit's own agent uses it (api_client, v2.0.2): /v1/agents/rundata and
-// /v1/tunnels/create, with the agent's key.
+// --- the tunnel: Korie makes it on the admin's playit account, to the outside port --------------
+// /v1/agents/rundata and /v1/tunnels/create with the agent's key, in the body playit.gg's own
+// website sends now (name, protocol, origin, endpoint, enabled). An HTTPS tunnel first: playit
+// gives it a name and a certificate (Let's Encrypt) and passes the requests on to Korie; raw TCP
+// ports need playit Premium, so that's only the second try.
 
 const API = process.env.KORIE_PLAYIT_API || "https://api.playit.gg";
 
@@ -120,14 +122,16 @@ async function api<T>(p: string, body: unknown): Promise<T> {
     method: "POST", headers: { "Content-Type": "application/json", Authorization: `Agent-Key ${secret()}` },
     body: JSON.stringify(body), signal: AbortSignal.timeout(20_000),
   });
-  const j = (await r.json().catch(() => null)) as { status?: string; data?: unknown } | null;
+  const j = (await r.json().catch(() => null)) as { status?: string; data?: any } | null;
   if (j?.status === "success") return j.data as T;
-  throw new Error(`playit.gg answered ${j?.status ?? r.status}: ${JSON.stringify(j?.data ?? "").slice(0, 200)}`);
+  const why = typeof j?.data === "string" ? j.data : j?.data?.message ?? JSON.stringify(j?.data ?? "");
+  throw new Error(why === "RequiresPlayitPremium" ? "this needs playit Premium on your playit.gg account" : `playit.gg said ${String(why).slice(0, 200)}`);
 }
 
 interface Field { name: string; value: string }
 interface RunData {
   agent_id: string;
+  permissions?: unknown;
   tunnels: { id: string; name: string; display_address: string; port_type: string; tunnel_type: string | null; agent_config: { fields: Field[] }; disabled_reason: string | null }[];
   pending: { id: string; name: string; status_msg: string }[];
 }
@@ -145,12 +149,15 @@ async function ensureTunnel(): Promise<void> {
   try {
     const d = await api<RunData>("/v1/agents/rundata", {});
     const field = (t: RunData["tunnels"][number], n: string) => t.agent_config?.fields?.find((f) => f.name === n)?.value?.trim() ?? "";
-    const mine = d.tunnels.find((t) => !t.tunnel_type && (t.port_type === "tcp" || t.port_type === "both") && Number(field(t, "local_port")) === OUTSIDE_PORT);
+    const port = String(OUTSIDE_PORT);
+    const mine = d.tunnels.find((t) => field(t, "local_port") === port || field(t, "http_port") === port);
     if (mine) {
       tunnelNote = mine.disabled_reason ? `playit.gg has turned the tunnel off: ${mine.disabled_reason}` : "";
-      if (mine.display_address !== String(setting("playit_address") ?? "")) {
-        setSetting("playit_address", mine.display_address);
-        log("playit", `the tunnel's address: ${mine.display_address}`);
+      // an HTTPS tunnel is reached as https://<its name>; a TCP one as http://<address>:<port>
+      const a = (mine.tunnel_type === "https" ? "https://" : "http://") + mine.display_address;
+      if (a !== String(setting("playit_address") ?? "")) {
+        setSetting("playit_address", a);
+        log("playit", `the tunnel's address: ${a}`);
       }
       emit("playit");
       again(10 * 60_000);
@@ -163,11 +170,21 @@ async function ensureTunnel(): Promise<void> {
       again(10_000);
       return;
     }
-    await api("/v1/tunnels/create", {
-      ports: { type: "custom-tcp", details: 1 },
-      origin: { type: "agent", data: { agent_id: d.agent_id, config: { fields: [{ name: "local_ip", value: "127.0.0.1" }, { name: "local_port", value: String(OUTSIDE_PORT) }] } } },
-      enabled: true, alloc: null, name: "Korie", firewall_id: null,
+    const make = (protocol: unknown, fields: Field[]) => api("/v1/tunnels/create", {
+      name: "Korie", protocol,
+      origin: { type: "agent", data: { agent_id: d.agent_id, config: { fields: [{ name: "local_ip", value: "127.0.0.1" }, ...fields] } } },
+      endpoint: { type: "region", details: { region: "global", port: null } },
+      enabled: true,
     });
+    try {
+      await make({ type: "tunnel-type", details: "https" }, [
+        // the requests go to Korie's outside port as plain HTTP (playit holds the certificate)
+        { name: "http_port", value: port }, { name: "https_port", value: port }, { name: "tls_termination", value: "letsencrypt" },
+      ]);
+    } catch (e) {
+      log("playit", `an HTTPS tunnel couldn't be made (${e instanceof Error ? e.message : e}); trying a TCP one`);
+      await make({ type: "raw-ports", details: { port_type: "tcp", port_count: 1, software_description: "Korie, a media server (its web pages and video streams)" } }, [{ name: "local_port", value: port }]);
+    }
     log("playit", `made a tunnel on playit.gg to port ${OUTSIDE_PORT}`);
     tunnelNote = "playit.gg is setting up the tunnel.";
     emit("playit");
@@ -186,7 +203,8 @@ export function start(): void {
   setPhase("running");
   // playitd in the foreground, writing plain log lines (as in playit's own Docker image)
   const sock = path.join(os.tmpdir(), "korie-playitd.sock");
-  const c = run(daemon(), [`--secret=${secret()}`, "--platform-docker", "--socket-path", sock], note);
+  // (the HTTPS tunnel's certificate is kept with Korie's data)
+  const c = run(daemon(), [`--secret=${secret()}`, "--platform-docker", "--socket-path", sock, `--cert-dir=${path.join(DATA, "playit-certs")}`], note);
   agent = c;
   void ensureTunnel();
   c.on("error", (e) => setPhase("failed", e.message));

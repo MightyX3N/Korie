@@ -347,19 +347,27 @@ fun Connect(onFound: (String) -> Unit) {
             Text(if (looking) "Looking for Korie…" else if (servers.isEmpty()) "No Korie answered on this network" else "Which Korie?", style = heading(2f))
             servers.forEachIndexed { i, u -> Btn(u.removePrefix("http://"), primary = i == 0, modifier = if (i == 0) Modifier.focusRequester(first) else Modifier) { onFound(u) } }
             if (!looking) {
-                Text("Or type its address (like 192.168.1.20:8100):", style = body(1.1f, C.body))
+                Text("Or type its address (like 192.168.1.20:8100, or the one you were given away from home):", style = body(1.1f, C.body))
                 // .field
                 Row(
                     Modifier.fillMaxWidth().clip(RoundedCornerShape(r(0.7f))).background(C.ground).border(r(0.12f), C.accent, RoundedCornerShape(r(0.7f)))
                         .padding(horizontal = r(1), vertical = r(0.8f)),
                 ) { Text(typed.ifEmpty { " " }, style = body(1.4f)) }
-                KeyboardRows("1234567890.:abcdefghijklmnopqrstuvwxyz".map { it.toString() } + listOf("Delete", "Look again", "Done"), 10, if (servers.isEmpty()) first else null) { k ->
+                KeyboardRows("1234567890.:abcdefghijklmnopqrstuvwxyz-/".map { it.toString() } + listOf("Delete", "Look again", "Done"), 10, if (servers.isEmpty()) first else null) { k ->
                     when (k) {
                         "Delete" -> typed = typed.dropLast(1)
                         "Look again" -> scope.launch { looking = true; servers.clear(); servers.addAll(discover(ctx)); looking = false }
                         "Done" -> scope.launch {
-                            val u = "http://" + typed.trim().let { if (it.contains(':')) it else "$it:8100" }
-                            if (Korie.hello(u)) onFound(u) else error = "No Korie answered at ${typed.trim()}."
+                            // an address with http:// or https://, one with a port, or a name (at home
+                            // on port 8100; away from home, like playit.gg's, over https)
+                            val t = typed.trim().trimEnd('/')
+                            val tries = when {
+                                t.contains("://") -> listOf(t)
+                                t.contains(':') -> listOf("http://$t")
+                                else -> listOf("http://$t:8100", "https://$t")
+                            }
+                            val u = tries.firstOrNull { Korie.hello(it) }
+                            if (u != null) onFound(u) else error = "No Korie answered at $t."
                         }
                         else -> typed += k
                     }
