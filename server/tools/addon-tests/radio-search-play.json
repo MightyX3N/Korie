@@ -1,0 +1,2 @@
+{ "call": "search", "args": ["P3"], "ctx": { "settings": {} },
+  "answers": [ { "match": "stations/search\\?name=P3", "live": true } ] }

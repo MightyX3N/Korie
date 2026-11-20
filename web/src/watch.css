@@ -406,3 +406,14 @@ button, input, select { font: inherit; color: inherit; }
 @media (max-width: 330px) { .who-row { grid-template-columns: 1fr; } }
 .who-note { max-width: 34em; display: flex; flex-direction: column; align-items: center; gap: .8em; }
 .who-note-text { white-space: pre-wrap; }
+.player .sound-only { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .6em; padding: 2em; text-align: center; pointer-events: none; background: radial-gradient(circle at 50% 40%, #16304a 0%, #070b12 70%); }
+.player .sound-only h2 { margin: 0; font-size: clamp(1.6rem, 4vw, 3rem); }
+.player .sound-only p { margin: 0; color: var(--soft, #9aa4b5); font-size: clamp(.95rem, 1.6vw, 1.2rem); }
+.player .sound-only-icon { font-size: clamp(3rem, 9vw, 6rem); color: var(--accent, #2fb3ec); line-height: 1; }
+.live-tag { display: inline-block; padding: 0 .4em; margin-right: .3em; border-radius: 4px; background: #e5484d; color: #fff; font-size: .75em; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; vertical-align: .1em; }
+.musicbar-what .track-pic { display: inline-flex; align-items: center; justify-content: center; color: var(--accent, #2fb3ec); }
+.musicbar-what small:has(.live-tag), .nowplaying .soft:has(.live-tag) { display: flex; flex-direction: row; align-items: center; gap: .1em; }
+.live-tag { flex: none; width: auto; }
+.musicbar-what span.live-tag { display: inline-block; }
+.nowplaying .soft:has(.live-tag) { justify-content: flex-start; align-self: flex-start; }
+.np-cover-icon { display: flex; align-items: center; justify-content: center; color: var(--accent, #2fb3ec); }

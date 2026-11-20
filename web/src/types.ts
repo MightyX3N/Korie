@@ -12,14 +12,14 @@ export interface Me { person: Person; server: { name: string; version: string; i
 export interface Card {
   id: string; kind: string; title: string; subtitle: string; year: string; poster: string; thumb: string; backdrop: string;
   progress: number; watched: boolean; source: string; overview?: string; genres?: string[]; rating?: number; runtime?: number;
-  favourite?: boolean; local?: boolean; series?: string; only?: "film" | "series"; length?: number; album?: string; n?: number; cert?: string; playlist?: string;
+  favourite?: boolean; local?: boolean; series?: string; only?: "film" | "series"; length?: number; album?: string; n?: number; cert?: string; playlist?: string; /** sound only (a radio station): played in the background */ audio?: boolean;
 }
 
 export interface Row { id: string; title: string; kind: string; items: Card[]; source?: string }
 
 export interface Episode { id: string; n: number; date?: string; title: string; overview: string; runtime: number; thumb: string; progress: number; watched: boolean; position: number; duration: number }
 export interface Season { n: number; title: string; episodes: Episode[] }
-export interface Track { id: string; n: number; title: string; artist: string; duration: number; album?: string; albumTitle?: string; poster?: string }
+export interface Track { id: string; n: number; title: string; artist: string; duration: number; album?: string; albumTitle?: string; poster?: string; /** a radio station */ live?: boolean }
 
 export interface Item {
   id: string; kind: string; title: string; year: string; overview: string; genres: string[]; rating: number; runtime: number; director: string;

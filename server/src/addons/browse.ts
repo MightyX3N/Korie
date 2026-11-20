@@ -30,6 +30,8 @@ export interface AItem {
   seasons?: ASeason[]; series?: string;
   /** an episode: its series' name (from the add-on when the series itself isn't known yet), season and number */
   seriesTitle?: string; season?: number; episode?: number;
+  /** sound only (a radio station): played in the background, like music */
+  audio?: boolean;
   /** its age rating, when the add-on gives one ("DK 11", "PG-13", or just an age) */
   cert?: string; age?: number | null;
 }
@@ -149,6 +151,7 @@ export function item(aid: string, raw: unknown): AItem | null {
     it.age = age;
     it.cert = cert || ages.label(age);
   }
+  if (r.audio === true && (kind === "live" || kind === "film" || kind === "episode")) it.audio = true;
   if (kind === "episode" && r.series) it.series = `${aid}/${s(r.series, 500)}`;
   if (kind === "episode") {
     if (t(r.series_title, 300)) it.seriesTitle = t(r.series_title, 300);

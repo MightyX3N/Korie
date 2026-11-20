@@ -1,0 +1,2 @@
+{ "call": "browse", "args": [], "ctx": { "settings": { "countries": ["DK"], "count": "25" } },
+  "answers": [ { "match": "^https://all\\.api", "status": 503, "text": "down" }, { "match": "de1\\.api.*bycountrycodeexact/DK", "live": true } ] }

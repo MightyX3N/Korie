@@ -101,7 +101,17 @@ fun rem(): Rem = LocalRem.current
 @Composable
 fun Look(content: @Composable () -> Unit) {
     val cfg = LocalConfiguration.current
-    val base = minOf(cfg.screenWidthDp / 96f, cfg.screenHeightDp / 54f)
+    // everything in rem, from the screen's size; bigger when this device asks for it (Settings, This
+    // device, Size), or by itself on a screen that isn't a TV and is short (a car's screen, say),
+    // where the TV's sizes come out small
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val tv = (cfg.uiMode and android.content.res.Configuration.UI_MODE_TYPE_MASK) == android.content.res.Configuration.UI_MODE_TYPE_TELEVISION
+    val pick = UiSize.choice.intValue
+    // (automatic: a very wide screen, as cars have, or one that isn't a TV and is short)
+    val wide = cfg.screenWidthDp > cfg.screenHeightDp * 2.1f
+    val scale = if (pick > 0) pick / 100f else if (wide || (!tv && cfg.screenHeightDp < 520)) 1.3f else 1f
+    UiSize.load(ctx)
+    val base = minOf(cfg.screenWidthDp / 96f, cfg.screenHeightDp / 54f) * scale
     CompositionLocalProvider(LocalRem provides Rem(base, LocalDensity.current.fontScale)) {
         androidx.tv.material3.MaterialTheme(content = content)
     }
@@ -296,3 +306,19 @@ fun Modifier.trapFocus(): Modifier = this.focusProperties {
 /** What had the focus last on the screen (the web's focus memory per screen): the rail goes back to it. */
 class FocusMemory { var last: FocusRequester? = null }
 val LocalFocusMemory = androidx.compose.runtime.staticCompositionLocalOf<FocusMemory?> { null }
+
+
+/** How big everything is on this device: 0 is automatic, else a percentage (Settings, This device). */
+object UiSize {
+    val choice = androidx.compose.runtime.mutableIntStateOf(0)
+    private var loaded = false
+    fun load(ctx: android.content.Context) {
+        if (loaded) return
+        loaded = true
+        choice.intValue = ctx.getSharedPreferences("korie", android.content.Context.MODE_PRIVATE).getInt("uiSize", 0)
+    }
+    fun set(ctx: android.content.Context, v: Int) {
+        choice.intValue = v
+        ctx.getSharedPreferences("korie", android.content.Context.MODE_PRIVATE).edit().putInt("uiSize", v).apply()
+    }
+}

@@ -484,6 +484,13 @@ private fun ThisDevice(nav: Nav, who: Me, signOut: () -> Unit, reqs: MutableMap<
         if (auto != null && auto.hasPin) SRow("dev-autopin", "Ask for the PIN at every start", "${auto.name}'s PIN each time Korie starts, and when the TV wakes up", "pin code kids lock", reqs, { flipPin() }) { f ->
             Tick(dev.autoPin == true, f)
         }
+        SRow("dev-size", "Size", "How big text and pictures are on this screen (bigger on a small screen close by, like a car's)", "zoom scale text size display car", reqs, {
+            scope.launch {
+                val cur = UiSize.choice.intValue
+                val v = Ui.menu("Size", listOf(0, 100, 115, 130, 150, 175).map { Choice((if (it == cur) "✓ " else "") + if (it == 0) "Automatic" else "$it %", it.toString()) }) ?: return@launch
+                UiSize.set(ctx, v.toInt())
+            }
+        }) { Sel(UiSize.choice.intValue.let { if (it == 0) "Automatic" else "$it %" }, it) }
         SRow("dev-server", "Change server", "Look for Korie servers again, or type an address", reqs = reqs, onClick = { Korie.forgetServer(ctx) })
         SRow("dev-android", "Android settings", "The TV's own settings: network, display, sound, apps", "android system settings", reqs = reqs, onClick = {
             try { ctx.startActivity(android.content.Intent(android.provider.Settings.ACTION_SETTINGS).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (e: Exception) { Ui.toast(e.message ?: "") }

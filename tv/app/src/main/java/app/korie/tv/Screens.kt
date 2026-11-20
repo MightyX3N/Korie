@@ -113,7 +113,9 @@ class Opener(private val nav: Nav, private val scope: CoroutineScope, private va
                 if (!album.isNullOrEmpty()) scope.launch { Music.playList(album, c.id); nav.push("nowplaying") }
                 else nav.push("player", mapOf("id" to c.id, "mode" to "start", "title" to c.title))
             }
-            "episode", "live" -> nav.push("player", mapOf("id" to c.id, "mode" to if (c.kind == "live") "start" else "resume", "title" to c.title))
+            // a radio station: in the background, like music; the page stays
+            "live" -> if (c.audio) scope.launch { Music.playStation(c) } else nav.push("player", mapOf("id" to c.id, "mode" to "start", "title" to c.title))
+            "episode" -> nav.push("player", mapOf("id" to c.id, "mode" to if (c.kind == "live") "start" else "resume", "title" to c.title))
             else -> nav.push("item", mapOf("id" to c.id))
         }
     }
@@ -667,6 +669,5 @@ fun Library(nav: Nav, me: Screen, kind: String, title: String) {
     } else {
         RowsPage(me, { Column { Top(title, count); pills(1.4f) } }, data?.rows, data?.status, opener, reqs = reqs)
     }
-    MusicBar(nav, Modifier.align(Alignment.BottomCenter))
     }
 }

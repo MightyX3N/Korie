@@ -1,5 +1,5 @@
 // Music: albums, artists, genres, songs and playlists; the bar at the bottom and Now playing.
-import { ListMusic, Pause, Play, Plus, Repeat, Repeat1, Shuffle, SkipBack, SkipForward, X } from "lucide-react";
+import { ListMusic, Pause, Play, Plus, Radio, Repeat, Repeat1, Shuffle, SkipBack, SkipForward, X } from "lucide-react";
 import { api, pic } from "../api";
 import { follow, go, href, type Route } from "../router";
 import { ui, useData } from "../ui";
@@ -92,15 +92,15 @@ export function MusicBar() {
   if (!t) return null;
   return (
     <div className="musicbar">
-      <div className="musicbar-progress"><i style={{ width: `${m.duration ? (m.time / m.duration) * 100 : 0}%` }} /></div>
+      {!t.live && <div className="musicbar-progress"><i style={{ width: `${m.duration ? (m.time / m.duration) * 100 : 0}%` }} /></div>}
       <a className="musicbar-what" href={href("/nowplaying")} onClick={(e) => follow(e, "/nowplaying")}>
-        {t.poster ? <img src={pic(t.poster, 96)} alt="" /> : <span className="track-pic" />}
-        <span><strong>{t.title}</strong><small>{t.artist}</small></span>
+        {t.poster ? <img src={pic(t.poster, 96)} alt="" /> : <span className="track-pic">{t.live && <Radio size={22} />}</span>}
+        <span><strong>{t.title}</strong><small>{t.live ? <><span className="live-tag">Live</span> {t.artist}</> : t.artist}</small></span>
       </a>
       <div className="musicbar-buttons">
-        <button className="icon" onClick={() => void music.prev()} aria-label="Previous"><SkipBack size={20} fill="currentColor" /></button>
+        {!t.live && <button className="icon" onClick={() => void music.prev()} aria-label="Previous"><SkipBack size={20} fill="currentColor" /></button>}
         <button className="icon big" onClick={() => music.toggle()} aria-label={m.playing ? "Pause" : "Play"}>{m.playing ? <Pause size={24} fill="currentColor" /> : <Play size={24} fill="currentColor" />}</button>
-        <button className="icon" onClick={() => void music.next()} aria-label="Next"><SkipForward size={20} fill="currentColor" /></button>
+        {!t.live && <button className="icon" onClick={() => void music.next()} aria-label="Next"><SkipForward size={20} fill="currentColor" /></button>}
         <a className="icon" href={href("/nowplaying")} onClick={(e) => follow(e, "/nowplaying")} aria-label="Now playing"><ListMusic size={20} /></a>
         <button className="icon" onClick={() => music.stop()} aria-label="Stop the music"><X size={20} /></button>
       </div>
@@ -115,10 +115,16 @@ export function NowPlaying() {
   return (
     <div className="page nowplaying">
       <div className="np-main">
-        {t.poster ? <img className="np-cover" src={pic(t.poster, 600)} alt="" /> : <span className="np-cover" />}
+        {t.poster ? <img className="np-cover" src={pic(t.poster, 600)} alt="" /> : <span className="np-cover np-cover-icon">{t.live && <Radio size={96} />}</span>}
         <div className="np-info">
           <h1>{t.title}</h1>
-          <p className="soft">{[t.artist, t.albumTitle].filter(Boolean).join(" · ")}</p>
+          <p className="soft">{t.live ? <><span className="live-tag">Live</span> {[t.artist, t.albumTitle].filter(Boolean).join(" · ")}</> : [t.artist, t.albumTitle].filter(Boolean).join(" · ")}</p>
+          {t.live ? (
+            <div className="np-buttons">
+              <button className="icon huge" onClick={() => music.toggle()} aria-label={m.playing ? "Pause" : "Play"}>{m.playing ? <Pause size={34} fill="currentColor" /> : <Play size={34} fill="currentColor" />}</button>
+              <button className="icon" onClick={() => music.stop()} aria-label="Stop"><X size={26} /></button>
+            </div>
+          ) : <>
           <div className="seek np-seek" onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); music.seek(((e.clientX - r.left) / r.width) * m.duration); }}>
             <div className="seek-track"><i style={{ width: `${m.duration ? (m.time / m.duration) * 100 : 0}%` }} /></div>
           </div>
@@ -130,10 +136,11 @@ export function NowPlaying() {
             <button className="icon" onClick={() => void music.next()} aria-label="Next"><SkipForward size={26} fill="currentColor" /></button>
             <button className={`icon${m.repeat !== "off" ? " on" : ""}`} onClick={() => music.cycleRepeat()} aria-label={`Repeat: ${m.repeat}`}>{m.repeat === "one" ? <Repeat1 size={22} /> : <Repeat size={22} />}</button>
           </div>
+          </>}
         </div>
       </div>
-      <h2 className="row-title">Up next</h2>
-      <ol className="tracks">
+      {!t.live && <h2 className="row-title">Up next</h2>}
+      {!t.live && <ol className="tracks">
         {m.queue.map((q, i) => (
           <li key={q.id + i} className={`track${i === m.index ? " now" : ""}`}>
             <button className="track-main" onClick={() => music.jump(i)}>
@@ -143,7 +150,7 @@ export function NowPlaying() {
             </button>
           </li>
         ))}
-      </ol>
+      </ol>}
     </div>
   );
 }

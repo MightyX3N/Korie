@@ -115,6 +115,7 @@ fun Player(nav: Nav, me: Screen) {
     var now by remember { mutableDoubleStateOf(0.0) }
     var paused by remember { mutableStateOf(false) }
     var waiting by remember { mutableStateOf(true) }
+    var soundOnly by remember { mutableStateOf(false) }
     var osd by remember { mutableStateOf(true) }
     var idle by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var panel by remember { mutableStateOf(false) }
@@ -262,6 +263,10 @@ fun Player(nav: Nav, me: Screen) {
                 }
             }
             override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) { paused = !playWhenReady }
+            // sound only (a radio station): its name is shown, not a black screen
+            override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
+                soundOnly = !tracks.isEmpty && !tracks.isTypeSupported(androidx.media3.common.C.TRACK_TYPE_VIDEO) && tracks.isTypeSupported(androidx.media3.common.C.TRACK_TYPE_AUDIO)
+            }
             override fun onPlayerError(e: PlaybackException) {
                 val p = plan
                 // it said it could play it but couldn't: let Korie convert it
@@ -360,6 +365,15 @@ fun Player(nav: Nav, me: Screen) {
                 // .subs / .subs.up, with its 0.2s move
                 val lift by androidx.compose.animation.core.animateDpAsState(if (osd) r(13) else r(4.3f), tween(200), label = "subs")
                 SubLines(sub.text, Modifier.fillMaxWidth(0.88f).padding(bottom = lift))
+            }
+        }
+        if (soundOnly && plan != null) {
+            Box(Modifier.fillMaxSize().background(C.ground), contentAlignment = Alignment.Center) {
+                Column(Modifier.padding(r(2)), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(r(0.8f))) {
+                    Text("♪", style = heading(5f).copy(color = C.accent))
+                    Text(plan?.title ?: "", style = heading(2.6f), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                    if (!plan?.subtitle.isNullOrEmpty()) Text(plan!!.subtitle, style = body(1.2f, C.soft), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                }
             }
         }
         if (waiting) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Spinner() }

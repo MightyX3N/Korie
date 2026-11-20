@@ -90,6 +90,17 @@ fun tvApps(ctx: Context): List<TvApp> {
     return out.sortedBy { it.label.lowercase() }
 }
 
+/** The map and navigation apps on this device: those that open a place (geo:) or a route. */
+fun mapApps(ctx: Context): List<TvApp> {
+    val pm = ctx.packageManager
+    val pkgs = linkedSetOf<String>()
+    for (uri in listOf("geo:0,0?q=", "google.navigation:q=0,0")) {
+        for (ri in pm.queryIntentActivities(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(uri)), 0)) pkgs += ri.activityInfo.packageName
+    }
+    pkgs -= ctx.packageName
+    return tvApps(ctx).filter { it.pkg in pkgs }
+}
+
 private fun bitmapOf(d: Drawable): ImageBitmap {
     val w = d.intrinsicWidth.takeIf { it > 0 } ?: 160
     val h = d.intrinsicHeight.takeIf { it > 0 } ?: 90
@@ -198,5 +209,27 @@ fun Apps(me: Me) {
             itemsIndexed(hidden, key = { _, a -> "h:" + a.pkg }) { _, a -> AppTile(a, Modifier.fillMaxWidth(), dim = true, onLong = { appMenu(ctx, person, a, scope) }) { open(a) } }
         }
         if (apps.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) { Status("No apps found.") }
+    }
+}
+
+
+/** Maps: the device's map and navigation apps, to open from Korie (in the car, say). */
+@Composable
+fun MapsScreen(me: Me) {
+    val r = rem()
+    val ctx = LocalContext.current
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val apps = remember { allowedApps(mapApps(ctx), me) }
+    val open: (TvApp) -> Unit = { a -> try { ctx.startActivity(a.launch) } catch (e: Exception) { Ui.toast(e.message ?: "") } }
+    LazyVerticalGrid(
+        columns = GridCells.Adaptive(r(11)),
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(start = gutter(), end = gutter(), top = r(2.2f), bottom = r(5)),
+        horizontalArrangement = Arrangement.spacedBy(r(1)),
+        verticalArrangement = Arrangement.spacedBy(r(1.4f)),
+    ) {
+        item(span = { GridItemSpan(maxLineSpan) }) { Top("Maps") }
+        if (apps.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) { Status("No map apps on this device.") }
+        itemsIndexed(apps, key = { _, a -> a.pkg }) { _, a -> AppTile(a, onLong = { appMenu(ctx, me.person.id, a, scope) }) { open(a) } }
     }
 }

@@ -104,7 +104,8 @@ play, and hide rows `about()` lists, on the add-on's page. Keep row ids the same
 
 An item is `{ id, kind = "film" | "series" | "episode" | "live" | "page" | "game", title,
 subtitle, year, runtime, overview, poster, backdrop, thumb, genres, rating, director, cast, data }`.
-`data` comes back unchanged when the item is opened or played. Give `cert` (an age rating
+`data` comes back unchanged when the item is opened or played. `audio = true` marks sound only (a radio station): Korie's apps play it in the
+background like music, with the music bar, instead of in the full-screen player. Give `cert` (an age rating
 such as `"DK 11"`, `"PG-13"` or `"15"`) or `age` (a number) when you know it: people with an
 age limit then only see what's rated for them. Items without one are shown to everyone who may
 use the add-on. Korie checks everything an

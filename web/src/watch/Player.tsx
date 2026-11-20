@@ -38,6 +38,7 @@ export function Player({ id }: { id: string }) {
   const [now, setNow] = useState(0);
   const [paused, setPaused] = useState(false);
   const [waiting, setWaiting] = useState(true);
+  const [soundOnly, setSoundOnly] = useState(false);
   const [problem, setProblem] = useState("");
   const [osd, setOsd] = useState(true);
   const [panel, setPanel] = useState<"" | "audio" | "subs">("");
@@ -308,6 +309,7 @@ export function Player({ id }: { id: string }) {
             setReconnecting(0);
           }
         }}
+        onLoadedMetadata={() => setSoundOnly(!!video.current && video.current.videoWidth === 0 && video.current.videoHeight === 0)}
         onWaiting={() => setWaiting(true)}
         onPlaying={() => { setWaiting(false); setPaused(false); }}
         onPause={() => { setPaused(true); report(); }}
@@ -315,6 +317,14 @@ export function Player({ id }: { id: string }) {
         onEnded={onEnded}
         onError={() => void failed("error")}
       />
+      {soundOnly && plan && !problem && (
+        // sound only (a radio station): its name, not a black screen
+        <div className="sound-only" aria-hidden="true">
+          <span className="sound-only-icon">♪</span>
+          <h2>{plan.title}</h2>
+          {plan.subtitle && <p>{plan.subtitle}</p>}
+        </div>
+      )}
       {cue && <div className={`subs${osd ? " up" : ""}`}>{cue.text.split("\n").map((l, i) => <span key={i}>{l}</span>)}</div>}
       {(waiting && !problem) && <div className="spinner" aria-label="Loading" />}
       {reconnecting > 0 && !problem && <div className="note">Connecting again ({reconnecting} of {RETRIES})…</div>}

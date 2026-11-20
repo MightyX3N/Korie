@@ -5,6 +5,7 @@ import { pic } from "../api";
 import { follow, href, itemPath } from "../router";
 import type { Card, Row } from "../types";
 import { cardMenu } from "./menus";
+import { music } from "./music";
 
 export type Shape = "poster" | "wide" | "square" | "text";
 
@@ -34,7 +35,13 @@ export function CardView({ c, shape, onChanged }: { c: Card; shape: Shape; onCha
   const menuable = !["page", "artist", "genre"].includes(c.kind);
   return (
     <div className={`card card-${shape}`}>
-      <a className="card-link" href={href(to)} onClick={(e) => follow(e, to)} title={c.title}>
+      <a className="card-link" href={href(to)} title={c.title} onClick={(e) => {
+        // a radio station plays in the background (the music bar), and the page stays
+        if (c.audio) {
+          e.preventDefault();
+          music.playStation(c);
+        } else follow(e, to);
+      }}>
         <span className="card-pic">
           {picture && shape !== "text" ? <img src={pic(picture, width)} alt="" loading="lazy" /> : <span className="card-name">{c.title}</span>}
           {c.progress > 0 && !c.watched && <span className="card-bar"><i style={{ width: `${Math.round(c.progress * 100)}%` }} /></span>}

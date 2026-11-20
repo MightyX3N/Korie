@@ -8,6 +8,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -175,6 +176,7 @@ private val SECTIONS = listOf(
     RailItem("calendar", "Calendar", R.drawable.lc_calendar_days),
     RailItem("games", "Games", R.drawable.lc_gamepad_2),
     RailItem("store", "Add-ons", R.drawable.lc_puzzle),
+    RailItem("maps", "Maps", R.drawable.lc_navigation),
     RailItem("apps", "Apps", R.drawable.lc_layout_grid),
     RailItem("search", "Search", R.drawable.lc_search),
     RailItem("settings", "Settings", R.drawable.lc_settings),
@@ -213,8 +215,11 @@ fun Signed(me: Me, refresh: () -> Unit, signOut: () -> Unit) {
     }
     Row(Modifier.fillMaxSize()) {
         // .rail
+        // (it scrolls when the screen is short, or everything is made bigger; the person stays at the bottom otherwise)
+        androidx.compose.foundation.layout.BoxWithConstraints(Modifier.width(r(13.5f)).fillMaxHeight().background(C.rail)) {
+        val railHeight = maxHeight
         Column(
-            Modifier.width(r(13.5f)).fillMaxHeight().background(C.rail).padding(start = r(0.8f), end = r(0.8f), top = r(2.2f), bottom = r(1.4f))
+            Modifier.fillMaxWidth().verticalScroll(androidx.compose.foundation.rememberScrollState()).heightIn(min = railHeight).padding(start = r(0.8f), end = r(0.8f), top = r(2.2f), bottom = r(1.4f))
                 .focusProperties { enter = { railFocus[section] ?: FocusRequester.Default } }
                 .focusGroup(),
             verticalArrangement = Arrangement.spacedBy(r(0.25f)),
@@ -224,7 +229,9 @@ fun Signed(me: Me, refresh: () -> Unit, signOut: () -> Unit) {
                 Text("korie", style = heading(1.6f))
             }
             // Games when an add-on has games, Music unless this person may not
-            val sections = SECTIONS.filter { (it.id != "games" || me.games) && (it.id != "music" || me.person.music != false) }
+            // Maps only on a device with map apps (a car's screen, say)
+            val hasMaps = remember(me.person.id) { allowedApps(mapApps(ctx), me).isNotEmpty() }
+            val sections = SECTIONS.filter { (it.id != "games" || me.games) && (it.id != "music" || me.person.music != false) && (it.id != "maps" || hasMaps) }
             for (s in sections) {
                 val active = section == s.id
                 Focusable(Modifier.fillMaxWidth().focusRequester(railFocus[s.id]!!), onClick = {
@@ -263,12 +270,17 @@ fun Signed(me: Me, refresh: () -> Unit, signOut: () -> Unit) {
                 }
             }
         }
+        }
         // .main: the screen on top of the stack
         val memory = remember { FocusMemory() }
-        Box(Modifier.weight(1f).fillMaxHeight().focusRequester(content).focusProperties { enter = { memory.last ?: FocusRequester.Default } }.focusGroup()) {
-            androidx.compose.runtime.CompositionLocalProvider(LocalFocusMemory provides memory) {
-                holder.SaveableStateProvider(top.key) { ScreenFor(nav, top, me, refresh, signOut) }
+        Column(Modifier.weight(1f).fillMaxHeight()) {
+            Box(Modifier.weight(1f).fillMaxWidth().focusRequester(content).focusProperties { enter = { memory.last ?: FocusRequester.Default } }.focusGroup()) {
+                androidx.compose.runtime.CompositionLocalProvider(LocalFocusMemory provides memory) {
+                    holder.SaveableStateProvider(top.key) { ScreenFor(nav, top, me, refresh, signOut) }
+                }
             }
+            // music or a radio station keeps playing while you look around: its bar along the bottom
+            if (top.name != "nowplaying") MusicBar(nav)
         }
     }
 }
@@ -285,6 +297,7 @@ fun ScreenFor(nav: Nav, s: Screen, me: Me, refresh: () -> Unit, signOut: () -> U
         "guide" -> GuideScreen(nav, s)
         "games" -> RowsScreen(nav, s, "Games", listOf("browse", "addons")) { Korie.read(Korie.api("/api/games")) }
         "apps" -> Apps(me)
+        "maps" -> MapsScreen(me)
         "page" -> AddonPage(nav, s)
         "item" -> Item(nav, s, me)
         "search" -> SearchScreen(nav, s)

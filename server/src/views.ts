@@ -19,6 +19,8 @@ export interface Card {
   favourite?: boolean; local?: boolean;
   /** an episode: its series (what a client opens from Continue watching) */
   series?: string;
+  /** sound only (a radio station): clients play it in the background, like music */
+  audio?: boolean;
   /** a category opened from Films or Series: only that kind in it */
   only?: "film" | "series";
   // a song: its length in seconds, its album, and its number on the album
@@ -157,6 +159,7 @@ export function addonCard(person: Person, a: browse.AItem): Card {
     cast: (a.cast ?? []).slice(0, 10).map((c) => ({ name: c.name, role: c.role, photo: img(c.photo) })),
     position: p && !p.watched ? p.position : 0, duration: p?.duration ?? 0, favourite: isFavourite(person, a.id), local: false,
     ...(a.kind === "episode" && a.series ? { series: a.series } : {}),
+    ...(a.audio ? { audio: true } : {}),
     // an episode says what series it is: the series is the title, the episode under it
     ...(a.kind === "episode" && (browse.get(a.series ?? "")?.title || a.seriesTitle)
       ? { title: (browse.get(a.series ?? "")?.title || a.seriesTitle)!, subtitle: epLabel(a.season, a.episode, a.title) }

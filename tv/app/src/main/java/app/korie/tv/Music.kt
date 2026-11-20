@@ -65,7 +65,7 @@ import kotlinx.coroutines.launch
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
-data class Song(val id: String, val title: String, val artist: String, val album: String, val year: String, val cover: String, val duration: Double)
+data class Song(val id: String, val title: String, val artist: String, val album: String, val year: String, val cover: String, val duration: Double, val live: Boolean = false)
 
 object Music {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -96,11 +96,13 @@ object Music {
                 if (state == Player.STATE_READY && p.duration > 0) duration = p.duration / 1000.0
                 if (state == Player.STATE_ENDED) {
                     val s = current
+                    // a radio station that ended: it's off the air (or the connection went)
+                    if (s?.live == true) { playing = false; error = "${s.title} stopped."; return }
                     if (s != null) scope.launch { Korie.progress(s.id, time, time, true) }
                     if (pos + 1 < queue.size || repeat) next() else playing = false
                 }
             }
-            override fun onPlayerError(e: PlaybackException) { playing = false; error = "This song couldn't be played." }
+            override fun onPlayerError(e: PlaybackException) { playing = false; error = if (current?.live == true) "This station couldn't be played: it may be off the air right now." else "This song couldn't be played." }
         })
         // the time, and where it got to, every so often
         scope.launch {
@@ -109,7 +111,7 @@ object Music {
                 val x = exo ?: break
                 if (x.playbackState != Player.STATE_IDLE) time = x.currentPosition / 1000.0
                 val s = current
-                if (s != null && x.isPlaying && System.currentTimeMillis() - lastSave > 10000) {
+                if (s != null && !s.live && x.isPlaying && System.currentTimeMillis() - lastSave > 10000) {
                     lastSave = System.currentTimeMillis()
                     Korie.progress(s.id, time, if (duration > 0) duration else s.duration, false)
                 }
@@ -136,6 +138,13 @@ object Music {
         val f = songs.firstOrNull { it.id == first }
         val rest = songs.filter { it.id != first }.shuffled()
         return if (f != null) listOf(f) + rest else rest
+    }
+
+    /** Plays a radio station in the background (it stays on while you look around). */
+    suspend fun playStation(c: Card) {
+        order = listOf(Song(c.id, c.title, c.subtitle, c.source, "", c.poster.ifEmpty { c.thumb }, 0.0, live = true))
+        queue = order; shuffle = false; repeat = false; list = ""
+        start(0)
     }
 
     /** Plays an album or a playlist (its id), from one of its songs (or the first); shuffled if asked. */
@@ -214,12 +223,20 @@ fun NowPlaying(nav: Nav) {
         Row(Modifier.padding(top = r(1.4f)), horizontalArrangement = Arrangement.spacedBy(r(1.8f))) {
             Box(Modifier.weight(28f).widthIn(min = r(12)).aspectRatio(1f).shadow(r(2.4f), RoundedCornerShape(r(0.8f))).clip(RoundedCornerShape(r(0.8f))).background(C.panel)) {
                 if (s.cover.isNotEmpty()) AsyncImage(model = Korie.pic(s.cover, pxOf(r(22))), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                else if (s.live) Icon(painterResource(R.drawable.lc_radio), null, tint = C.accent, modifier = Modifier.align(Alignment.Center).fillMaxSize(0.3f))
             }
             Column(Modifier.weight(30f).padding(top = r(1))) {
-                Text("Now playing · song ${Music.pos + 1} of ${Music.queue.size}", style = body(1.1f, C.soft))
+                Text(if (s.live) "Now playing · radio" else "Now playing · song ${Music.pos + 1} of ${Music.queue.size}", style = body(1.1f, C.soft))
                 Text(s.title, style = heading(3.4f), modifier = Modifier.padding(top = r(0.4f), bottom = r(0.6f)))
                 Text(s.artist, style = body(1.6f), modifier = Modifier.padding(bottom = r(0.6f)))
                 Text(listOf(s.album, s.year).filter { it.isNotEmpty() }.joinToString(" · "), style = body(1.2f, C.soft), modifier = Modifier.padding(bottom = r(1.5f)))
+                if (s.live) {
+                    LiveTag()
+                    Row(Modifier.padding(top = r(1.2f)), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(r(1))) {
+                        Npb(if (Music.playing) R.drawable.lc_pause else R.drawable.lc_play, "big", modifier = Modifier.focusRequester(play)) { Music.toggle() }
+                        Npb(R.drawable.lc_x) { Music.stop() }
+                    }
+                } else {
                 Box(Modifier.fillMaxWidth().height(r(0.32f)).clip(RoundedCornerShape(r(0.2f))).background(Color(0x26FFFFFF))) {
                     Box(Modifier.fillMaxHeight().fillMaxWidth(frac).background(C.accent))
                 }
@@ -235,9 +252,10 @@ fun NowPlaying(nav: Nav) {
                     Npb(R.drawable.lc_skip_forward) { Music.next() }
                     Npb(R.drawable.lc_repeat, "small", Music.repeat) { Music.repeatOn(!Music.repeat) }
                 }
+                }
                 if (Music.error.isNotEmpty()) Status(Music.error)
             }
-            Column(Modifier.weight(22f).widthIn(min = r(12))) {
+            if (!s.live) Column(Modifier.weight(22f).widthIn(min = r(12))) {
                 Text("Up next", style = heading(1.5f), modifier = Modifier.padding(top = r(1), bottom = r(0.6f)))
                 Column(verticalArrangement = Arrangement.spacedBy(r(0.2f))) {
                     Music.queue.drop(Music.pos).take(8).forEachIndexed { i, q ->
@@ -273,6 +291,7 @@ fun MusicBar(nav: Nav, modifier: Modifier = Modifier) {
                 ) {
                     Box(Modifier.size(r(3.2f)).clip(RoundedCornerShape(r(0.3f))).background(C.panel)) {
                         if (s.cover.isNotEmpty()) AsyncImage(model = Korie.pic(s.cover, pxOf(r(3.2f))), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                        else if (s.live) Icon(painterResource(R.drawable.lc_radio), null, tint = C.accent, modifier = Modifier.align(Alignment.Center).size(r(1.6f)))
                     }
                     Column {
                         Text(s.title, style = body(1.15f, C.ink, FontWeight.SemiBold), maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -280,12 +299,18 @@ fun MusicBar(nav: Nav, modifier: Modifier = Modifier) {
                     }
                 }
             }
-            Text(fmtTime(Music.time), style = body(0.95f, C.soft))
-            Box(Modifier.weight(1f).height(r(0.32f)).clip(RoundedCornerShape(r(0.2f))).background(Color(0x26FFFFFF))) {
-                Box(Modifier.fillMaxHeight().fillMaxWidth(frac).background(C.accent))
+            if (s.live) {
+                LiveTag()
+                Box(Modifier.weight(1f))
+            } else {
+                Text(fmtTime(Music.time), style = body(0.95f, C.soft))
+                Box(Modifier.weight(1f).height(r(0.32f)).clip(RoundedCornerShape(r(0.2f))).background(Color(0x26FFFFFF))) {
+                    Box(Modifier.fillMaxHeight().fillMaxWidth(frac).background(C.accent))
+                }
+                Text(if (Music.duration > 0) fmtTime(Music.duration) else "", style = body(0.95f, C.soft))
             }
-            Text(if (Music.duration > 0) fmtTime(Music.duration) else "", style = body(0.95f, C.soft))
             Npb(if (Music.playing) R.drawable.lc_pause else R.drawable.lc_play, "small") { Music.toggle() }
+            Npb(R.drawable.lc_x, "small") { Music.stop() }
         }
     }
 }
@@ -391,7 +416,6 @@ fun MusicScreen(nav: Nav, me: Screen) {
                 item(span = { GridItemSpan(maxLineSpan) }) { Status(data?.status) }
             }
         }
-        MusicBar(nav, Modifier.align(Alignment.BottomCenter))
     }
     BackToCard(me, reqs, data != null, data)
 }
@@ -415,4 +439,12 @@ fun TrackRow(n: Int, title: String, extra: String, length: Double, modifier: Mod
             Text(if (length > 0) fmtTime(length) else "", style = body(1f, C.dim))
         }
     }
+}
+
+
+/** The red LIVE label (a radio station). */
+@Composable
+fun LiveTag() {
+    val r = rem()
+    Text("LIVE", style = body(0.8f, Color.White, FontWeight.Bold), modifier = Modifier.clip(RoundedCornerShape(r(0.25f))).background(Color(0xFFE5484D)).padding(horizontal = r(0.4f), vertical = r(0.05f)))
 }

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { api, caps } from "../api";
 import { ui } from "../ui";
-import type { Item, Plan, Track } from "../types";
+import type { Card, Item, Plan, Track } from "../types";
 
 export interface MusicState {
   queue: Track[]; index: number; playing: boolean; time: number; duration: number; shuffle: boolean; repeat: "off" | "all" | "one"; loading: boolean;
@@ -23,7 +23,8 @@ function set(change: Partial<MusicState>): void {
 
 function report(stopped = false): void {
   const t = state.queue[state.index];
-  if (!t) return;
+  // (a radio station has no place to come back to)
+  if (!t || t.live) return;
   lastReport = Date.now();
   void api("/api/progress", { id: t.id, position: audio.currentTime || 0, duration: audio.duration || t.duration || 0, paused: audio.paused, stopped }).catch(() => {});
 }
@@ -45,7 +46,8 @@ audio.addEventListener("ended", () => {
 audio.addEventListener("error", () => {
   const t = state.queue[state.index];
   set({ loading: false, playing: false });
-  if (t) void ui.message("Couldn't play this song", `"${t.title}" didn't play. The next one starts.`).then(() => music.next(true));
+  if (t?.live) void ui.message("Couldn't play this station", `"${t.title}" didn't play: it may be off the air right now.`).then(() => music.stop());
+  else if (t) void ui.message("Couldn't play this song", `"${t.title}" didn't play. The next one starts.`).then(() => music.next(true));
 });
 
 function shuffled(n: number, first: number): number[] {
@@ -71,7 +73,8 @@ async function start(index: number): Promise<void> {
     }
   } catch (e) {
     set({ loading: false, playing: false });
-    await ui.message("Couldn't play this song", e instanceof Error ? e.message : String(e));
+    await ui.message(t.live ? "Couldn't play this station" : "Couldn't play this song", e instanceof Error ? e.message : String(e));
+    if (t.live) music.stop();
   }
 }
 
@@ -84,6 +87,10 @@ export const music = {
     set({ queue: tracks, shuffle });
     order = shuffle ? shuffled(tracks.length, index) : [...tracks.keys()];
     void start(shuffle ? order[0] : index);
+  },
+  /** A radio station: plays in the background, on its own. */
+  playStation(c: Card): void {
+    music.playTracks([{ id: c.id, n: 0, title: c.title, artist: c.subtitle, duration: 0, poster: c.poster || c.thumb, albumTitle: c.source, live: true }], 0, false);
   },
   /** An album or playlist: all its songs. */
   async playItem(id: string, shuffle: boolean): Promise<void> {

@@ -1,0 +1,2 @@
+{ "call": "play", "args": [{ "id": "960f5a18-0601-11e8-ae97-52543be04c81", "kind": "live", "title": "DR P1", "data": { "url": "http://live-icy.gss.dr.dk/A/A03H.mp3" } }], "ctx": { "settings": {} },
+  "answers": [ { "match": "/json/url/960f5a18", "live": true } ] }

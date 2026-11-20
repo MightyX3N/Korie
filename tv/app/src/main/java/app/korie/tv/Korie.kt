@@ -88,6 +88,8 @@ data class Card(
     val only: String = "",
     /** an episode: its series */
     val series: String = "",
+    /** sound only (a radio station): played in the background, like music */
+    val audio: Boolean = false,
 )
 
 @Serializable
