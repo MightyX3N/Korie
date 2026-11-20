@@ -7,7 +7,7 @@ import { Dot, GOOD, BUSY, BAD } from "./Admin";
 
 interface Household { id: string; name: string; hasPassword: boolean; created: number; state: "active" | "pending" | "blocked"; people: number; home: boolean }
 interface Info { households: Household[]; register: "off" | "open" | "approval"; registerNote: string; outsidePort: number; guards: { id: string; name: string }[] }
-interface Playit { installed: boolean; phase: "missing" | "off" | "linking" | "running" | "stopped" | "failed"; linked: boolean; claimUrl: string; problem: string; address: string; outsidePort: number; on: boolean; log: string[] }
+interface Playit { installed: boolean; phase: "missing" | "off" | "linking" | "running" | "stopped" | "failed"; linked: boolean; claimUrl: string; problem: string; address: string; tunnel: string; outsidePort: number; on: boolean; screen: string[]; log: string[] }
 
 const MODES: [Info["register"], string, string][] = [
   ["off", "Off", "Only you make households"],
@@ -15,11 +15,19 @@ const MODES: [Info["register"], string, string][] = [
   ["open", "Open", "Anyone with the address can sign up and watch"],
 ];
 
+function CopyButton({ text }: { text: string }) {
+  const [done, setDone] = useState(false);
+  return (
+    <button className="adm-btn small" onClick={() => {
+      void navigator.clipboard?.writeText(text).then(() => { setDone(true); setTimeout(() => setDone(false), 1500); });
+    }}>{done ? "Copied" : "Copy"}</button>
+  );
+}
+
 export function Households() {
   const { data, error, reload } = useData(() => api<Info>("/api/admin/households"), [], ["households", "people", "addons"]);
   const pl = useData(() => api<Playit>("/api/admin/playit"), [], ["playit"]);
   const [note, setNote] = useState<string | null>(null);
-  const [addr, setAddr] = useState<string | null>(null);
   // while it's being linked, look again now and then (the approval happens on playit.gg)
   useEffect(() => {
     if (pl.data?.phase !== "linking") return;
@@ -128,23 +136,33 @@ export function Households() {
           )}
         </div>
         <div className="adm-field">
-          <span className="adm-label">On playit.gg</span>
+          <span className="adm-label">How it works</span>
           <ol className="adm-steps">
             <li>Set up playit.gg here and approve it on the page that opens (make a free account there if you have none).</li>
-            <li>On playit.gg, add a tunnel: <strong>TCP</strong>, local address <span className="adm-mono">127.0.0.1</span>, local port <span className="adm-mono">{p?.outsidePort ?? data?.outsidePort ?? 8101}</span>.</li>
-            <li>Give each household the tunnel's address, its name and its password.</li>
+            <li>Korie makes a tunnel on your playit.gg account to its outside port ({p?.outsidePort ?? data?.outsidePort ?? 8101}) and shows its address here.</li>
+            <li>Give each household that address, its name and its password.</li>
           </ol>
           <span className="adm-soft small">Only that port counts as outside. People at home keep using Korie's usual address.</span>
         </div>
-        <form className="adm-field" onSubmit={(e) => { e.preventDefault(); if (addr !== null) void playit("address", { address: addr }); }}>
-          <label htmlFor="addr" className="adm-label">The address to give out</label>
-          <input id="addr" className="adm-input" placeholder="like green-dog.gl.at.ply.gg:12345" value={addr ?? p?.address ?? ""} onChange={(e) => setAddr(e.target.value)} onBlur={() => { if (addr !== null && addr !== p?.address) void playit("address", { address: addr }); }} />
-          {outside && <span className="adm-soft small">In a browser: <span className="adm-mono">{outside}/web</span>. In Korie's TV app and Jellyfin's apps: <span className="adm-mono">{outside}</span>.</span>}
-        </form>
-        {p?.installed && !!p.log.length && (
+        <div className="adm-field">
+          <span className="adm-label">The address to give out</span>
+          {p?.address && p.tunnel && <span className="adm-bad small">{p.tunnel}</span>}
+          {p?.address ? (
+            <>
+              <div className="adm-row">
+                <span className="adm-mono adm-address">{p.address}</span>
+                <CopyButton text={p.address} />
+              </div>
+              <span className="adm-soft small">In a browser: <span className="adm-mono">{outside}/web</span>. In Korie's TV app and Jellyfin's apps: <span className="adm-mono">{outside}</span>.</span>
+            </>
+          ) : (
+            <span className="adm-soft small">{p?.tunnel || (p?.linked ? "It shows here once playit.gg has made the tunnel." : "It shows here once playit.gg is set up.")}</span>
+          )}
+        </div>
+        {p?.installed && (!!p.screen.length || !!p.log.length) && (
           <div className="adm-field span-all">
-            <span className="adm-label">What playit.gg said</span>
-            <div className="adm-logtable short plain">{p.log.slice(-12).map((l, i) => <div key={i} className="adm-logline"><span>{l}</span></div>)}</div>
+            <span className="adm-label">{p.screen.length ? "What playit.gg says" : "What playit.gg said"}</span>
+            <pre className="adm-screen">{(p.screen.length ? p.screen : p.log.slice(-12)).join("\n")}</pre>
           </div>
         )}
       </section>

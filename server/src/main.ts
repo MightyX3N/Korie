@@ -673,11 +673,13 @@ app.get("/api/calendar/rows", async (req: Req) => {
     };
     days.set(e.date, [...(days.get(e.date) ?? []), card]);
   }
-  // the coming days first, then the past week (newest first)
-  const order = [...days.keys()].sort((a, b) => (a >= today) !== (b >= today) ? (a >= today ? -1 : 1) : a >= today ? a.localeCompare(b) : b.localeCompare(a));
+  // the days in order; the TV opens on today (or the first day after it)
+  const order = [...days.keys()].sort();
+  const start = Math.max(0, order.findIndex((d) => d >= today));
   const name = (d: string) => d === today ? "Today" : d === tomorrow ? "Tomorrow" : new Date(d + "T12:00:00").toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" });
   return {
     rows: order.map((d) => ({ id: "day-" + d, title: name(d), kind: "wide", items: days.get(d)! })),
+    start: order.some((d) => d >= today) ? start : Math.max(0, order.length - 1),
     status: days.size ? "" : "Nothing in the calendar yet. Series in your library, and series in My list, show their new episodes here.",
   };
 });
@@ -1149,7 +1151,6 @@ app.post("/api/admin/playit/:what", async (req: Req) => {
       case "start": playit.start(); break;
       case "stop": playit.stop(); break;
       case "forget": playit.forget(); break;
-      case "address": playit.setAddress(String(body(req).address ?? "")); break;
       default: throw new HttpError(404, "Not found.");
     }
   } catch (e) {

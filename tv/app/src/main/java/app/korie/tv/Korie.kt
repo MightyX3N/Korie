@@ -94,7 +94,7 @@ data class Card(
 data class Row(val id: String, val title: String, val kind: String = "poster", val items: List<Card> = emptyList(), val more: Int = 0)
 
 @Serializable
-data class Rows(val rows: List<Row> = emptyList(), val loading: Boolean = false, val status: String = "")
+data class Rows(val rows: List<Row> = emptyList(), val loading: Boolean = false, val status: String = "", val start: Int = 0)
 
 @Serializable
 data class PageRows(val title: String = "", val rows: List<Row> = emptyList(), val status: String = "")

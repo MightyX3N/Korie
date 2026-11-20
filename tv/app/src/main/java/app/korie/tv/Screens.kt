@@ -25,6 +25,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -215,9 +217,9 @@ fun rememberOpener(nav: Nav, me: Screen, onChange: (() -> Unit)? = null): Opener
  * top gets the focus back.
  */
 @Composable
-fun RowsPage(me: Screen, header: @Composable () -> Unit, rows: List<Row>?, status: String?, opener: Opener, firstFocus: FocusRequester? = null, reqs: MutableMap<String, FocusRequester> = remember(me) { mutableMapOf() }) {
+fun RowsPage(me: Screen, header: @Composable () -> Unit, rows: List<Row>?, status: String?, opener: Opener, firstFocus: FocusRequester? = null, reqs: MutableMap<String, FocusRequester> = remember(me) { mutableMapOf() }, state: LazyListState = rememberLazyListState()) {
     val r = rem()
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(top = r(2.2f), bottom = r(5))) {
+    LazyColumn(Modifier.fillMaxSize(), state = state, contentPadding = PaddingValues(top = r(2.2f), bottom = r(5))) {
         item { Box(Modifier.padding(horizontal = gutter())) { header() } }
         if (rows != null) {
             itemsIndexed(rows, key = { i, row -> row.id + i }) { i, row ->
@@ -536,7 +538,22 @@ fun Face(name: String, color: Color?, lock: Boolean = false, add: Boolean = fals
 fun RowsScreen(nav: Nav, me: Screen, title: String, topics: List<String> = emptyList(), load: suspend () -> Rows) {
     val (data, error) = useData(me.name, topics) { load() }
     val opener = rememberOpener(nav, me)
-    RowsPage(me, { Top(title) }, data?.rows, error.ifEmpty { data?.status ?: "" }, opener)
+    val reqs = remember(me) { mutableMapOf<String, FocusRequester>() }
+    val state = rememberLazyListState()
+    RowsPage(me, { Top(title) }, data?.rows, error.ifEmpty { data?.status ?: "" }, opener, reqs = reqs, state = state)
+    // a page that starts further down (the calendar: on today) opens there, on that row's first card
+    LaunchedEffect(data != null) {
+        val d = data ?: return@LaunchedEffect
+        if (d.start <= 0 || me.focused != null) return@LaunchedEffect
+        val row = d.rows.getOrNull(d.start) ?: return@LaunchedEffect
+        val card = row.items.firstOrNull() ?: return@LaunchedEffect
+        state.scrollToItem(d.start + 1)
+        repeat(10) {
+            delay(80)
+            val fr = reqs[row.id + "\u0000" + card.id]
+            if (fr != null) { try { fr.requestFocus(); return@LaunchedEffect } catch (_: Exception) {} }
+        }
+    }
 }
 
 /** Live TV: the channels as rows; with channels from the library, a Guide button at the top. */
