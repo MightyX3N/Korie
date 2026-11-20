@@ -456,7 +456,7 @@ private fun ThisDevice(nav: Nav, who: Me, signOut: () -> Unit, reqs: MutableMap<
     val me = who.person
     /** Who this TV starts as: anyone may pick themselves (with their PIN) or nobody; an admin may pick anyone. */
     fun pickAuto() = scope.launch {
-        val all = if (me.admin) try { Korie.people() } catch (_: Exception) { emptyList() } else emptyList()
+        val all = if (me.admin) try { Korie.people(ctx) } catch (_: Exception) { emptyList() } else emptyList()
         val others = all.filter { it.id != me.id }
         val v = Ui.menu("${Korie.deviceName} starts as", listOf(
             Choice((if (auto == null) "✓ " else "") + "Nobody: asks who's watching", "@none"),

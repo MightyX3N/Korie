@@ -1,6 +1,6 @@
 // The watching side: the menu (on the left, or along the top on a narrow screen) and the page.
 import { useEffect, useState } from "react";
-import { Film, Gamepad2, Home as HomeIcon, Music2, Radio, Search as SearchIcon, Settings2, Tv, Users, Wrench } from "lucide-react";
+import { CalendarDays, Film, Gamepad2, Home as HomeIcon, Music2, Radio, Search as SearchIcon, Settings2, Tv, Users, Wrench } from "lucide-react";
 import type { Me } from "../types";
 import { follow, href, type Route } from "../router";
 import { Face } from "../App";
@@ -12,6 +12,7 @@ import { Player } from "./Player";
 import { MusicPage, MusicBar, NowPlaying } from "./MusicPages";
 import { Search } from "./Search";
 import { You } from "./You";
+import { Calendar } from "./Calendar";
 
 const SECTIONS = [
   { id: "", label: "Home", icon: HomeIcon },
@@ -19,6 +20,7 @@ const SECTIONS = [
   { id: "series", label: "Series", icon: Tv },
   { id: "music", label: "Music", icon: Music2 },
   { id: "live", label: "Live TV", icon: Radio },
+  { id: "calendar", label: "Calendar", icon: CalendarDays },
   { id: "games", label: "Games", icon: Gamepad2 },
   { id: "search", label: "Search", icon: SearchIcon },
 ];
@@ -47,6 +49,7 @@ export function Watch({ me, route, signOut, refresh }: { me: Me; route: Route; s
     case "series": page = <Library kind="series" route={route} />; break;
     case "music": page = <MusicPage route={route} />; break;
     case "live": page = <Live route={route} />; break;
+    case "calendar": page = <Calendar />; break;
     case "games": page = <Games />; break;
     case "search": page = <Search route={route} />; break;
     case "page": page = <AddonPage id={route.parts[1] ?? ""} only={route.query.get("only") ?? ""} />; break;

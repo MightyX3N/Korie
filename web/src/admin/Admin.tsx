@@ -6,6 +6,7 @@ import { follow, href, type Route } from "../router";
 import { Overview } from "./Overview";
 import { Libraries } from "./Libraries";
 import { People } from "./People";
+import { Households } from "./Households";
 import { Addons, AddonPage } from "./Addons";
 import { Server } from "./Server";
 
@@ -13,6 +14,7 @@ const PAGES = [
   { id: "", label: "Overview" },
   { id: "libraries", label: "Libraries" },
   { id: "people", label: "People" },
+  { id: "households", label: "Households" },
   { id: "addons", label: "Add-ons" },
   { id: "server", label: "Server" },
 ];
@@ -36,6 +38,7 @@ export function Admin({ me, route, signOut }: { me: Me; route: Route; signOut: (
     case "": body = <Overview />; break;
     case "libraries": body = <Libraries />; break;
     case "people": body = <People me={me} picked={sub} />; break;
+    case "households": body = <Households />; break;
     case "addons": body = sub ? <AddonPage id={sub} /> : <Addons tab={route.query.get("tab") ?? "installed"} />; break;
     case "server": body = <Server />; break;
     default: body = <h1 className="adm-h1">Not found</h1>;

@@ -213,8 +213,8 @@ private val KEYS = "abcdefghijklmnopqrstuvwxyz0123456789.-_:/@".map { it.toStrin
 @Composable
 private fun TextEntry(l: Layer.TextIn, first: FocusRequester) {
     val r = rem()
-    var text by remember { mutableStateOf(l.value) }
-    var upper by remember { mutableStateOf(false) }
+    var text by remember(l) { mutableStateOf(l.value) }
+    var upper by remember(l) { mutableStateOf(false) }
     Text(l.title, style = heading(2f))
     Row(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(r(0.7f))).background(C.ground)
@@ -223,7 +223,7 @@ private fun TextEntry(l: Layer.TextIn, first: FocusRequester) {
     if (l.hint.isNotEmpty()) Text(l.hint, style = body(0.95f, C.dim))
     val keys = KEYS.map { if (upper) it.uppercase() else it }
     // a real keyboard types too; Enter after typing is Done, the remote's OK presses the focused key
-    var typed by remember { mutableStateOf(false) }
+    var typed by remember(l) { mutableStateOf(false) }
     Column(Modifier.onPreviewKeyEvent { e ->
         val n = e.nativeKeyEvent
         if (n.action != android.view.KeyEvent.ACTION_DOWN) return@onPreviewKeyEvent false

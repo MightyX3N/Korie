@@ -8,6 +8,8 @@ import { emit } from "./events.ts";
 import { setting } from "./db.ts";
 import * as lib from "./library.ts";
 import * as people from "./people.ts";
+import * as households from "./households.ts";
+import * as playit from "./playit.ts";
 import * as watching from "./watching.ts";
 import * as addons from "./addons/manager.ts";
 import * as browse from "./addons/browse.ts";
@@ -55,7 +57,11 @@ function addonTotals() {
 
 /** Things worth a look: add-ons that failed, and problems the server noted in the last day. */
 function problems() {
-  const out: { title: string; text: string; addon?: string; level: "bad" | "busy" }[] = [];
+  const out: { title: string; text: string; addon?: string; link?: string; level: "bad" | "busy" }[] = [];
+  const waiting = households.list().filter((h) => h.state === "pending");
+  if (waiting.length) out.push({ title: waiting.length === 1 ? `${waiting[0].name} wants to watch` : `${waiting.length} households want to watch`, text: "They signed up and are waiting for you to let them in.", link: "/admin/households", level: "busy" });
+  const pl = playit.status();
+  if (pl.on && pl.phase === "failed") out.push({ title: "playit.gg isn't running", text: pl.problem || "Korie can't be reached from outside right now.", link: "/admin/households", level: "bad" });
   for (const id of addons.enabledIds()) {
     const s = browse.stats(id);
     const m = addons.manifests.get(id);

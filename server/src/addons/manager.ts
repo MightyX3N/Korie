@@ -72,7 +72,7 @@ function readManifest(dir: string, builtin: boolean): Manifest | null {
     hosts: Array.isArray(m.hosts) ? m.hosts.filter((x: unknown) => typeof x === "string").map((x: string) => x.toLowerCase()) : [],
     hosts_from_settings: m.hosts_from_settings === true, hosts_from_account: m.hosts_from_account === true, games: m.games === true, settings, accounts, builtin, dir,
   };
-  if (out.type !== "content") out.error = "This kind of add-on isn't supported by this Korie.";
+  if (out.type !== "content" && out.type !== "service") out.error = "This kind of add-on isn't supported by this Korie.";
   else if (out.access !== "sandbox") out.error = "Add-ons with full access can't run on the server.";
   return out;
 }

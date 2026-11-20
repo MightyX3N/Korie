@@ -136,6 +136,53 @@ failed. A table `body` is sent as JSON; `form = { ... }` sends a form instead. `
 (a wrong password) or to see where redirects ended. `cookies = true` keeps cookies between the
 fetches of one sign-in, as a browser would.
 
+## Households
+
+An add-on with `"type": "service"` and `"permissions": ["households"]` looks after
+households: the groups of people who watch from outside the home. An admin is asked before
+it's turned on. Korie comes with no such add-on; what one does (a membership, a payment
+service), and whether that's allowed where it's used, is up to whoever installs it.
+
+Each function gets the household as `h`: `id`, `name`, `created`, `state`, `people` (how
+many) and `data` (what this add-on keeps about it, see `save_household`). The home household
+is never asked about: it always may watch.
+
+```lua
+local M = {}
+
+-- May this household watch? Asked when a device signs in to it, when one of its people
+-- signs in, and every 10 minutes while they watch. The first add-on that says no decides.
+function M.access(ctx, h)
+  if (h.data.paid_until or 0) > ctx.now then return { allow = true } end
+  return { allow = false, message = "Your membership has run out.", url = "https://pay.example.com/?h=" .. h.id }
+end
+
+-- A household signed up (or an admin made one).
+function M.registered(ctx, h)
+  return { save_household = { joined = ctx.now, paid_until = ctx.now + 7 * 86400 } }
+end
+
+-- A request to /api/hook/<add-on id>/<path> (GET or POST): a payment service's page back,
+-- or its notices. req has method, path, query, headers and body (text).
+function M.web(ctx, req)
+  if req.path == "/paid" then
+    -- (check the request really comes from the payment service first)
+    return { household = req.query.h, save_household = { paid_until = ctx.now + 30 * 86400 }, html = "<h1>Thanks!</h1>" }
+  end
+  return { status = 404, text = "Not found" }
+end
+
+return M
+```
+
+- `access` answers `{ allow = true }`, or `{ allow = false, message = "...", url = "https://..." }`:
+  people see the message, and a button to the address.
+- `save_household = { ... }` (from any of them; from `web` together with `household = id`)
+  keeps those values in `h.data` for this add-on.
+- `web` answers `html`, `json` or `text`, with `status`, or `redirect` to an address. Its
+  pages are shown sandboxed: they can't reach Korie's sign-ins.
+- All three may fetch, as above, from the add-on's own `hosts`.
+
 ## The Store
 
 The Korie Store is github.com/MightyX3N/korie-store: an add-on goes in `addons/<id>/`, then

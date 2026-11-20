@@ -223,7 +223,15 @@ data class Found(val groups: List<Group> = emptyList())
 @Serializable
 data class Category(val title: String = "", val items: List<Card> = emptyList())
 
-class KorieError(message: String) : Exception(message)
+/** kind: "needed" (sign in to the household first, from outside the home), "refused" (an add-on
+ *  says the household can't watch now; url: where to sort it out), "stopped" (the admin stopped it) */
+class KorieError(message: String, val kind: String = "", val url: String = "") : Exception(message)
+
+@Serializable
+data class HouseholdRef(val id: String = "", val name: String = "")
+
+@Serializable
+data class HelloInfo(val name: String = "", val outside: Boolean = false, val household: HouseholdRef? = null, val register: String = "off")
 
 // --- talking to Korie --------------------------------------------------------------------
 
@@ -268,6 +276,9 @@ object Korie {
     var server: String = ""
         private set
     var token: String = ""
+    /** From outside the home: this TV's sign-in to its household (once). */
+    var household: String = ""
+        private set
     lateinit var deviceId: String
         private set
 
@@ -275,6 +286,7 @@ object Korie {
         val p = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         server = p.getString("server", "") ?: ""
         token = p.getString("token", "") ?: ""
+        household = p.getString("household", "") ?: ""
         deviceId = p.getString("device", null) ?: UUID.randomUUID().toString().also { p.edit().putString("device", it).apply() }
     }
 
@@ -291,7 +303,8 @@ object Korie {
     fun forgetServer(ctx: Context) {
         signOut(ctx)
         server = ""
-        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().remove("server").apply()
+        household = ""
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().remove("server").remove("household").apply()
         forgotten++
     }
 
@@ -312,6 +325,7 @@ object Korie {
     private suspend fun call(method: String, path: String, body: JsonObject? = null, base: String = server): String = withContext(Dispatchers.IO) {
         val b = Request.Builder().url(base + path)
         if (token.isNotEmpty()) b.header("Authorization", "Bearer $token")
+        if (household.isNotEmpty()) b.header("X-Korie-Household", household)
         if (body != null) b.method(method, body.toString().toRequestBody("application/json".toMediaType()))
         else if (method != "GET") b.method(method, "{}".toRequestBody("application/json".toMediaType()))
         val res = try { http.newCall(b.build()).execute() } catch (e: java.io.IOException) {
@@ -320,8 +334,9 @@ object Korie {
         res.use {
             val text = try { res.body?.string() ?: "" } catch (e: java.io.IOException) { throw KorieError("Can't reach the Korie server. Check that it's running and that this device is on the same network.") }
             if (!res.isSuccessful) {
-                val msg = try { json.parseToJsonElement(text).jsonObject["error"]?.jsonPrimitive?.content } catch (_: Exception) { null }
-                throw KorieError(msg ?: "The server answered ${res.code}.")
+                val o = try { json.parseToJsonElement(text).jsonObject } catch (_: Exception) { null }
+                val msg = o?.get("error")?.jsonPrimitive?.content
+                throw KorieError(msg ?: "The server answered ${res.code}.", o?.get("household")?.jsonPrimitive?.content ?: "", o?.get("url")?.jsonPrimitive?.content ?: "")
             }
             text
         }
@@ -341,8 +356,30 @@ object Korie {
         }
     }
 
-    suspend fun people(): List<Person> {
-        val el: JsonElement = json.parseToJsonElement(call("GET", "/api/people"))
+    suspend fun helloInfo(): HelloInfo = get("/api/hello")
+
+    private fun keepHousehold(ctx: Context, t: String) {
+        household = t
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString("household", t).apply()
+    }
+
+    /** Away from home: signs this TV in to its household (its name and password), once. */
+    suspend fun householdSignIn(ctx: Context, name: String, password: String) {
+        val t = call("POST", "/api/household/signin", buildJsonObject { put("name", name); put("password", password); put("device", deviceName) })
+        keepHousehold(ctx, json.parseToJsonElement(t).jsonObject["token"]!!.jsonPrimitive.content)
+    }
+
+    suspend fun leaveHousehold(ctx: Context) {
+        try { call("POST", "/api/household/signout") } catch (_: Exception) {}
+        keepHousehold(ctx, "")
+    }
+
+    suspend fun people(ctx: Context): List<Person> {
+        val el: JsonElement = try { json.parseToJsonElement(call("GET", "/api/people")) } catch (e: KorieError) {
+            // the household's sign-in ended (a new password, or the admin stopped it): sign in again
+            if (e.kind == "needed") keepHousehold(ctx, "")
+            throw e
+        }
         val list = if (el is JsonObject) el["people"] ?: el else el
         return json.decodeFromJsonElement(kotlinx.serialization.builtins.ListSerializer(Person.serializer()), list)
     }
@@ -406,6 +443,8 @@ object Korie {
 
     suspend fun home(): Rows = get("/api/home")
     suspend fun live(): Rows = get("/api/live")
+    /** New episodes, a row a day: the coming days, then the last week. */
+    suspend fun calendar(): Rows = get("/api/calendar/rows")
     suspend fun page(id: String, only: String = ""): PageRows = get("/api/page?id=" + enc(id) + if (only.isNotEmpty()) "&only=$only" else "")
     suspend fun item(id: String): Item = get("/api/item?id=" + enc(id))
     suspend fun search(q: String): Found = get("/api/search?q=" + enc(q))

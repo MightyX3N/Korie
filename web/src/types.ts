@@ -4,7 +4,7 @@ export interface PersonBrief { id: string; name: string; color: string; hasPin: 
 
 export interface Person extends PersonBrief {
   canSettings: boolean; addons: "all" | string[]; audio: string; subs: string; skipIntro: "button" | "auto" | "off";
-  music: boolean; canInstall: boolean; canDelete: boolean; apps: "all" | string[]; maxAge: number | null; autoDevice: string | null; autoPin: boolean;
+  music: boolean; canInstall: boolean; canDelete: boolean; apps: "all" | string[]; maxAge: number | null; autoDevice: string | null; autoPin: boolean; household: string;
 }
 
 export interface Me { person: Person; server: { name: string; version: string; id: string }; games: boolean; languages: [string, string][] }

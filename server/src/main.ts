@@ -27,6 +27,11 @@ import { serverId } from "./ident.ts";
 import { startDiscovery } from "./discovery.ts";
 import * as jellyfin from "./jellyfin.ts";
 import * as channels from "./channels.ts";
+import * as calendar from "./calendar.ts";
+import * as households from "./households.ts";
+import * as access from "./access.ts";
+import * as playit from "./playit.ts";
+import http from "node:http";
 
 const app = Fastify({ logger: false, bodyLimit: 1024 * 1024, routerOptions: { maxParamLength: 8192 }, rewriteUrl: (req) => jellyfin.rewrite(req.url ?? "/") });
 
@@ -46,9 +51,11 @@ type Req = FastifyRequest<{ Querystring: Record<string, string>; Params: Record<
 
 class HttpError extends Error {
   code: number;
-  constructor(code: number, msg: string) {
+  extra: Record<string, unknown>;
+  constructor(code: number, msg: string, extra: Record<string, unknown> = {}) {
     super(msg);
     this.code = code;
+    this.extra = extra;
   }
 }
 
@@ -61,7 +68,18 @@ function who(req: FastifyRequest): people.Person {
   const tok = tokenOf(req);
   const p = people.fromToken(tok);
   if (!p) throw new HttpError(401, "Sign in first.");
+  mayCome(p);
   return p;
+}
+
+/** Someone from a household that's been stopped (by an admin, or by an add-on that looks after
+ *  households) can't go on. */
+function mayCome(p: people.Person): void {
+  if (p.household === "home") return;
+  const h = households.get(p.household);
+  if (h && h.state !== "active") throw new HttpError(403, h.state === "pending" ? "Your household is waiting for the admin to let it in." : "Your household can't watch on this server any more.", { household: "stopped" });
+  const v = access.cached(p.household);
+  if (!v.allow) throw new HttpError(402, v.message, { household: "refused", url: v.url });
 }
 
 function admin(req: FastifyRequest): people.Person {
@@ -85,7 +103,7 @@ function settingsPerson(req: FastifyRequest): people.Person {
 app.setErrorHandler((err: any, _req, reply) => {
   const code = err instanceof HttpError ? err.code : err.statusCode ?? 500;
   if (code >= 500) log("http", String(err?.stack ?? err));
-  void reply.code(code).send({ error: err.message ?? "Something went wrong." });
+  void reply.code(code).send({ error: err.message ?? "Something went wrong.", ...(err instanceof HttpError ? err.extra : {}) });
 });
 
 const body = (req: FastifyRequest): Record<string, any> => (req.body ?? {}) as Record<string, any>;
@@ -97,15 +115,77 @@ const allowed = (p: people.Person) => (aid: string) => people.mayUseAddon(p, aid
 if (process.env.KORIE_DEBUG_HTTP) app.addHook("onResponse", async (req, reply) => log("http", `${req.method} ${req.url} ${req.headers.range ?? ""} -> ${reply.statusCode}`));
 
 
-app.get("/api/hello", async () => ({ korie: true, id: serverId(), name: setting("server_name"), version: VERSION }));
+app.get("/api/hello", async (req) => {
+  const h = households.fromGrant(req);
+  return {
+    korie: true, id: serverId(), name: setting("server_name"), version: VERSION,
+    // from outside the home a device signs in to its household first
+    outside: households.outside(req), household: h ? { id: h.id, name: h.name } : null, register: registerMode(),
+  };
+});
 
-app.get("/api/people", async () => people.list().map(({ id, name, color, hasPin, admin }) => ({ id, name, color, hasPin, admin })));
+app.get("/api/people", async (req) => {
+  const list = households.peopleFor(req);
+  if (!list) throw new HttpError(401, "Sign in to your household first.", { household: "needed" });
+  return list.map(({ id, name, color, hasPin, admin }) => ({ id, name, color, hasPin, admin }));
+});
+
+// tries per address and per what's tried (a household, a person), so a password or PIN can't be
+// guessed by trying many; per both, since everyone through playit.gg's tunnel has the same address
+const tries = new Map<string, { n: number; until: number }>();
+function slowDown(req: FastifyRequest, what: string): void {
+  const t = tries.get(req.ip + "|" + what);
+  if (t && t.n >= 8 && Date.now() < t.until) throw new HttpError(429, "Too many tries. Wait a few minutes and try again.");
+}
+function failed(req: FastifyRequest, what: string): void {
+  const k = req.ip + "|" + what;
+  if (tries.size > 5000) for (const [x, v] of tries) if (Date.now() > v.until) tries.delete(x);
+  const t = tries.get(k);
+  const fresh = !t || Date.now() > t.until;
+  tries.set(k, { n: fresh ? 1 : t.n + 1, until: Date.now() + 10 * 60 * 1000 });
+}
+
+/** A device outside the home signs in to its household (once: it keeps the token it gets). */
+app.post("/api/household/signin", async (req: Req) => {
+  const { name, password, device } = body(req);
+  const what = "household:" + String(name ?? "").trim().toLowerCase();
+  slowDown(req, what);
+  const h = households.byName(String(name ?? ""));
+  if (!h || !households.checkPassword(h.id, String(password ?? ""))) {
+    failed(req, what);
+    throw new HttpError(403, "That household name and password don't match.");
+  }
+  if (h.state === "pending") throw new HttpError(403, "Your household is waiting for the admin to let it in.");
+  if (h.state === "blocked") throw new HttpError(403, "Your household can't watch on this server any more.");
+  const v = await access.check(h.id);
+  if (!v.allow) throw new HttpError(402, v.message, { household: "refused", url: v.url });
+  return { token: households.grant(h.id, String(device ?? "")), household: { id: h.id, name: h.name } };
+});
+
+app.post("/api/household/signout", async (req) => {
+  households.endGrant(req);
+  return { ok: true };
+});
 
 app.post("/api/login", async (req: Req) => {
   const { person, pin, device, deviceId } = body(req);
   const p = people.get(String(person ?? ""));
   if (!p) throw new HttpError(404, "That person isn't here any more.");
-  if (p.hasPin && !people.checkPin(p.id, String(pin ?? ""))) throw new HttpError(403, "Wrong PIN.");
+  // only the people of the household this device may pick (from outside: the one it signed in to)
+  const may = households.peopleFor(req);
+  if (!may) throw new HttpError(401, "Sign in to your household first.", { household: "needed" });
+  if (!may.some((x) => x.id === p.id)) throw new HttpError(403, "That person isn't in this household.");
+  mayCome(p);
+  // the add-ons looking after households are asked afresh when someone signs in
+  if (p.household !== "home" && access.guards().length) {
+    const v = await access.check(p.household);
+    if (!v.allow) throw new HttpError(402, v.message, { household: "refused", url: v.url });
+  }
+  if (p.hasPin) slowDown(req, "pin:" + p.id);
+  if (p.hasPin && !people.checkPin(p.id, String(pin ?? ""))) {
+    failed(req, "pin:" + p.id);
+    throw new HttpError(403, "Wrong PIN.");
+  }
   people.noteDevice(deviceId, device);
   return { token: people.startSession(p.id, String(device ?? "")), person: p };
 });
@@ -113,6 +193,8 @@ app.post("/api/login", async (req: Req) => {
 /** A device starting up: when someone signs in on it by itself (Settings, People), their session. */
 app.post("/api/auto", async (req: Req) => {
   const { device, deviceId } = body(req);
+  // a device outside the home never signs in by itself
+  if (households.outside(req)) return { token: null };
   people.noteDevice(deviceId, device);
   const p = typeof deviceId === "string" ? people.autoFor(deviceId) : null;
   if (!p) return { token: null };
@@ -518,7 +600,7 @@ async function playChannel(p: people.Person, id: string, b: Record<string, unkno
     if (!pin) return { id, title: c.name, subtitle: "", channel, locked: true, mode: "stream", url: "", duration: 0, live: false, seekable: false, audio: [], audioIndex: null, subs: [], why: "", resume: 0, next: null, episode: null, intro: null };
     // someone without that age limit, with a PIN, says it's alright
     const r = lib.getRow(pr.item)!;
-    const ok = people.list().some((x) => x.hasPin && views.may(x, r) && people.checkPin(x.id, pin));
+    const ok = people.list().some((x) => x.household === p.household && x.hasPin && views.may(x, r) && people.checkPin(x.id, pin));
     if (!ok) throw new HttpError(403, "That PIN can't unlock this. It has to be the PIN of someone who may watch it.");
     unlocked.set(key, pr.end);
   }
@@ -552,6 +634,52 @@ app.post("/api/admin/channels", async (req: Req) => {
   }
   if (b.redo === true) await channels.ensure(true);
   return { ok: true };
+});
+
+// --- the calendar (calendar.ts) -------------------------------------------------------------
+
+function calendarFor(p: people.Person, from: string, to: string): calendar.Entry[] {
+  return calendar.entries(p, (r) => views.may(p, r), (snap) => views.mayItem(p, snap as never), from, to);
+}
+
+const isoDay = (t: number) => {
+  const d = new Date(t * 1000);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
+
+/** The calendar between two days (YYYY-MM-DD; default: this month, a week either side). */
+app.get("/api/calendar", async (req: Req) => {
+  const p = who(req);
+  const q = req.query as Record<string, string>;
+  const ok = (x: unknown) => typeof x === "string" && /^\d{4}-\d{2}-\d{2}$/.test(x);
+  const from = ok(q.from) ? q.from : isoDay(now() - 37 * 86400);
+  const to = ok(q.to) ? q.to : isoDay(now() + 45 * 86400);
+  return { today: isoDay(now()), entries: calendarFor(p, from, to) };
+});
+
+/** The calendar as rows (the TV): the last week and the next month, a row a day. */
+app.get("/api/calendar/rows", async (req: Req) => {
+  const p = who(req);
+  const today = isoDay(now());
+  const tomorrow = isoDay(now() + 86400);
+  const days = new Map<string, views.Card[]>();
+  for (const e of calendarFor(p, isoDay(now() - 7 * 86400), isoDay(now() + 30 * 86400))) {
+    const when = e.ready ? "Ready to watch" : e.date > today ? "Coming" : "Out · not in your library";
+    const card: views.Card = {
+      id: e.item ?? e.series, kind: e.item ? "episode" : "series", title: e.seriesTitle,
+      subtitle: `S${e.season} E${e.episode}${e.title ? " · " + e.title : ""} · ${when}`,
+      year: "", poster: e.poster, thumb: e.still || e.backdrop, backdrop: e.backdrop, progress: 0, watched: false, source: e.source,
+      ...(e.item ? { series: e.series } : {}),
+    };
+    days.set(e.date, [...(days.get(e.date) ?? []), card]);
+  }
+  // the coming days first, then the past week (newest first)
+  const order = [...days.keys()].sort((a, b) => (a >= today) !== (b >= today) ? (a >= today ? -1 : 1) : a >= today ? a.localeCompare(b) : b.localeCompare(a));
+  const name = (d: string) => d === today ? "Today" : d === tomorrow ? "Tomorrow" : new Date(d + "T12:00:00").toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" });
+  return {
+    rows: order.map((d) => ({ id: "day-" + d, title: name(d), kind: "wide", items: days.get(d)! })),
+    status: days.size ? "" : "Nothing in the calendar yet. Series in your library, and series in My list, show their new episodes here.",
+  };
 });
 
 /** The guide: every channel's programmes from `from` for `hours` hours (default: from an hour ago, a day ahead). */
@@ -783,7 +911,10 @@ app.post("/api/download/:action", async (req: Req) => {
 
 app.post("/api/favourite", async (req: Req) => {
   const p = who(req);
-  return { favourite: views.toggleFavourite(p, String(body(req).id ?? "")) };
+  const on = views.toggleFavourite(p, String(body(req).id ?? ""));
+  // a series added to My list: its episodes into the calendar
+  if (on) void calendar.refresh();
+  return { favourite: on };
 });
 
 // --- pictures ----------------------------------------------------------------------------
@@ -904,12 +1035,15 @@ app.get("/api/people/all", async (req) => {
   return {
     people: people.list(), addons: addons.enabledIds().map((id) => ({ id, name: addons.manifests.get(id)?.name ?? id })), apps: people.knownApps(),
     devices: people.devices().map(({ id, name, seen }) => ({ id, name, seen })),
+    households: households.list().map(({ id, name, home }) => ({ id, name, home })),
   };
 });
 
 app.post("/api/people", async (req: Req) => {
   admin(req);
-  return people.add(String(body(req).name ?? "Person"));
+  const hh = String(body(req).household ?? "home");
+  if (!households.get(hh)) throw new HttpError(400, "That household isn't here any more.");
+  return people.add(String(body(req).name ?? "Person"), false, hh);
 });
 
 app.patch("/api/people/:id", async (req: Req) => {
@@ -918,7 +1052,157 @@ app.patch("/api/people/:id", async (req: Req) => {
   const self = me.id === req.params.id;
   // everyone may rename themselves and pick a colour; the rest is for admins
   if (!me.admin && (!self || Object.keys(change).some((k) => !["name", "color"].includes(k)))) throw new HttpError(403, "Only an admin can do that.");
+  if (typeof change.household === "string") {
+    if (!households.get(change.household)) throw new HttpError(400, "That household isn't here any more.");
+    const p = people.get(req.params.id);
+    if (p?.admin && change.household !== "home") throw new HttpError(400, "An admin stays in the home household.");
+    people.setHousehold(req.params.id, change.household);
+  }
   return people.update(req.params.id, change);
+});
+
+// --- households (admin) and signing up ------------------------------------------------------
+
+type RegisterMode = "off" | "open" | "approval";
+function registerMode(): RegisterMode {
+  const m = setting<string>("register");
+  return m === "open" || m === "approval" ? m : "off";
+}
+
+app.get("/api/admin/households", async (req) => {
+  admin(req);
+  return {
+    households: households.list(), register: registerMode(), registerNote: String(setting("register_note") ?? ""),
+    outsidePort: households.OUTSIDE_PORT, guards: access.guards().map((id) => ({ id, name: addons.manifests.get(id)?.name ?? id })),
+  };
+});
+
+app.post("/api/admin/households", async (req: Req) => {
+  admin(req);
+  const { name, password } = body(req);
+  if (password && String(password).length < 6) throw new HttpError(400, "The password needs at least 6 characters.");
+  let h: households.Household;
+  try {
+    h = households.add(String(name ?? ""), password ? String(password) : null);
+  } catch (e) {
+    throw new HttpError(400, (e as Error).message);
+  }
+  void access.registered(h.id);
+  emit("households");
+  return h;
+});
+
+app.patch("/api/admin/households/:id", async (req: Req) => {
+  admin(req);
+  const id = req.params.id;
+  if (!households.get(id)) throw new HttpError(404, "That household isn't here any more.");
+  const { name, password, state } = body(req);
+  try {
+    if (typeof name === "string") households.rename(id, name);
+    if (password === null || typeof password === "string") households.setPassword(id, password ? password : null);
+    if (state === "active" || state === "pending" || state === "blocked") households.setState(id, state);
+  } catch (e) {
+    throw new HttpError(400, (e as Error).message);
+  }
+  access.forget(id);
+  emit("households");
+  return households.get(id);
+});
+
+app.delete("/api/admin/households/:id", async (req: Req) => {
+  admin(req);
+  try {
+    households.remove(req.params.id);
+  } catch (e) {
+    throw new HttpError(400, (e as Error).message);
+  }
+  emit("households");
+  emit("people");
+  return { ok: true };
+});
+
+// --- playit.gg: reaching Korie from outside ---------------------------------------------------
+
+app.get("/api/admin/playit", async (req) => {
+  admin(req);
+  return playit.status();
+});
+
+app.post("/api/admin/playit/:what", async (req: Req) => {
+  admin(req);
+  try {
+    switch (req.params.what) {
+      case "link": return { url: await playit.link() };
+      case "start": playit.start(); break;
+      case "stop": playit.stop(); break;
+      case "forget": playit.forget(); break;
+      case "address": playit.setAddress(String(body(req).address ?? "")); break;
+      default: throw new HttpError(404, "Not found.");
+    }
+  } catch (e) {
+    if (e instanceof HttpError) throw e;
+    throw new HttpError(400, (e as Error).message);
+  }
+  return playit.status();
+});
+
+app.put("/api/admin/register", async (req: Req) => {
+  admin(req);
+  const { mode, note } = body(req);
+  if (mode === "off" || mode === "open" || mode === "approval") setSetting("register", mode);
+  if (typeof note === "string") setSetting("register_note", note.slice(0, 2000));
+  return { register: registerMode(), registerNote: String(setting("register_note") ?? "") };
+});
+
+/** The sign-up page's text (when the admin has turned signing up on). */
+app.get("/api/register", async () => ({ mode: registerMode(), note: String(setting("register_note") ?? ""), name: setting("server_name") }));
+
+/** Signing up: a new household with its password and its people. */
+app.post("/api/register", async (req: Req) => {
+  const mode = registerMode();
+  if (mode === "off") throw new HttpError(403, "Signing up is turned off on this server.");
+  slowDown(req, "register");
+  // every sign-up counts as a try, so one address can't make hundreds
+  failed(req, "register");
+  const { household, password, people: who } = body(req);
+  const list = (Array.isArray(who) ? who : []).slice(0, 8)
+    .map((x: any) => ({ name: String(x?.name ?? "").trim().slice(0, 40), pin: x?.pin ? String(x.pin) : "" }))
+    .filter((x: { name: string }) => x.name);
+  if (!list.length) throw new HttpError(400, "Add at least one person.");
+  if (list.some((x: { pin: string }) => x.pin && !/^\d{4}$/.test(x.pin))) throw new HttpError(400, "A PIN is four digits.");
+  if (String(password ?? "").length < 6) throw new HttpError(400, "The password needs at least 6 characters.");
+  let h: households.Household;
+  try {
+    h = households.add(String(household ?? ""), String(password), mode === "approval" ? "pending" : "active");
+  } catch (e) {
+    throw new HttpError(400, (e as Error).message);
+  }
+  for (const x of list) {
+    const p = people.add(x.name, false, h.id);
+    if (x.pin) people.setPin(p.id, x.pin);
+  }
+  log("households", `${h.name} signed up (${mode === "approval" ? "waiting for an admin" : "in"})`);
+  emit("households");
+  await access.registered(h.id);
+  if (mode === "approval") return { state: "pending", household: { id: h.id, name: h.name } };
+  const v = await access.check(h.id);
+  if (!v.allow) return { state: "refused", message: v.message, url: v.url, household: { id: h.id, name: h.name } };
+  return { state: "active", token: households.grant(h.id, String(body(req).device ?? "")), household: { id: h.id, name: h.name } };
+});
+
+/** Pages and notices for add-ons that look after households (a payment service's page back, say). */
+app.route({
+  method: ["GET", "POST"], url: "/api/hook/:addon/*",
+  handler: async (req: Req, reply: FastifyReply) => {
+    const raw = req.body === undefined ? "" : typeof req.body === "string" ? req.body : JSON.stringify(req.body);
+    const headers: Record<string, string> = {};
+    for (const [k, v] of Object.entries(req.headers)) if (typeof v === "string" && !["authorization", "cookie", "x-korie-household"].includes(k)) headers[k] = v;
+    const a = await access.web(req.params.addon, { method: req.method, path: "/" + (req.params["*"] ?? ""), query: req.query, headers, body: raw.slice(0, 200_000) });
+    if (!a) return reply.code(404).send({ error: "Not found." });
+    if (a.redirect) return reply.redirect(a.redirect);
+    // the add-on's own page can't reach Korie's sign-ins: it's a page of its own (sandbox)
+    return reply.code(a.status).header("Content-Type", a.type).header("Content-Security-Policy", "sandbox allow-forms allow-scripts allow-popups allow-top-navigation").send(a.body);
+  },
 });
 
 app.delete("/api/people/:id", async (req: Req) => {
@@ -986,6 +1270,11 @@ app.post("/api/addon/:action", async (req: Req) => {
       return { ok: true };
     }
     case "enable": {
+      // one that looks after households decides who may watch: an admin turns it on, knowingly
+      if (addons.manifests.get(id)?.permissions.includes("households") && !addons.state(id).enabled) {
+        admin(req);
+        if (body(req).households !== true) return { needsHouseholds: true };
+      }
       const err = addons.enable(id, body(req).internet === true);
       if (err === "needs_internet") return { needsInternet: true, hosts: addons.manifests.get(id)?.hosts ?? [], hostsFromSettings: addons.manifests.get(id)?.hosts_from_settings, hostsFromAccount: addons.manifests.get(id)?.hosts_from_account };
       if (err) throw new HttpError(400, err);
@@ -1091,9 +1380,24 @@ people.ensureFirst();
 addons.scan();
 browse.load();
 await app.listen({ port: PORT, host: "0.0.0.0" });
+// the outside port: what comes in here is from outside the home (playit.gg's tunnel points at it)
+{
+  const outsideServer = http.createServer((req, res) => {
+    (req as { korieOutside?: boolean }).korieOutside = true;
+    app.server.emit("request", req, res);
+  });
+  outsideServer.on("upgrade", (req, socket, head) => {
+    (req as { korieOutside?: boolean }).korieOutside = true;
+    app.server.emit("upgrade", req, socket, head);
+  });
+  outsideServer.on("error", (e) => log("korie", `outside port ${households.OUTSIDE_PORT}: ${e.message}`));
+  outsideServer.listen(households.OUTSIDE_PORT, "0.0.0.0");
+}
 log("korie", `Korie ${VERSION} on http://0.0.0.0:${PORT} (${tmdb.key() ? "TMDb on" : "no TMDb key"})`);
 startDiscovery();
 channels.start();
+calendar.start();
+playit.boot();
 browse.refreshAll();
 setInterval(() => browse.refreshAll(), 5 * 60 * 1000).unref();
 void store.refresh();

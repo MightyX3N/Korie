@@ -12,11 +12,18 @@ interface Stats { stats: { films: number; series: number; live: number; games: n
 
 /** Turns an add-on on, asking first about the internet when it wants it. */
 export async function turnOn(a: AddonView): Promise<boolean> {
-  let r = await ui.attempt(`Couldn't turn ${a.name} on`, () => api<{ ok?: boolean; needsInternet?: boolean; hosts?: string[]; hostsFromSettings?: boolean; hostsFromAccount?: boolean }>("/api/addon/enable", { id: a.id }));
+  type R = { ok?: boolean; needsInternet?: boolean; needsHouseholds?: boolean; hosts?: string[]; hostsFromSettings?: boolean; hostsFromAccount?: boolean };
+  let households = false;
+  let r = await ui.attempt(`Couldn't turn ${a.name} on`, () => api<R>("/api/addon/enable", { id: a.id }));
+  if (r?.needsHouseholds) {
+    if (!(await ui.confirm(`Let ${a.name} look after households?`, "It hears about households (their names and how many people are in them), may keep its own notes on them, and can stop one from watching until it says otherwise. The home household is never stopped. What it does, and whether that's allowed where you are, is up to you.", "Allow"))) return false;
+    households = true;
+    r = await ui.attempt(`Couldn't turn ${a.name} on`, () => api<R>("/api/addon/enable", { id: a.id, households }));
+  }
   if (r?.needsInternet) {
     const where = [...(r.hosts ?? []), ...(r.hostsFromSettings ? ["the addresses you type in its settings"] : []), ...(r.hostsFromAccount ? ["the Stremio add-ons added on its page or in someone's account"] : [])].join(", ");
     if (!(await ui.confirm(`Let ${a.name} use the internet?`, `It fetches from: ${where || "the internet"}. It can't reach anything else.`, "Allow"))) return false;
-    r = await ui.attempt(`Couldn't turn ${a.name} on`, () => api("/api/addon/enable", { id: a.id, internet: true }));
+    r = await ui.attempt(`Couldn't turn ${a.name} on`, () => api("/api/addon/enable", { id: a.id, internet: true, households }));
   }
   return !!r;
 }

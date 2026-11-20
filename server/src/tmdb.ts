@@ -6,7 +6,8 @@ import { setting } from "./db.ts";
 import { fetchJson } from "./net.ts";
 import * as ages from "./ages.ts";
 
-const API = "https://api.themoviedb.org/3/";
+// (another address only for testing)
+const API = process.env.KORIE_TMDB_API || "https://api.themoviedb.org/3/";
 const IMG = "https://image.tmdb.org/t/p/";
 const CACHE = 30 * 86400;
 
@@ -23,13 +24,13 @@ export function image(p: unknown, size = "original"): string {
   return typeof p === "string" && p ? IMG + size + p : "";
 }
 
-async function get<T = any>(p: string, params: Record<string, string | number> = {}): Promise<T | null> {
+async function get<T = any>(p: string, params: Record<string, string | number> = {}, cache = CACHE): Promise<T | null> {
   const k = key();
   if (!k) return null;
   const q = new URLSearchParams({ language: String(setting("language") || "en-US") });
   for (const [a, b] of Object.entries(params)) q.set(a, String(b));
   q.set("api_key", k);
-  return fetchJson<T>(API + p + "?" + q.toString(), { cache: CACHE });
+  return fetchJson<T>(API + p + "?" + q.toString(), { cache });
 }
 
 export interface Cast { name: string; role: string; photo: string }
@@ -104,6 +105,19 @@ export async function byImdb(kind: "film" | "series", imdb: string): Promise<num
   const r = await get(`find/${imdb}`, { external_source: "imdb_id" });
   const hit = (kind === "film" ? r?.movie_results : r?.tv_results)?.[0];
   return hit?.id ?? null;
+}
+
+/** What's on now for a series (the calendar): its status, and the seasons with episodes just out or coming. Kept 12 hours. */
+export async function airing(id: number): Promise<{ status: string; last: string; seasons: { n: number; episodes: { n: number; title: string; overview: string; still: string; aired: string }[] }[] } | null> {
+  const d = await get(`tv/${id}`, {}, 12 * 3600);
+  if (!d?.id) return null;
+  const want = [...new Set([d.last_episode_to_air?.season_number, d.next_episode_to_air?.season_number].filter((n) => typeof n === "number"))] as number[];
+  const seasons = [];
+  for (const n of want) {
+    const sd = await get(`tv/${id}/season/${n}`, {}, 12 * 3600);
+    seasons.push({ n, episodes: (sd?.episodes ?? []).map((e: any) => ({ n: e.episode_number, title: e.name ?? "", overview: e.overview ?? "", still: image(e.still_path, "w780"), aired: e.air_date ?? "" })) });
+  }
+  return { status: String(d.status ?? ""), last: String(d.last_air_date ?? ""), seasons };
 }
 
 /** A film or series by its TheTVDB number (Plex's {tvdb-…}). */

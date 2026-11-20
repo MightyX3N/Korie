@@ -9,11 +9,11 @@ interface Overview {
   name: string; version: string; addresses: string[]; counts: { films: number; series: number; albums: number };
   fromAddons: { films: number; series: number; live: number; liveFrom: string[] }; discovery: { korie: string; jellyfin: string };
   watching: { person: string; name: string; color: string; device: string; title: string; subtitle: string; live: boolean; position: number; duration: number; paused: boolean; at: number }[];
-  problems: { title: string; text: string; addon?: string; level: "bad" | "busy" }[]; folders: number;
+  problems: { title: string; text: string; addon?: string; link?: string; level: "bad" | "busy" }[]; folders: number;
 }
 
 export function Overview() {
-  const { data: o, error, reload } = useData(() => api<Overview>("/api/admin/overview"), [], ["library", "browse", "addons", "status"]);
+  const { data: o, error, reload } = useData(() => api<Overview>("/api/admin/overview"), [], ["library", "browse", "addons", "status", "households", "playit"]);
   // who's watching changes all the time: look again every few seconds
   useEffect(() => {
     const t = window.setInterval(reload, 8000);
@@ -66,6 +66,7 @@ export function Overview() {
                   <div>
                     <strong>{p.title}</strong>
                     <p>{p.text}</p>
+                    {p.link && <a href={href(p.link)} onClick={(e) => follow(e, p.link!)}>Open</a>}
                     {p.addon && <a href={href(`/admin/addons/${p.addon}`)} onClick={(e) => follow(e, `/admin/addons/${p.addon}`)}>Open the add-on</a>}
                   </div>
                 </div>

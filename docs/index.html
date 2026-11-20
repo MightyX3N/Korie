@@ -226,7 +226,10 @@ footer { padding: 40px 0 56px; border-top: 1px solid var(--line); color: var(--m
       <div class="feature"><span class="pill now">Works</span><h3>TV channels from your library</h3><p>Channels in Live TV that play your own films and series around the clock: one per genre, plus Classics and Kids, with a guide for the week. Something above a child's age limit is covered until a grown-up types their PIN.</p></div>
       <div class="feature"><span class="pill now">Works</span><h3>Admin in the browser</h3><p>Libraries, people, add-ons with their accounts and settings, downloads and the server's log, at /web/admin.</p></div>
       <div class="feature"><span class="pill now">Works</span><h3>Jellyfin's apps too</h3><p>Jellyfin's apps find Korie on the home network and play from it. Checked with the Android TV app and the web app.</p></div>
-      <div class="feature"><span class="pill soon">Being built</span><h3>Calendar, outside the home, households</h3><p>A calendar of new episodes, watching from outside the home with playit.gg, and households with their own sign-in.</p></div>
+      <div class="feature"><span class="pill now">Works</span><h3>Calendar of new episodes</h3><p>New and coming episodes of the series in your library, and of the add-on series you've made favourites, by day: a month on the web, a row a day on the TV. Each says whether it's ready to watch.</p></div>
+      <div class="feature"><span class="pill now">Works</span><h3>Watching away from home</h3><p>Korie runs playit.gg's agent for you: link it to your playit.gg account once in Admin, make a tunnel to Korie's outside port, and give out the address. Nothing to open on the router.</p></div>
+      <div class="feature"><span class="pill now">Works</span><h3>Households</h3><p>Friends and family elsewhere get a household of their own. A device away from home signs in to its household once, with its name and password, and then shows only its people. You can let households sign up themselves, openly or with your approval.</p></div>
+      <div class="feature"><span class="pill now">Works</span><h3>Add-ons that look after households</h3><p>An add-on can decide which households may watch (a membership, say), keep its own notes on them and answer pages of its own. Korie comes with none; what such an add-on does is up to whoever installs it.</p></div>
     
     </div>
   </div>
@@ -295,6 +298,7 @@ footer { padding: 40px 0 56px; border-top: 1px solid var(--line); color: var(--m
     <ol class="steps">
       <li><p>On the NAS, paste this into the Docker app as a project. Change <code>/volume1/Media</code> to your media folder and <code>/volume1/docker/korie</code> to where Korie keeps its data.</p></li>
       <li><p>Open <code>http://&lt;nas&gt;:8100</code>, then Admin: add your folders under Libraries, the people in the house under People, and add-ons under Add-ons.</p></li>
+      <li><p>Away from home: in Admin, Households, set up playit.gg, add a TCP tunnel there to local port <code>8101</code>, and give each household the address with its name and password.</p></li>
       <li><p>On the TV, install <a href="https://github.com/MightyX3N/Korie/releases/latest/download/korie-tv.apk">Korie's TV app</a> (with an app like Downloader, or from a USB stick). It finds Korie by itself. After that it updates itself. Jellyfin's Android TV app works too: pick Korie under Discovered servers.</p></li>
     </ol>
     <div class="code">
@@ -318,6 +322,7 @@ footer { padding: 40px 0 56px; border-top: 1px solid var(--line); color: var(--m
   <footer>
     <p>Korie is open source: <a href="https://github.com/MightyX3N/Korie">github.com/MightyX3N/Korie</a>.</p>
     <p>Korie talks to Jellyfin's apps through Jellyfin's published API and contains no Jellyfin code. Korie is not made by or connected to the Jellyfin project. Film and series details come from TMDb; Korie uses the TMDb API but is not endorsed or certified by TMDb.</p>
+    <p>Korie's Docker image includes playit.gg's agent (<a href="https://github.com/playit-cloud/playit-agent">playit-agent</a>), Copyright 2022 Developed Methods LLC, under the BSD 2-Clause licence: redistribution and use in source and binary forms, with or without modification, are permitted provided that the copyright notice, this list of conditions and the disclaimer are kept with it. The software is provided "as is", without any warranty; the full licence is in <code>server/licenses/playit-agent.txt</code> and in the image at <code>/usr/share/doc/playit/LICENSE</code>. Korie is not made by or connected to playit.gg.</p>
   </footer>
 </div>
 

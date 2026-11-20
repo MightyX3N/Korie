@@ -32,6 +32,8 @@ export interface Person {
   autoDevice: string | null;
   /** that device still asks for their PIN each time it starts (on by default when the house has a child) */
   autoPin: boolean;
+  /** the household they're in (households.ts): "home" is the one at home */
+  household: string;
 }
 
 interface Perms { music?: boolean; canInstall?: boolean; canDelete?: boolean; apps?: "all" | string[]; maxAge?: number | null; autoDevice?: string | null; autoPin?: boolean }
@@ -46,7 +48,13 @@ export const LANGUAGES: [string, string][] = [
 
 interface Row {
   id: string; name: string; color: string; pin: string | null;
-  admin: number; can_settings: number; addons: string; playback: string | null; perms: string | null;
+  admin: number; can_settings: number; addons: string; playback: string | null; perms: string | null; household: string | null;
+}
+
+try {
+  db.exec("ALTER TABLE people ADD COLUMN household TEXT NOT NULL DEFAULT 'home'");
+} catch {
+  /* already there */
 }
 
 /** Is there someone with an age limit in the house? (then a TV asks for the PIN at start, unless told not to) */
@@ -70,6 +78,7 @@ function view(r: Row, child?: boolean): Person {
     maxAge: r.admin ? null : pm.maxAge ?? null,
     autoDevice: pm.autoDevice ?? null,
     autoPin: pm.autoPin ?? (child ?? hasChild()),
+    household: r.household || "home",
   };
 }
 
@@ -101,12 +110,17 @@ export function ensureFirst(): void {
   if (n === 0) add("Admin", true);
 }
 
-export function add(name: string, admin = false): Person {
+export function add(name: string, admin = false, household = "home"): Person {
   const count = (db.prepare("SELECT COUNT(*) AS n FROM people").get() as { n: number }).n;
   const id = crypto.randomUUID().slice(0, 8);
-  db.prepare("INSERT INTO people(id, name, color, admin, created) VALUES(?, ?, ?, ?, ?)")
-    .run(id, name.trim().slice(0, 40) || "Person", COLORS[count % COLORS.length], admin ? 1 : 0, now());
+  db.prepare("INSERT INTO people(id, name, color, admin, created, household) VALUES(?, ?, ?, ?, ?, ?)")
+    .run(id, name.trim().slice(0, 40) || "Person", COLORS[count % COLORS.length], admin ? 1 : 0, now(), household);
   return get(id)!;
+}
+
+/** Moves a person to another household. */
+export function setHousehold(id: string, household: string): void {
+  db.prepare("UPDATE people SET household = ? WHERE id = ?").run(household, id);
 }
 
 export function update(id: string, change: Partial<{ name: string; color: string; admin: boolean; canSettings: boolean; addons: "all" | string[] } & Perms>): Person | null {

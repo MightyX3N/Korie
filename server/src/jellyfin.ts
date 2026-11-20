@@ -14,6 +14,8 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { VERSION, log } from "./config.ts";
 import { db, json, now, setting } from "./db.ts";
 import * as people from "./people.ts";
+import * as households from "./households.ts";
+import * as access from "./access.ts";
 import * as lib from "./library.ts";
 import * as views from "./views.ts";
 import * as playback from "./playback.ts";
@@ -89,8 +91,46 @@ class JfError extends Error {
 
 function who(req: FastifyRequest): P {
   const p = people.fromToken(tokenOf(req));
-  if (!p) throw new JfError(401, "Unauthorized");
+  if (!p || !mayCome(p)) throw new JfError(401, "Unauthorized");
   return p;
+}
+
+/** a household that's been stopped (by an admin, or an add-on looking after households) can't go on */
+function mayCome(p: P): boolean {
+  if (p.household === "home") return true;
+  const h = households.get(p.household);
+  return !!h && h.state === "active" && access.cached(p.household).allow;
+}
+
+/** Signing in from a Jellyfin app. At home: a person's name and PIN, as in Who's watching (people
+ *  of other households: "Name@Household"). From outside: "Name@Household" (or just the name for
+ *  the home household) and the household's password, followed by the PIN when they have one. */
+const jfTries = new Map<string, { n: number; until: number }>();
+function jellyfinSignIn(req: FastifyRequest, username: string, pw: string): P | null {
+  // per address and name tried (everyone through playit.gg's tunnel has the same address)
+  const key = req.ip + "|" + username.trim().toLowerCase();
+  const t = jfTries.get(key);
+  if (t && t.n >= 8 && Date.now() < t.until) return null;
+  const at = username.lastIndexOf("@");
+  const name = (at > 0 ? username.slice(0, at) : username).trim().toLowerCase();
+  const hh = at > 0 ? households.byName(username.slice(at + 1)) : households.get("home");
+  const p = hh ? people.list().find((x) => x.household === hh.id && x.name.toLowerCase() === name) : undefined;
+  let ok = false;
+  if (p && hh && hh.state === "active") {
+    if (!households.outside(req)) ok = !p.hasPin || people.checkPin(p.id, pw);
+    else {
+      // the household's password, then the PIN (four digits) when the person has one
+      const pass = p.hasPin ? pw.slice(0, -4) : pw;
+      ok = households.checkPassword(hh.id, pass) && (!p.hasPin || people.checkPin(p.id, pw.slice(-4)));
+    }
+  }
+  if (ok && p && !mayCome(p)) ok = false;
+  if (!ok) {
+    const fresh = !t || Date.now() > t.until;
+    jfTries.set(key, { n: fresh ? 1 : t!.n + 1, until: Date.now() + 10 * 60 * 1000 });
+    return null;
+  }
+  return p!;
 }
 
 function userJson(p: P): Record<string, unknown> {
@@ -1056,12 +1096,12 @@ export async function register(app: FastifyInstance, webDir: string | null): Pro
   });
 
   // --- users ---
-  r("GET", ["/Users/Public"], () => people.list().map((p) => ({ Name: p.name, ServerId: SID(), Id: jid("person:" + p.id), HasPassword: p.hasPin, HasConfiguredPassword: p.hasPin, HasConfiguredEasyPassword: false, EnableAutoLogin: false })));
+  // from outside the home nobody is listed: the app asks for a name ("Name@Household") and a password
+  r("GET", ["/Users/Public"], (req) => (households.outside(req) ? [] : people.list().filter((p) => p.household === "home")).map((p) => ({ Name: p.name, ServerId: SID(), Id: jid("person:" + p.id), HasPassword: p.hasPin, HasConfiguredPassword: p.hasPin, HasConfiguredEasyPassword: false, EnableAutoLogin: false })));
   r("POST", ["/Users/AuthenticateByName"], (req) => {
     const b = bodyOf(req);
-    const name = String(b.Username ?? "").trim().toLowerCase();
-    const p = people.list().find((x) => x.name.toLowerCase() === name);
-    if (!p || (p.hasPin && !people.checkPin(p.id, String(b.Pw ?? "")))) throw new JfError(401, "Invalid username or password.");
+    const p = jellyfinSignIn(req, String(b.Username ?? ""), String(b.Pw ?? ""));
+    if (!p) throw new JfError(401, "Invalid username or password.");
     const a = authParts(req);
     const token = people.startSession(p.id, `${a.client ?? "Jellyfin"} on ${a.device ?? "a device"}`);
     if (a.deviceid) people.noteDevice(a.deviceid, a.device ?? "");
@@ -1080,8 +1120,8 @@ export async function register(app: FastifyInstance, webDir: string | null): Pro
   });
   r("GET", ["/Users/Me"], (req) => userJson(who(req)));
   r("GET", ["/Users"], (req) => {
-    who(req);
-    return people.list().map(userJson);
+    const me = who(req);
+    return people.list().filter((x) => x.household === me.household).map(userJson);
   });
   r("GET", ["/Users/:userId"], (req) => {
     who(req);

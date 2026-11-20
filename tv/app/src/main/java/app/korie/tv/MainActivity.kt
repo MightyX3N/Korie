@@ -172,6 +172,7 @@ private val SECTIONS = listOf(
     RailItem("series", "Series", R.drawable.lc_tv),
     RailItem("music", "Music", R.drawable.lc_music),
     RailItem("live", "Live TV", R.drawable.lc_radio),
+    RailItem("calendar", "Calendar", R.drawable.lc_calendar_days),
     RailItem("games", "Games", R.drawable.lc_gamepad_2),
     RailItem("store", "Add-ons", R.drawable.lc_puzzle),
     RailItem("apps", "Apps", R.drawable.lc_layout_grid),
@@ -280,6 +281,7 @@ fun ScreenFor(nav: Nav, s: Screen, me: Me, refresh: () -> Unit, signOut: () -> U
         "series" -> Library(nav, s, "series", "Series")
         "music" -> MusicScreen(nav, s)
         "live" -> LiveScreen(nav, s)
+        "calendar" -> RowsScreen(nav, s, "Calendar", listOf("calendar", "library")) { Korie.calendar() }
         "guide" -> GuideScreen(nav, s)
         "games" -> RowsScreen(nav, s, "Games", listOf("browse", "addons")) { Korie.read(Korie.api("/api/games")) }
         "apps" -> Apps(me)

@@ -8,7 +8,7 @@ import type { Me, Person } from "../types";
 import { COLOURS } from "../watch/You";
 import { ago } from "./Admin";
 
-interface All { people: Person[]; addons: { id: string; name: string }[]; apps: { pkg: string; label: string }[]; devices: { id: string; name: string; seen: number }[] }
+interface All { households: { id: string; name: string; home: boolean }[]; people: Person[]; addons: { id: string; name: string }[]; apps: { pkg: string; label: string }[]; devices: { id: string; name: string; seen: number }[] }
 
 const AGES: [number | null, string][] = [[null, "Anything"], [0, "A"], [7, "7"], [11, "11"], [15, "15"]];
 
@@ -34,7 +34,7 @@ export function People({ me, picked }: { me: Me; picked: string }) {
       <header className="adm-head">
         <div>
           <h1 className="adm-h1">People</h1>
-          <p className="adm-soft max">Everyone in the house. They're on Who's watching on every TV and in Jellyfin's apps; a PIN keeps a profile to its owner.</p>
+          <p className="adm-soft max">Everyone, by household. They're on Who's watching for their household, on the TVs and in Jellyfin's apps; a PIN keeps a profile to its owner.</p>
         </div>
         <button className="adm-btn primary" onClick={() => void add()}>Add a person</button>
       </header>
@@ -42,7 +42,9 @@ export function People({ me, picked }: { me: Me; picked: string }) {
       {data && current && (
         <div className="adm-split">
           <section aria-label="Everyone" className="adm-people">
-            {data.people.map((p) => {
+            {data.households.filter((h) => data.people.some((p) => p.household === h.id)).map((h) => [
+              data.households.length > 1 && <h3 key={"h" + h.id} className="adm-group">{h.name}</h3>,
+              ...data.people.filter((p) => p.household === h.id).map((p) => {
               const on = p.id === current.id;
               return (
                 <button key={p.id} className={`adm-person${on ? " on" : ""}`} aria-pressed={on} onClick={() => go(`/admin/people/${p.id}`, true)}>
@@ -50,7 +52,7 @@ export function People({ me, picked }: { me: Me; picked: string }) {
                   <span className="adm-line-text"><strong>{p.name}</strong><span className="adm-soft small">{note(p)}</span></span>
                 </button>
               );
-            })}
+            })])}
           </section>
           <Editor key={current.id} p={current} all={data} me={me} saved={reload} />
         </div>
@@ -137,6 +139,15 @@ function Editor({ p, all, me, saved }: { p: Person; all: All; me: Me; saved: () 
             {p.hasPin && <button className="adm-btn small" onClick={() => void noPin()}>Remove</button>}
           </div>
         </div>
+        {all.households.length > 1 && (
+          <div className="adm-field">
+            <label htmlFor="hh" className="adm-label">Household</label>
+            <select id="hh" className="adm-input" value={v.household} disabled={v.admin} onChange={(e) => set("household", e.target.value)}>
+              {all.households.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
+            </select>
+            <span className="adm-soft small">{v.admin ? "An admin stays in the home household." : "They're on Who's watching for that household only."}</span>
+          </div>
+        )}
         <div className="adm-field">
           <span className="adm-label">Age limit</span>
           <div className="adm-row">

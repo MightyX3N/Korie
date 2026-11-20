@@ -5,10 +5,24 @@ const DEVICE = "korie.device";
 
 export class ApiError extends Error {
   status: number;
-  constructor(status: number, message: string) {
+  data: any;
+  constructor(status: number, message: string, data: any = null) {
     super(message);
     this.status = status;
+    this.data = data;
   }
+}
+
+const HOUSEHOLD = "korie.household";
+
+/** From outside the home: the household this browser signed in to (once). */
+export function householdToken(): string {
+  return store()?.getItem(HOUSEHOLD) ?? "";
+}
+
+export function setHouseholdToken(t: string): void {
+  if (t) store()?.setItem(HOUSEHOLD, t);
+  else store()?.removeItem(HOUSEHOLD);
 }
 
 function store(): Storage | null {
@@ -50,6 +64,8 @@ export async function api<T = any>(path: string, body?: unknown, method?: string
   const headers: Record<string, string> = {};
   const t = token();
   if (t) headers.Authorization = `Bearer ${t}`;
+  const h = householdToken();
+  if (h) headers["X-Korie-Household"] = h;
   if (body !== undefined) headers["Content-Type"] = "application/json";
   let res: Response;
   try {
@@ -65,8 +81,8 @@ export async function api<T = any>(path: string, body?: unknown, method?: string
     data = null;
   }
   if (!res.ok) {
-    if (res.status === 401) window.dispatchEvent(new Event("korie:signedout"));
-    throw new ApiError(res.status, data?.error ?? `The server answered ${res.status}.`);
+    if (res.status === 401 || data?.household === "refused" || data?.household === "stopped") window.dispatchEvent(new Event("korie:signedout"));
+    throw new ApiError(res.status, data?.error ?? `The server answered ${res.status}.`, data);
   }
   return data as T;
 }

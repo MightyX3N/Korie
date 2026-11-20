@@ -31,6 +31,22 @@ with rows (Continue watching, Latest, Favourites) and Genres shows one row per c
 can instead give an add-on a tile of its own on the home screen, with its categories as folders.
 Nothing is scanned or written to disk first, so it's there as soon as an add-on is on.
 
+## Away from home
+
+People who don't live with you get a *household* of their own (Admin › Households), with a name and
+a password. At home nothing changes. Away from home (a public address, or Korie's outside port
+8101) a device signs in to its household once and then shows only that household's people.
+Jellyfin's apps away from home sign in as `Name@Household` with the household's password followed by
+the person's PIN. The admin can let households sign up themselves at `/web/register`, openly or
+with approval.
+
+To reach Korie from outside without opening the router, Korie runs playit.gg's agent: in Admin ›
+Households, *Set up playit.gg*, approve it on playit.gg, add a TCP tunnel there to local port 8101,
+and give out the tunnel's address.
+
+Add-ons with the `households` permission can decide which households may watch (see
+`docs/ADDONS.md`). Korie comes with none.
+
 ## Running the server
 
 GitHub builds the image (`ghcr.io/mightyx3n/korie:latest`, for x86 and ARM) on every push. On a
@@ -86,3 +102,17 @@ Korie-Store repository.
 Korie talks to Jellyfin's apps over Jellyfin's published API; it contains no Jellyfin code. The
 Docker image includes Jellyfin's web app unchanged (GPL-2.0, from Jellyfin's own release), served
 at `/web`.
+
+The Docker image includes playit.gg's agent, unchanged, under this licence:
+
+```
+Copyright 2022 Developed Methods LLC
+
+Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+```

@@ -397,14 +397,35 @@ fun Profiles(onSignedIn: () -> Unit, onOtherServer: () -> Unit, onManage: (Strin
     val first = remember { FocusRequester() }
     val faces = remember { mutableMapOf<String, FocusRequester>() }
     var picked by remember { mutableStateOf<String?>(null) }
+    // away from home: the household's sign-in first; and which household this TV is in
+    var needHousehold by remember { mutableStateOf(false) }
+    var hello by remember { mutableStateOf<HelloInfo?>(null) }
     LaunchedEffect(n) {
         error = ""
-        try { people = Korie.people() } catch (e: Exception) { error = e.message ?: "Korie didn't answer." }
+        needHousehold = false
+        try { hello = Korie.helloInfo() } catch (_: Exception) {}
+        try { people = Korie.people(ctx) } catch (e: KorieError) {
+            if (e.kind == "needed") needHousehold = true else error = e.message ?: "Korie didn't answer."
+        } catch (e: Exception) { error = e.message ?: "Korie didn't answer." }
     }
     fun pick(p: Person) = scope.launch {
         var pin: String? = null
         if (p.hasPin) pin = Ui.pin("${p.name}'s PIN") ?: return@launch
-        try { Korie.login(ctx, p.id, pin); onSignedIn() } catch (e: Exception) { Ui.toast(e.message ?: "") }
+        try { Korie.login(ctx, p.id, pin); onSignedIn() } catch (e: KorieError) {
+            when (e.kind) {
+                "refused" -> Ui.message("Can't watch right now", e.message + if (e.url.isNotEmpty()) "\n\n" + e.url else "")
+                "needed", "stopped" -> { Ui.message("Sign in again", e.message ?: ""); n++ }
+                else -> Ui.toast(e.message ?: "")
+            }
+        } catch (e: Exception) { Ui.toast(e.message ?: "") }
+    }
+    fun householdSignIn() = scope.launch {
+        val name = Ui.text("Your household's name") ?: return@launch
+        if (name.isBlank()) return@launch
+        val pw = Ui.text("${name.trim()}'s password", secret = true) ?: return@launch
+        try { Korie.householdSignIn(ctx, name.trim(), pw); n++ } catch (e: KorieError) {
+            Ui.message("Couldn't sign in", e.message + if (e.url.isNotEmpty()) "\n\n" + e.url else "")
+        } catch (e: Exception) { Ui.toast(e.message ?: "") }
     }
     Box(Modifier.fillMaxSize()) {
         // .profiles-top: the brand on the left, the clock on the right
@@ -421,8 +442,14 @@ fun Profiles(onSignedIn: () -> Unit, onOtherServer: () -> Unit, onManage: (Strin
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(r(2.6f), Alignment.CenterVertically),
         ) {
-            Text("Who's watching?", style = heading(3.6f))
-            if (error.isNotEmpty()) {
+            Text(if (needHousehold) "Sign in to your household" else "Who's watching?", style = heading(3.6f))
+            if (needHousehold) {
+                Column(Modifier.widthIn(max = r(46)).clip(RoundedCornerShape(r(1.1f))).background(C.panel2).padding(horizontal = r(2.4f), vertical = r(2.2f)), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(r(1.2f))) {
+                    Text("This TV is away from home. Sign in once with your household's name and password, and then pick who's watching.", style = body(1.1f, C.body).copy(textAlign = TextAlign.Center))
+                    Btn("Sign in", primary = true, modifier = Modifier.focusRequester(first)) { householdSignIn() }
+                    Btn("Another Korie…", outline = true) { onOtherServer() }
+                }
+            } else if (error.isNotEmpty()) {
                 Column(Modifier.clip(RoundedCornerShape(r(1.1f))).background(C.panel2).padding(horizontal = r(2.4f), vertical = r(2.2f)), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(r(1.2f))) {
                     Text(error, style = body(1.1f, C.body))
                     Btn("Try again", primary = true, modifier = Modifier.focusRequester(first)) { n++ }
@@ -434,7 +461,7 @@ fun Profiles(onSignedIn: () -> Unit, onOtherServer: () -> Unit, onManage: (Strin
                         Face(p.name, colorOf(p.color), lock = p.hasPin, modifier = (if (i == 0) Modifier.focusRequester(first) else Modifier).focusRequester(faces.getOrPut(p.id) { FocusRequester() })) { picked = p.id; pick(p) }
                     }
                     val ps = people
-                    if (!ps.isNullOrEmpty()) {
+                    if (!ps.isNullOrEmpty() && ps.any { it.admin }) {
                         Face("Add person", null, add = true) {
                             scope.launch {
                                 val t = asAdmin(ps) ?: return@launch
@@ -447,17 +474,23 @@ fun Profiles(onSignedIn: () -> Unit, onOtherServer: () -> Unit, onManage: (Strin
                         }
                     }
                 }
-                if (!people.isNullOrEmpty()) Box(Modifier.offset(y = -r(1))) {
-                    Btn("Manage people", outline = true) { scope.launch { val t = asAdmin(people!!); if (t != null) onManage(t) } }
+                if (!people.isNullOrEmpty()) Row(Modifier.offset(y = -r(1)), horizontalArrangement = Arrangement.spacedBy(r(1))) {
+                    if (people!!.any { it.admin }) Btn("Manage people", outline = true) { scope.launch { val t = asAdmin(people!!); if (t != null) onManage(t) } }
+                    val hh = hello?.household
+                    if (hh != null && Korie.household.isNotEmpty()) Btn("Leave ${hh.name}", outline = true) {
+                        scope.launch {
+                            if (Ui.ask("Leave ${hh.name} on this TV?", "You'll need the household's name and password to come back.", listOf(Choice("Leave", "leave", primary = true), Choice("Cancel", "no"))) == "leave") { Korie.leaveHousehold(ctx); people = null; n++ }
+                        }
+                    }
                 }
             }
         }
-        Text(
+        if (!needHousehold && hello?.outside != true) Text(
             "This TV can also sign in as one person by itself: Settings, This device.", style = body(0.95f, C.dim).copy(textAlign = TextAlign.Center),
             modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = r(2)),
         )
     }
-    LaunchedEffect(people, error) { if (!people.isNullOrEmpty() || error.isNotEmpty()) { delay(80); try { first.requestFocus() } catch (_: Exception) {} } }
+    LaunchedEffect(people, error, needHousehold) { if (!people.isNullOrEmpty() || error.isNotEmpty() || needHousehold) { delay(80); try { first.requestFocus() } catch (_: Exception) {} } }
     // a wrong or cancelled PIN: back on the face that was picked
     LaunchedEffect(Ui.closed) { val id = picked ?: return@LaunchedEffect; delay(80); if (Ui.busy) return@LaunchedEffect; try { faces[id]?.requestFocus() } catch (_: Exception) {} }
 }
