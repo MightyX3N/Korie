@@ -85,7 +85,7 @@ export async function link(): Promise<string> {
   // waits (up to 15 minutes) until the admin approves it on playit.gg
   // (what it prints is the agent's key: not in the log)
   // (-s: it writes plain lines, not a terminal screen)
-  linking = run(["-s", "claim", "exchange", code, "900"], (s) => (out += plain(s)));
+  linking = run(["-s", "claim", "exchange", code, "--wait", "900"], (s) => (out += plain(s)));
   linking.on("error", (e) => setPhase("failed", e.message));
   linking.on("close", (codeOut) => {
     linking = null;
@@ -95,7 +95,12 @@ export async function link(): Promise<string> {
       setSetting("playit_on", true);
       log("playit", "linked to the playit.gg account");
       start();
-    } else setPhase("failed", codeOut === 0 ? "playit didn't give back its key." : "The link wasn't approved in time. Try again.");
+    } else {
+      // what playit said last (why it stopped)
+      const last = out.trim().split("\n").pop()?.replace(/^.*?(INFO|WARN|ERROR)\s+\S+:\s*/, "").trim() ?? "";
+      log("playit", `linking stopped (${codeOut}): ${out.trim().slice(-500)}`);
+      setPhase("failed", codeOut === 0 ? "playit didn't give back its key." : /too long|TimedOut/i.test(out) ? "The link wasn't approved in time. Try again." : `playit stopped while linking${last ? `: ${last}` : ""}. Try again.`);
+    }
   });
   return url;
 }
