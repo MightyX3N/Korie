@@ -42,7 +42,7 @@ import java.util.concurrent.Executors;
  */
 final class AdminServer {
     static final int PORT = 8080;
-    private static final String TAG = "HumePresent";
+    private static final String TAG = "KoriePresent";
 
     interface Gateway {
         void reload();
@@ -252,7 +252,7 @@ final class AdminServer {
         } catch (Exception ignored) {
         }
         return new JSONObject()
-                .put("name", "Hume Presentation")
+                .put("name", "Korie Presentation")
                 .put("device", android.os.Build.MODEL)
                 .put("port", PORT)
                 .put("urls", new JSONArray(Net.urls(PORT)))

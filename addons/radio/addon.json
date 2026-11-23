@@ -1,0 +1,149 @@
+{
+  "id": "radio",
+  "name": "Radio",
+  "version": "1.0",
+  "author": "Korie",
+  "description": "Internet radio by country, from the free Radio Browser directory. Find a station in Search and it plays in the background, with the now-playing pill on Home.",
+  "uses": [
+    "internet"
+  ],
+  "settings": [
+    {
+      "key": "country",
+      "title": "Country",
+      "type": "choice",
+      "options": [
+        {
+          "value": "DK",
+          "label": "Denmark"
+        },
+        {
+          "value": "SE",
+          "label": "Sweden"
+        },
+        {
+          "value": "NO",
+          "label": "Norway"
+        },
+        {
+          "value": "FI",
+          "label": "Finland"
+        },
+        {
+          "value": "IS",
+          "label": "Iceland"
+        },
+        {
+          "value": "DE",
+          "label": "Germany"
+        },
+        {
+          "value": "NL",
+          "label": "Netherlands"
+        },
+        {
+          "value": "BE",
+          "label": "Belgium"
+        },
+        {
+          "value": "GB",
+          "label": "United Kingdom"
+        },
+        {
+          "value": "IE",
+          "label": "Ireland"
+        },
+        {
+          "value": "FR",
+          "label": "France"
+        },
+        {
+          "value": "ES",
+          "label": "Spain"
+        },
+        {
+          "value": "PT",
+          "label": "Portugal"
+        },
+        {
+          "value": "IT",
+          "label": "Italy"
+        },
+        {
+          "value": "CH",
+          "label": "Switzerland"
+        },
+        {
+          "value": "AT",
+          "label": "Austria"
+        },
+        {
+          "value": "PL",
+          "label": "Poland"
+        },
+        {
+          "value": "CZ",
+          "label": "Czechia"
+        },
+        {
+          "value": "GR",
+          "label": "Greece"
+        },
+        {
+          "value": "TR",
+          "label": "Turkey"
+        },
+        {
+          "value": "US",
+          "label": "United States"
+        },
+        {
+          "value": "CA",
+          "label": "Canada"
+        },
+        {
+          "value": "MX",
+          "label": "Mexico"
+        },
+        {
+          "value": "BR",
+          "label": "Brazil"
+        },
+        {
+          "value": "AR",
+          "label": "Argentina"
+        },
+        {
+          "value": "AU",
+          "label": "Australia"
+        },
+        {
+          "value": "NZ",
+          "label": "New Zealand"
+        },
+        {
+          "value": "JP",
+          "label": "Japan"
+        },
+        {
+          "value": "KR",
+          "label": "South Korea"
+        },
+        {
+          "value": "IN",
+          "label": "India"
+        },
+        {
+          "value": "ZA",
+          "label": "South Africa"
+        }
+      ]
+    },
+    {
+      "key": "autostart",
+      "title": "Start the last station when Korie starts",
+      "type": "toggle",
+      "default": false
+    }
+  ]
+}

@@ -52,6 +52,7 @@ public class SetupActivity extends Activity {
     @Override
     protected void onCreate(Bundle b) {
         super.onCreate(b);
+        WatchNext.init(this);  // Korie: is there a TV provider at all?
         Clicks.init(this);
         Motion.init(this);
         root = new FrameLayout(this);
@@ -72,6 +73,8 @@ public class SetupActivity extends Activity {
         page.setPadding(0, u(54), 0, u(28));
         root.addView(page, plp);
         setContentView(root);
+        Ui.fullscreen(this);  // Korie
+        Ui.backButton(this, () -> true);
         Clicks.quiet(root);
 
         steps.add(this::hello);
@@ -405,8 +408,8 @@ public class SetupActivity extends Activity {
         hi.setAlpha(0f);
         hi.setTranslationY(u(12));
         hi.animate().alpha(1f).translationY(0).setDuration(Motion.d(700)).start();
-        // "Welcome" in Indian and world languages, fading from one to the next.
-        String[] words = {"Welcome", "स्वागत है", "স্বাগতম", "வரவேற்கிறோம்", "స్వాగతం", "स्वागत आहे", "સ્વાગત છે", "ಸ್ವಾಗತ", "സ്വാഗതം", "ਜੀ ਆਇਆਂ ਨੂੰ", "Bienvenue", "Bienvenido", "Willkommen", "ようこそ", "Benvenuto", "Bem-vindo", "欢迎"};
+        // "Welcome" in languages from all over the world, fading from one to the next.
+        String[] words = {"Welcome", "Bienvenido", "欢迎", "Bienvenue", "أهلاً وسهلاً", "Willkommen", "स्वागत है", "Bem-vindo", "ようこそ", "Добро пожаловать", "Velkommen", "환영합니다", "Benvenuto", "Karibu", "Hoş geldiniz", "Welkom", "Witamy", "Välkommen", "ยินดีต้อนรับ", "Καλώς ήρθατε", "Selamat datang", "Tervetuloa", "ברוכים הבאים", "Chào mừng", "স্বাগতম", "Ласкаво просимо", "خوش آمدید", "Vítejte", "Üdvözöljük", "Bun venit", "Mabuhay", "Velkomin", "Fáilte", "Ongi etorri", "Benvinguts", "வரவேற்கிறோம்", "Tere tulemast", "Sveiki atvykę", "Laipni lūdzam", "Dobrodošli", "Croeso", "Haere mai", "Aloha", "Akwaaba", "Ekaabo", "Siyakwamukela", "እንኳን ደህና መጡ", "Xush kelibsiz", "Қош келдіңіз", "მოგესალმებით", "Բարի գալուստ"};
         int[] k = {0};
         Runnable[] cycle = new Runnable[1];
         cycle[0] = () -> {
@@ -418,18 +421,11 @@ public class SetupActivity extends Activity {
             handler.postDelayed(cycle[0], 2200);
         };
         handler.postDelayed(cycle[0], 2400);
-        TextView s = subtitle("Let’s set up Hume Launcher. It takes about a minute.");
+        TextView s = subtitle("Let’s set up Korie. It takes about a minute.");
         Ui.textSize(s, 17);
         buttons("Get Started", this::next);
         View mid = new View(this);
         page.addView(mid, new LinearLayout.LayoutParams(1, 0, 1f));
-        TextView by = new TextView(this);
-        by.setText("by Petrobot");
-        by.setTextColor(0x80FFFFFF);
-        by.setTypeface(Ui.font(this, "regular"));
-        Ui.textSize(by, 13);
-        by.setGravity(Gravity.CENTER);
-        page.addView(by, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
     }
 
     void profile() {
@@ -544,25 +540,22 @@ public class SetupActivity extends Activity {
         LinearLayout l = list();
         boolean[] recs = {Suggestions.showRecs(this)}, news = {Suggestions.showNews(this)};
         Row[] r = new Row[1];
-        r[0] = row(l, "Recommendations", "Popular movies and series on your streaming services", SWITCH, recs[0], () -> {
+        r[0] = row(l, "Recommendations", "Films and series from your add-ons", SWITCH, recs[0], () -> {
             recs[0] = !recs[0];
             Suggestions.setShelf(this, recs[0], news[0]);
             r[0].set(recs[0]);
         });
-        Row[] n = new Row[1];
-        n[0] = row(l, "News", "India, your city and the world, from Indian newsrooms", SWITCH, news[0], () -> {
-            news[0] = !news[0];
-            Suggestions.setShelf(this, recs[0], news[0]);
-            n[0].set(news[0]);
-        });
+        // Korie: the News source (Indian newsrooms only) is no longer offered.
         // Continue Watching and apps' rows read the TV's Watch Next and channel lists (Android TV 8+):
         // turning one on asks for that access right here.
         boolean tv = WatchNext.supported();
-        Row cw = tvRow(l, "Continue Watching", "Pick up shows and movies where you left off", "cw_enabled", tv);
-        Row apps = tvRow(l, "From Your Apps", "Rows your apps publish, like YouTube’s", "app_rows", tv);
-        if (!tv) {
-            cw.detail("Needs Android TV 8 or later");
-            apps.detail("Needs Android TV 8 or later");
+        if (!WatchNext.noProvider) {  // Korie: phones and car boxes have no such lists, so the rows are left out
+            Row cw = tvRow(l, "Continue Watching", "Pick up shows and movies where you left off", "cw_enabled", tv);
+            Row apps = tvRow(l, "From Your Apps", "Rows your apps publish, like YouTube’s", "app_rows", tv);
+            if (!tv) {
+                cw.detail("Needs Android TV 8 or later");
+                apps.detail("Needs Android TV 8 or later");
+            }
         }
         buttons("Continue", this::next);
         dots();
@@ -675,8 +668,8 @@ public class SetupActivity extends Activity {
         subtitle("Press a row to allow it. Only the first one matters for most people; the rest can wait.");
         LinearLayout l = list();
         boolean home = Perms.isDefaultHome(this) || PowerService.HomeButton.active(this);
-        Row h = row(l, "Make Hume the Home Screen", home ? "The Home button opens Hume"
-                : "So the Home button opens Hume", ACTION, false, () -> Perms.requestDefaultHome(this));
+        Row h = row(l, "Make Korie the Home Screen", home ? "The Home button opens Korie"
+                : "So the Home button opens Korie", ACTION, false, () -> Perms.requestDefaultHome(this));
         h.status(home ? "✓ Done" : "Set Up  ›", home);
         boolean cw = Profiles.homePrefs(this).getBoolean("cw_enabled", true), apps = Profiles.homePrefs(this).getBoolean("app_rows", true);
         if (WatchNext.supported() && (cw || apps)) {
@@ -687,7 +680,7 @@ public class SetupActivity extends Activity {
         }
         if (Perms.adminSupported(this)) {
             boolean ok = Perms.hasAdmin(this);
-            Row r = row(l, "Power Off & Sleep Timer", "Let Hume turn the screen off", ACTION, false, () -> Perms.requestAdmin(this));
+            Row r = row(l, "Power Off & Sleep Timer", "Let Korie turn the screen off", ACTION, false, () -> Perms.requestAdmin(this));
             r.status(ok ? "✓ Allowed" : "Allow  ›", ok);
         }
         boolean wifi = Perms.hasLocation(this);

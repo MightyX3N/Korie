@@ -47,8 +47,19 @@ final class WatchNext {
     }
 
     /** Watch Next arrived in Android 8.0. */
+    /** Korie: phones and car boxes have no TV provider, so there is no Watch Next list to read (set by init). */
+    static boolean noProvider;
+
+    static void init(Context c) {
+        try {
+            noProvider = c.getPackageManager().resolveContentProvider("android.media.tv", 0) == null;
+        } catch (RuntimeException e) {
+            noProvider = false;
+        }
+    }
+
     static boolean supported() {
-        return Build.VERSION.SDK_INT >= 26;
+        return Build.VERSION.SDK_INT >= 26 && !noProvider;
     }
 
     static boolean granted(Context c) {
@@ -147,7 +158,7 @@ final class WatchNext {
                 out.add(it);
             }
         } catch (Exception e) {
-            android.util.Log.w("Hume", "watch next: " + e);
+            android.util.Log.w("Korie", "watch next: " + e);
         }
         return out;
     }
@@ -203,7 +214,7 @@ final class WatchNext {
                 }
                 if (Suggestions.start(c, i)) return;
             } catch (Exception e) {
-                android.util.Log.w("Hume", "watch next link: " + e);
+                android.util.Log.w("Korie", "watch next link: " + e);
             }
         }
         Intent i = c.getPackageManager().getLeanbackLaunchIntentForPackage(it.pkg);

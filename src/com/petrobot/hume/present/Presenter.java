@@ -93,7 +93,7 @@ public final class Presenter {
         try {
             server.start();
         } catch (Exception e) {
-            Log.w("HumePresent", "server start: " + e);
+            Log.w("KoriePresent", "server start: " + e);
         }
     }
 

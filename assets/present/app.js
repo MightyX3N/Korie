@@ -85,7 +85,7 @@ function bind() {
 async function loadInfo() {
   try {
     const info = await api("/api/info", { auth: false });
-    if (info.device) $("deviceName").textContent = `${info.device}${info.versionName ? " · Hume " + info.versionName : ""}`;
+    if (info.device) $("deviceName").textContent = `${info.device}${info.versionName ? " · Korie " + info.versionName : ""}`;
   } catch (_) { /* shown when calls fail */ }
 }
 

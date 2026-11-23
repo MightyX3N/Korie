@@ -93,6 +93,9 @@ final class Suggestions {
         String link = "";
         /** Continue Watching entries: the app that played it, its store key, and progress. */
         String pkg = "", key = "";
+        /** Korie: a title an add-on put on the carousel (not saved with the cached list). */
+        String addon = "";
+        java.util.Map<String, Object> addonItem;
         float progress = -1f;
         int remainingMin = -1;
         /** Continue Watching: when it was last played (ms), for ordering. */
@@ -149,7 +152,7 @@ final class Suggestions {
         if (own != null) return own;
         SharedPreferences p = prefs(c);
         if (!p.contains(K_SHELF) && !p.getBoolean(K_ENABLED, true)) return SHELF_NONE;  // older setting
-        return p.getString(K_SHELF, SHELF_BOTH);
+        return p.getString(K_SHELF, SHELF_RECS);  // Korie: recommendations come from the add-ons (see Addons.recommend)
     }
 
     static void setShelf(Context c, String value) {
@@ -168,8 +171,7 @@ final class Suggestions {
     }
 
     static boolean showNews(Context c) {
-        String s = shelf(c);
-        return s.equals(SHELF_NEWS) || s.equals(SHELF_BOTH);
+        return false;  // Korie: the built-in news was Indian newsrooms only and is no longer offered
     }
 
     static boolean enabled(Context c) {
@@ -191,7 +193,7 @@ final class Suggestions {
 
     /** Whether the chosen source is usable right now (JustWatch and Stremio always; TMDB once a token is set). */
     static boolean ready(Context c) {
-        return showNews(c) || !source(c).equals(SRC_TMDB) || hasToken(c);
+        return true;  // Korie: recommendations are picked from the add-ons' saved lists; nothing to set up
     }
 
     static boolean hasToken(Context c) {

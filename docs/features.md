@@ -18,7 +18,7 @@ option never skips a page. Each row shows what kind it is: an **On/Off switch**,
 (one of a list), or an **action** with its state on the right (*Allow ›*, *✓ Allowed*, *✓ Done*).
 Choices change in place, and the remote's Back key also goes back.
 
-1. **Welcome**, fading through Indian and world languages, then *Get Started*.
+1. **Welcome**, fading through languages from all over the world, then *Get Started*.
 2. **Create Your Profile**: name (shown on the row; OK edits it) and an emoji avatar (ringed when chosen).
 3. **Choose a Look**: backgrounds previewed live as you move; OK picks one (radio).
 4. **Your Home Screen** (this profile): switches for Recommendations, News, Continue Watching and
@@ -322,3 +322,51 @@ Only when a TV has none of these screens is the one-time adb command shown.
 
 All sizes are relative to the screen's resolution (a 960×540 design grid), so the layout keeps its
 proportions on 720p, 1080p and 4K and rebuilds itself if the display changes.
+
+## Map on the top shelf (Korie)
+
+For car boxes: **Settings → Top Shelf → Map** — *Off* (default), *Always*, or *During a route*.
+When it is on, a dark OpenStreetMap view centred on where the device is takes the carousel's place
+behind the dock. A tap on it opens the device's maps app (at the destination while a route runs).
+
+- **Position**: the device's GPS / network position (the same Location permission as Weather).
+  The last position is remembered, so the map opens where you were.
+- **Tiles**: from tile.openstreetmap.org, only what is on screen; they are kept on the device and
+  reused, so areas you have been in show before the internet is up. Nothing is downloaded ahead
+  (the tile server's policy forbids it).
+- **Routes**: a route is a destination the launcher handed to the maps app. It ends on arrival
+  (within 80 m), with **End Route** on the map (touch), with Settings → Top Shelf → End route
+  (remote), or after 12 hours. Routes started inside the maps app are not seen.
+- With a remote the map is a backdrop only (Up from the dock does not go to it).
+- adb, for testing: `--es map_mode off|always|route`, `--es route "Name,lat,lon"`, `--ez route_end true`,
+  `--es map_tiles <url>|default` on `.MainActivity`.
+
+## Touch (Korie)
+
+On a touch screen Home works without a remote: tap an app, drag the grid, swipe the carousel
+sideways, tap it to open the title, hold it for its options, hold an app for its options, tap
+outside a menu to close it, and touch the idle screen to bring Home back. Remote handling is
+unchanged. Moving apps (Move in an app's options) still needs arrow keys.
+
+## Add-ons (Korie)
+
+Movies & TV in Search, and titles on the carousel, come from add-ons — small Lua programs that
+supply content and actions while Korie owns the screens. Settings → Add-ons installs them (from
+the Download folder, from the add-on list in the Korie repository, or by opening a `.korie` file)
+and turns them on, off or removes them. A title's page shows the add-on's buttons (Play, Resume);
+when several add-ons have the title it shows "How to Watch" with one button per add-on; a series
+shows a season button and a row of episodes. **Recommendations** on the carousel are a pick of films and
+series with artwork from the add-ons' saved lists, one add-on after the other, changing every hour and on Refresh.
+The built-in JustWatch lookup and the India-only recommendations and news of Hume are no longer used. See **[Add-ons](addons.md)**.
+
+## Player and now playing (Korie)
+
+Add-ons play through Korie's own player (AndroidX Media3). Video opens a full-screen player whose
+controls — play/pause, skip back and forward, the time bar, subtitles, audio track and speed — are
+Media3's own and work with a remote and by touch: OK shows the controls on Play/Pause, the arrows
+move between them, Back leaves. The add-on that started it is told the position while it plays
+and when it stops, which is what Resume and a media server's watch state are built on.
+
+Sound alone (radio, music) plays in the background and shows as a pill left of the time on Home:
+a tap pauses or resumes, a long press stops. The pill is touch-only for now.
+

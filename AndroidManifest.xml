@@ -1,12 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.petrobot.hume">
+    package="io.github.mightyx3n.korie">
 
     <uses-feature android:name="android.software.leanback" android:required="false" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
 
     <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Korie: finding .korie add-on files in the Download folder (asked for only when that is chosen). -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="29" />
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
     <uses-permission android:name="android.permission.KILL_BACKGROUND_PROCESSES" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
@@ -52,14 +55,15 @@
     </queries>
 
     <application
-        android:label="Hume Launcher"
+        android:label="Korie"
         android:icon="@drawable/ic_launcher"
         android:banner="@drawable/banner"
         android:theme="@style/HomeTheme"
-        android:allowBackup="false">
+        android:allowBackup="false"
+        android:usesCleartextTraffic="true"><!-- Korie: media servers and radio streams on a home network are often plain http -->
 
         <activity
-            android:name=".MainActivity"
+            android:name="com.petrobot.hume.MainActivity"
             android:exported="true"
             android:launchMode="singleTask"
             android:stateNotNeeded="true"
@@ -76,24 +80,66 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
+            <!-- Korie: an icon in the app list of phones, tablets and car boxes too (TVs use the entry above). -->
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- Korie: the launcher's own video player (Media3). -->
+        <activity
+            android:name="com.petrobot.hume.PlayerActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:screenOrientation="landscape"
+            android:theme="@style/HomeTheme"
+            android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenSize|smallestScreenSize|screenLayout|uiMode|density" />
+
+        <!-- Korie: opening a .korie file from a file manager or a browser's downloads offers to install it. -->
+        <activity
+            android:name="com.petrobot.hume.AddonInstallActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:label="Korie add-on">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:mimeType="*/*" />
+                <data android:host="*" />
+                <data android:pathPattern=".*\\.korie" />
+                <data android:pathPattern=".*\\..*\\.korie" />
+                <data android:pathPattern=".*\\..*\\..*\\.korie" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" />
+                <data android:mimeType="application/x-korie-addon" />
+            </intent-filter>
         </activity>
 
         <!-- Control Center: Power Off / Sleep Timer (force-lock device admin only). -->
         <receiver
-            android:name=".SleepReceiver$Admin"
+            android:name="com.petrobot.hume.SleepReceiver$Admin"
             android:exported="true"
-            android:label="Hume Launcher sleep"
+            android:label="Korie sleep"
             android:permission="android.permission.BIND_DEVICE_ADMIN">
             <meta-data android:name="android.app.device_admin" android:resource="@xml/device_admin" />
             <intent-filter>
                 <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
             </intent-filter>
         </receiver>
-        <receiver android:name=".SleepReceiver" android:exported="false" />
+        <receiver android:name="com.petrobot.hume.SleepReceiver" android:exported="false" />
         <service
-            android:name=".PowerService"
+            android:name="com.petrobot.hume.PowerService"
             android:exported="true"
-            android:label="Hume Launcher"
+            android:label="Korie"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
             <intent-filter>
                 <action android:name="android.accessibilityservice.AccessibilityService" />
@@ -103,9 +149,9 @@
 
         <!-- Do Not Disturb: notification access (the name is kept so earlier grants still apply). -->
         <service
-            android:name=".MediaWatchService"
+            android:name="com.petrobot.hume.MediaWatchService"
             android:exported="true"
-            android:label="Hume Launcher – Do Not Disturb"
+            android:label="Korie – Do Not Disturb"
             android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
             <intent-filter>
                 <action android:name="android.service.notification.NotificationListenerService" />
@@ -114,14 +160,14 @@
 
         <!-- Presentation mode (ported from pb-marketer-tv): full-screen player + boot start. -->
         <activity
-            android:name=".present.PresentationActivity"
+            android:name="com.petrobot.hume.present.PresentationActivity"
             android:exported="false"
             android:launchMode="singleTask"
             android:excludeFromRecents="true"
             android:screenOrientation="landscape"
             android:theme="@style/HomeTheme"
             android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenSize|smallestScreenSize|screenLayout|uiMode|density" />
-        <receiver android:name=".present.BootReceiver" android:exported="true">
+        <receiver android:name="com.petrobot.hume.present.BootReceiver" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
@@ -129,13 +175,13 @@
         </receiver>
 
         <activity
-            android:name=".SetupActivity"
+            android:name="com.petrobot.hume.SetupActivity"
             android:exported="true"
             android:excludeFromRecents="true"
             android:screenOrientation="landscape"
             android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenSize|smallestScreenSize|screenLayout|uiMode|density" />
         <activity
-            android:name=".SettingsActivity"
+            android:name="com.petrobot.hume.SettingsActivity"
             android:exported="true"
             android:excludeFromRecents="true"
             android:screenOrientation="landscape"

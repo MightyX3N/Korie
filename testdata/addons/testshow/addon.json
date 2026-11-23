@@ -1,0 +1,1 @@
+{ "id": "testshow", "name": "Test Show", "version": "1.0", "author": "test", "description": "Fixture for testing.", "uses": ["apps"] }

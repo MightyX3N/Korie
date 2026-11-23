@@ -1,5 +1,5 @@
 #!/bin/bash
-# Builds and signs build/tvos-home.apk with plain SDK tools (no Gradle).
+# Builds and signs build/korie.apk with plain SDK tools (no Gradle).
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -21,14 +21,29 @@ command -v javac >/dev/null || { echo "javac not found — install JDK 17+ or se
 rm -rf build && mkdir -p build/gen build/classes build/dex
 
 "$BT/aapt2" compile --dir res -o build/res.zip
+# Map library (osmdroid, Apache-2.0): its classes are libs/osmdroid-android-*.jar, its resources libs/osmdroid-res.
+"$BT/aapt2" compile --dir libs/osmdroid-res -o build/osmres.zip
+# Player (AndroidX Media3, Apache-2.0) and what it needs: classes in libs/m3/*.jar, resources in libs/m3-res/<library>/.
+LIBRES="-R build/osmres.zip"
+for d in libs/m3-res/*/; do
+    n=$(basename "$d")
+    "$BT/aapt2" compile --dir "$d" -o "build/res-$n.zip"
+    LIBRES="$LIBRES -R build/res-$n.zip"
+done
+LIBPKGS="org.osmdroid.library:androidx.annotation.experimental:androidx.core:androidx.core.ktx:androidx.customview.poolingcontainer:androidx.lifecycle.runtime:androidx.media3.exoplayer:androidx.media3.ui:androidx.recyclerview"
 "$BT/aapt2" link -o build/unsigned.apk -I "$JAR" --manifest AndroidManifest.xml \
+    $LIBRES --auto-add-overlay --extra-packages "$LIBPKGS" --custom-package com.petrobot.hume \
     -A assets --java build/gen --min-sdk-version 24 --target-sdk-version 34 \
     --version-code "${VERSION_CODE:-1}" --version-name "${VERSION_NAME:-1.0}" build/res.zip
 
-javac -encoding UTF-8 --release 11 -classpath "$JAR" \
+LIBS=$(ls libs/*.jar libs/m3/*.jar | tr '\n' ':')
+javac -encoding UTF-8 --release 11 -classpath "$JAR:$LIBS" \
     -d build/classes $(find src build/gen -name '*.java')
-"$BT/d8" --release --min-api 24 --lib "$JAR" --output build/dex $(find build/classes -name '*.class')
-(cd build/dex && zip -q ../unsigned.apk classes.dex)
+# The player library needs a newer dex compiler than build-tools 34's: build-tools 36.0.0 (sdkmanager "build-tools;36.0.0").
+D8="$SDK/build-tools/36.0.0/d8"
+[ -e "$D8" ] || { echo "Missing $D8 — install build-tools 36.0.0 (sdkmanager), needed to dex the player library." >&2; exit 1; }
+"$D8" --release --min-api 24 --lib "$JAR" --output build/dex $(find build/classes -name '*.class') libs/*.jar libs/m3/*.jar
+(cd build/dex && zip -q ../unsigned.apk classes*.dex)
 
 "$BT/zipalign" -f 4 build/unsigned.apk build/aligned.apk
 
@@ -38,7 +53,7 @@ javac -encoding UTF-8 --release 11 -classpath "$JAR" \
 if [ -n "${RELEASE_KEYSTORE:-}" ]; then
     [ -n "${RELEASE_KEYSTORE_PASS:-}" ] || { echo "Set RELEASE_KEYSTORE_PASS for $RELEASE_KEYSTORE" >&2; exit 1; }
     "$BT/apksigner" sign --ks "$RELEASE_KEYSTORE" --ks-pass env:RELEASE_KEYSTORE_PASS \
-        --ks-key-alias "${RELEASE_KEY_ALIAS:-hume-release}" --out build/tvos-home.apk build/aligned.apk
+        --ks-key-alias "${RELEASE_KEY_ALIAS:-hume-release}" --out build/korie.apk build/aligned.apk
     echo "Signed with the release key"
 else
     KS=debug.keystore
@@ -47,8 +62,8 @@ else
             -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Hume Launcher debug" >/dev/null
     fi
     "$BT/apksigner" sign --ks "$KS" --ks-pass pass:android --key-pass pass:android \
-        --out build/tvos-home.apk build/aligned.apk
+        --out build/korie.apk build/aligned.apk
     echo "Signed with the local debug key (development build)"
 fi
 
-echo "Built build/tvos-home.apk"
+echo "Built build/korie.apk"

@@ -1,3 +1,4 @@
+// Changed for Korie: touch on Home (HomeTouch), the map on the top shelf (MapShelf, Route). See NOTICE.
 package com.petrobot.hume;
 
 import android.animation.Animator;
@@ -201,6 +202,8 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle b) {
         super.onCreate(b);
+        WatchNext.init(this);  // Korie: is there a TV provider at all?
+        Addons.init(this);
         // The wallpaper/artwork always covers the screen: skip the window's own full-screen fill
         // (this Mali-450 GPU is fill-rate bound, so every hidden full-screen layer costs frames).
         getWindow().setBackgroundDrawable(null);
@@ -280,6 +283,7 @@ public class MainActivity extends Activity {
             showProfilePicker(true);
             return;
         }
+        if (mapIntent(intent)) return;
         // adb perf probe: --es perf weather|status|hero|dockglass|shadows hides one layer to measure its GPU cost.
         String perf = intent.getStringExtra("perf");
         if (perf != null) {
@@ -354,7 +358,9 @@ public class MainActivity extends Activity {
         }
         if (returningFromSettings && !folderMode && launchOverlay == null && moveIndex < 0) reload(currentKey());
         returningFromSettings = false;
+        applyMap();
         loadHero();
+        handler.post(this::touchHome);
         if (launchOverlay != null) finishLaunchReturn();
         // Setup not finished (e.g. Home was pressed during it): pick it up again.
         if (!SetupActivity.done(this)) {
@@ -376,8 +382,8 @@ public class MainActivity extends Activity {
                 && !prefs.getBoolean("asked_default_home", false)) {
             prefs.edit().putBoolean("asked_default_home", true).apply();
             Clicks.dialog(this)
-                    .setTitle("Make Hume your home screen?")
-                    .setMessage("The Home button on the remote will open Hume Launcher.")
+                    .setTitle("Make Korie your home screen?")
+                    .setMessage("The Home button on the remote will open Korie.")
                     .setPositiveButton("Make Home Screen", (d, w) -> Perms.requestDefaultHome(this))
                     .setNegativeButton("Not Now", null).show();
         }
@@ -393,11 +399,13 @@ public class MainActivity extends Activity {
         handler.removeCallbacks(weatherTick);
         handler.removeCallbacks(idleRunnable);
         if (idle) exitIdle();
+        if (map != null) map.stop();
     }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        if (map != null) map.destroy();
         if (pkgReceiver != null) unregisterReceiver(pkgReceiver);
         if (netCallback != null) {
             try {
@@ -452,6 +460,7 @@ public class MainActivity extends Activity {
             if (launchOverlay == null && !switcher.isFocused()) switcher.setAlpha(folderMode ? 0f : clockAlpha());
             if (launchOverlay == null && weatherCard != null && !weatherCard.isFocused()) weatherCard.setAlpha(weatherAlpha());
             if (dockRow != null) dockRow.invalidate();
+            touchScrolled();
         });
 
         content = new LinearLayout(this);
@@ -466,6 +475,7 @@ public class MainActivity extends Activity {
         // Top shelf: header shown only inside the More Apps folder.
         FrameLayout shelf = new FrameLayout(this);
         shelfView = shelf;
+        HomeTouch.attach(this, shelf);  // Korie: swipe / tap / hold on the carousel or the map
         buildHeroInfo(shelf);
         titleBox = new LinearLayout(this);
         titleBox.setOrientation(LinearLayout.VERTICAL);
@@ -632,6 +642,7 @@ public class MainActivity extends Activity {
         clp.topMargin = dp(24) - grow;
         clp.rightMargin = dockOuter - grow;
         root.addView(clockBox, clp);
+        buildNowPlaying(btn);  // Korie
         watchNetwork();
 
         // Weather overview in the top-left corner, over the top shelf; OK opens the forecast.
@@ -660,6 +671,8 @@ public class MainActivity extends Activity {
         updateWeather();
 
         setContentView(root);
+        Ui.fullscreen(this);  // Korie
+        Ui.backButton(this, () -> pickerLayer != null || menuLayer != null || folderMode || moveIndex >= 0);
         Clicks.quiet(root);  // Android's own click sounds off: the Sounds switch decides
     }
 
@@ -1607,7 +1620,7 @@ public class MainActivity extends Activity {
         switcher.setOnFocusChangeListener((v, has) -> {
             styleTabs();
             v.animate().scaleX(has ? 1.08f : 1f).scaleY(has ? 1.08f : 1f).setDuration(Motion.d(200)).setInterpolator(LIFT).start();
-            if (has) setHeroShown(!heroItems.isEmpty());
+            if (has) setHeroShown(true);
         });
         styleTabs();
     }
@@ -1701,13 +1714,16 @@ public class MainActivity extends Activity {
         boolean shelf = Suggestions.enabled(this) && Suggestions.ready(this);
         boolean cw = cwEnabled();
         boolean rows = AppRows.enabled(this);
-        if (!shelf && !cw && !rows) {
+        if (!cw && !rows && !Addons.hasHome() && !(shelf && Addons.running().size() > 0)) {
             heroItems = new ArrayList<>();
             shelfView.setFocusable(false);
-            setHeroShown(false);
+            if (map == null) setHeroShown(false);
             return;
         }
-        int v = Suggestions.version(this) * 4 + (cw ? 1 : 0) + (rows ? 2 : 0);
+        // Korie: recommendations are a pick from the add-ons' saved lists that changes every hour.
+        long hour = System.currentTimeMillis() / 3600000L;
+        long seed = hour * 31 + Suggestions.version(this);
+        int v = Suggestions.version(this) * 4 + (cw ? 1 : 0) + (rows ? 2 : 0) + Addons.version * 1024 + (shelf ? (int) (hour % 500) * 1000003 : 0);
         boolean reconfigured = v != heroVersion;
         heroVersion = v;
         io.execute(() -> {
@@ -1716,12 +1732,15 @@ public class MainActivity extends Activity {
             List<Suggestions.Item> cwItems = cw
                     ? Carousel.continueWatching(this, WatchNext.all(this), appRows.resume) : new ArrayList<>();
             List<Suggestions.Item> appItems = rows ? Carousel.fromApps(this, appRows.byApp) : new ArrayList<>();
+            List<Suggestions.Item> fromAddons = Addons.home(this);  // Korie: add-ons' titles lead
+            for (Suggestions.Item it : fromAddons) it.key = it.addon + ":" + it.title;
+            appItems.addAll(0, fromAddons);
             StringBuilder sig = new StringBuilder();
             for (Suggestions.Item it : cwItems) sig.append(it.key).append(it.progress).append(';');
             for (Suggestions.Item it : appItems) sig.append(it.key).append(';');
             boolean cwChanged = !sig.toString().equals(lastCwSig);
             lastCwSig = sig.toString();
-            List<Suggestions.Item> base = shelf ? Suggestions.cached(this, true) : null;
+            List<Suggestions.Item> base = shelf ? Addons.recommend(this, Suggestions.types(this), seed, Suggestions.MAX_ITEMS) : null;
             List<Suggestions.Item> mixed = Carousel.compose(cwItems, appItems, base);
             if (!mixed.isEmpty() && (reconfigured || cwChanged || heroItems.isEmpty())) {
                 handler.post(() -> setHeroItems(mixed));
@@ -1729,17 +1748,8 @@ public class MainActivity extends Activity {
                 handler.post(() -> {
                     heroItems = new ArrayList<>();
                     shelfView.setFocusable(false);
-                    setHeroShown(false);
+                    if (map == null) setHeroShown(false);
                 });
-            }
-            if (shelf && Suggestions.cached(this, false) == null) {
-                try {
-                    List<Suggestions.Item> fresh = Suggestions.fetch(this);
-                    List<Suggestions.Item> m2 = Carousel.compose(cwItems, appItems, fresh);
-                    handler.post(() -> setHeroItems(m2));
-                } catch (Exception e) {
-                    android.util.Log.w("TvHome", "suggestions: " + e);
-                }
             }
         });
     }
@@ -1765,7 +1775,7 @@ public class MainActivity extends Activity {
         int keep = 0;
         for (int i = 0; curTitle != null && i < items.size(); i++) if (items.get(i).title.equals(curTitle)) keep = i;
         heroIndex = keep;
-        shelfView.setFocusable(!items.isEmpty());
+        shelfView.setFocusable(!items.isEmpty() && map == null);
         heroDots.removeAllViews();
         for (int i = 0; i < items.size() && items.size() > 1 && !continueMode(); i++) {
             View d = new View(this);
@@ -1779,12 +1789,12 @@ public class MainActivity extends Activity {
         }
         buildStrip(items);
         if (items.isEmpty()) {
-            setHeroShown(false);
+            if (map == null) setHeroShown(false);
             return;
         }
         View f = getCurrentFocus();
         int i = tiles.indexOf(f);
-        boolean dock = f == shelfView || (hasDock() && i >= 0 && i < COLS);
+        boolean dock = f == shelfView || (hasDock() && i >= 0 && i < COLS) || touchDock();
         setHeroShown(dock);
         if (!(same && items.get(keep).title.equals(curTitle))) showHero(keep, 0);
         else for (int j = 0; j < heroDots.getChildCount(); j++) heroDots.getChildAt(j).setAlpha(j == keep ? 1f : 0.35f);
@@ -1805,26 +1815,39 @@ public class MainActivity extends Activity {
         });
     }
 
-    /** Carousel vs launcher background: crossfade between them. */
+    /** Carousel (or the map, when it is on) vs launcher background: crossfade between them. */
     void setHeroShown(boolean show) {
-        show = show && !heroItems.isEmpty() && !folderMode;
+        show = show && (!heroItems.isEmpty() || map != null) && !folderMode;
         if (show == heroShown) return;
         heroShown = show;
-        glassBg = show && heroBlur != null ? heroBlur : wallBlur;
+        applyHeroShown();
+    }
+
+    void applyHeroShown() {
+        boolean show = heroShown;
+        Bitmap blur = map != null ? map.blur : heroBlur;
+        glassBg = show && blur != null ? blur : wallBlur;
         invalidateGlass();
         float a = show ? 1f : 0f;
+        float art = map != null ? 0f : a;  // the map covers the carousel's artwork and text
         if (!show) wallView.setVisibility(View.VISIBLE);
-        heroFront.animate().alpha(a).setDuration(Motion.d(450)).withEndAction(() -> {
-            if (heroShown && heroFront.getAlpha() >= 1f) wallView.setVisibility(View.INVISIBLE);
+        if (map != null) {
+            map.view.animate().alpha(a).setDuration(Motion.d(450)).withEndAction(() -> {
+                if (heroShown && map != null && map.view.getAlpha() >= 1f) wallView.setVisibility(View.INVISIBLE);
+            }).start();
+        }
+        heroFront.animate().alpha(art).setDuration(Motion.d(450)).withEndAction(() -> {
+            if (heroShown && map == null && heroFront.getAlpha() >= 1f) wallView.setVisibility(View.INVISIBLE);
         }).start();
         heroScrim.setVisibility(View.GONE);
 
-        heroInfo.animate().withLayer().alpha(a).setDuration(Motion.d(350)).start();
-        heroDots.animate().alpha(a).setDuration(Motion.d(350)).start();
+        heroInfo.animate().withLayer().alpha(art).setDuration(Motion.d(350)).start();
+        heroDots.animate().alpha(art).setDuration(Motion.d(350)).start();
         chevron.animate().alpha(1f - a).setDuration(Motion.d(350)).start();
         heroBack.animate().alpha(0f).setDuration(Motion.d(450)).start();
         handler.removeCallbacks(heroAdvance);
-        if (show) scheduleAdvance();
+        if (show && map == null) scheduleAdvance();
+        updateRouteBox();
     }
 
     void scheduleAdvance() {
@@ -1836,7 +1859,7 @@ public class MainActivity extends Activity {
     }
 
     void heroStep(int dir, boolean user) {
-        if (heroItems.size() < 2) return;
+        if (heroItems.size() < 2 || map != null) return;
         showHero((heroIndex + dir + heroItems.size()) % heroItems.size(), dir);
         if (!user || !shelfView.hasFocus()) scheduleAdvance();
     }
@@ -2000,8 +2023,8 @@ public class MainActivity extends Activity {
         next.animate().cancel();
         next.setImageBitmap(bd);
         slowZoom(next);
-        float target = heroShown ? 1f : 0f;
-        if (dir == 0 || !heroShown) {
+        float target = heroShown && map == null ? 1f : 0f;
+        if (dir == 0 || !heroShown || map != null) {
             next.setTranslationX(0);
             next.setAlpha(target);
             old.setAlpha(0f);
@@ -2207,13 +2230,30 @@ public class MainActivity extends Activity {
                 default: return false;
             }
         }
+        if (f == nowPlaying) {
+            // Korie: the now-playing pill, left of Refresh. OK pauses or resumes; holding OK stops.
+            switch (k) {
+                case KeyEvent.KEYCODE_DPAD_RIGHT: if (down) refreshButton.requestFocus(); return true;
+                case KeyEvent.KEYCODE_DPAD_LEFT:
+                    if (down) {
+                        if (switcher.getVisibility() == View.VISIBLE) switcher.requestFocus();
+                        else if (weatherShown()) weatherCard.requestFocus();
+                    }
+                    return true;
+                case KeyEvent.KEYCODE_DPAD_DOWN:
+                case KeyEvent.KEYCODE_BACK: if (down) focusBelowStatus(); return true;
+                case KeyEvent.KEYCODE_DPAD_UP: return true;
+                default: return false;
+            }
+        }
         if (f == refreshButton || f == searchButton || f == ccButton || f == avatarView) {
-            // Status row, left to right: Refresh, Search, Control Center, profile.
+            // Status row, left to right: (now playing,) Refresh, Search, Control Center, profile.
             if (k == KeyEvent.KEYCODE_DPAD_LEFT) {
                 if (down) {
                     if (f == avatarView) ccButton.requestFocus();
                     else if (f == ccButton) searchButton.requestFocus();
                     else if (f == searchButton) refreshButton.requestFocus();
+                    else if (nowPlayingShown()) nowPlaying.requestFocus();  // Korie
                     else if (switcher.getVisibility() == View.VISIBLE) switcher.requestFocus();
                     else if (weatherShown()) weatherCard.requestFocus();
                 }
@@ -2235,7 +2275,12 @@ public class MainActivity extends Activity {
         }
         if (f == weatherCard) {
             switch (k) {
-                case KeyEvent.KEYCODE_DPAD_RIGHT: if (down) focusTop(); return true;
+                case KeyEvent.KEYCODE_DPAD_RIGHT:
+                    if (down) {
+                        if (nowPlayingShown() && switcher.getVisibility() != View.VISIBLE) nowPlaying.requestFocus();  // Korie
+                        else focusTop();
+                    }
+                    return true;
                 case KeyEvent.KEYCODE_DPAD_DOWN:
                 case KeyEvent.KEYCODE_BACK:
                     if (down) {
@@ -2273,6 +2318,10 @@ public class MainActivity extends Activity {
     }
 
     void openHeroItem(Suggestions.Item it) {
+        if (!it.addon.isEmpty()) {  // Korie: an add-on's title
+            Addons.openHome(it);
+            return;
+        }
         if ("news".equals(it.type)) return;  // news is read on the shelf; there is nothing to open
         if (it.pkg.isEmpty()) {
             Suggestions.open(this, it);
@@ -2641,7 +2690,7 @@ public class MainActivity extends Activity {
     void onTileFocused(int index) {
         focusedIndex = index;
         boolean dock = hasDock() && index < COLS;
-        setHeroShown(dock && !heroItems.isEmpty());
+        setHeroShown(dock);
         scrollToRow(index / COLS);
         handler.removeCallbacks(shelfUpdate);
         handler.postDelayed(shelfUpdate, 90);
@@ -2781,6 +2830,272 @@ public class MainActivity extends Activity {
                     scroll.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(Motion.d(260)).setInterpolator(EASE)
                             .withEndAction(null).start();
                 }).start();
+    }
+
+    // ---------------------------------------------------------------- map & touch (Korie)
+
+    LinearLayout nowPlaying;
+    TextView nowTitle, nowIcon;
+
+    /**
+     * Korie: the now-playing pill, left of the time, while an add-on plays sound in the background
+     * (radio, music). A tap or OK pauses or resumes; a long press or holding OK stops. With a
+     * remote it is the first item of the top row, left of Refresh (see heroKeys).
+     */
+    void buildNowPlaying(int h) {
+        nowPlaying = new LinearLayout(this);
+        nowPlaying.setOrientation(LinearLayout.HORIZONTAL);
+        nowPlaying.setGravity(Gravity.CENTER_VERTICAL);
+        nowPlaying.setPadding(dp(12), 0, dp(14), 0);
+        GradientDrawable bg = new GradientDrawable();
+        bg.setCornerRadius(h / 2f);
+        bg.setColor(0x47000000);
+        nowPlaying.setBackground(bg);
+        nowIcon = text(13, Ui.font(this, "semibold"), 1f);
+        nowIcon.setShadowLayer(0, 0, 0, 0);
+        LinearLayout.LayoutParams ilp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        ilp.rightMargin = dp(8);
+        nowPlaying.addView(nowIcon, ilp);
+        nowTitle = text(14, Ui.font(this, "medium"), 1f);
+        nowTitle.setSingleLine(true);
+        nowTitle.setEllipsize(TextUtils.TruncateAt.END);
+        nowTitle.setMaxWidth(screenW / 4);
+        nowPlaying.addView(nowTitle);
+        nowPlaying.setFocusable(true);
+        nowPlaying.setOnFocusChangeListener((v, has) -> {
+            bg.setColor(has ? 0xFFFFFFFF : 0x47000000);
+            nowTitle.setTextColor(has ? 0xFF111114 : 0xFFFFFFFF);
+            nowIcon.setTextColor(has ? 0xFF111114 : 0xFFFFFFFF);
+            nowTitle.setShadowLayer(has ? 0 : dp(6), 0, has ? 0 : dp(1), 0x66000000);
+            v.animate().scaleX(has ? 1.08f : 1f).scaleY(has ? 1.08f : 1f).setDuration(Motion.d(180)).setInterpolator(LIFT).start();
+        });
+        nowPlaying.setOnClickListener(v -> Playback.toggleAudio());
+        nowPlaying.setOnLongClickListener(v -> {
+            Playback.stopAudio();
+            return true;
+        });
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, h);
+        lp.rightMargin = dp(10);
+        clockBox.addView(nowPlaying, 0, lp);
+        Playback.onAudioChanged = this::updateNowPlaying;
+        updateNowPlaying();
+    }
+
+    boolean nowPlayingShown() {
+        return nowPlaying != null && nowPlaying.getVisibility() == View.VISIBLE;
+    }
+
+    void updateNowPlaying() {
+        if (nowPlaying == null) return;
+        boolean has = Playback.hasAudio();
+        if (!has && nowPlaying.isFocused()) refreshButton.requestFocus();  // the pill is about to go
+        nowPlaying.setVisibility(has ? View.VISIBLE : View.GONE);
+        if (!has) return;
+        nowIcon.setText(Playback.audioPlaying() ? "\u275A\u275A" : "\u25B6\uFE0E");  // plain glyphs, not emoji
+        String t = Playback.audioRequest.title;
+        nowTitle.setText(t.isEmpty() ? "Playing" : t);
+    }
+
+    /** The map behind the dock while Settings → Top Shelf → Map says so; null otherwise. */
+    MapShelf map;
+    LinearLayout routeBox;
+    TextView routeName;
+    boolean touchSwallow;
+
+    /** Creates or removes the map to match the setting and the route, then shows what Home should show. */
+    void applyMap() {
+        boolean want = MapShelf.wanted(this);
+        if (want == (map != null)) {
+            if (map != null && resumed) map.start();
+            updateRouteBox();
+            return;
+        }
+        boolean was = heroShown || touchDock();
+        if (want) {
+            if (!Perms.hasLocation(this) && !prefs.getBoolean("asked_map_location", false)) {
+                prefs.edit().putBoolean("asked_map_location", true).apply();
+                Perms.requestLocation(this);
+            }
+            map = new MapShelf(this, screenW, screenH, shelfH, unit);
+            map.onBlur = () -> {
+                if (heroShown && map != null && map.blur != null) {
+                    glassBg = map.blur;
+                    invalidateGlass();
+                }
+            };
+            map.onArrived = () -> {
+                toast("You have arrived");
+                applyMap();
+            };
+            root.addView(map.view, Math.max(root.indexOfChild(heroBack), root.indexOfChild(heroFront)) + 1, match());
+            shelfView.setFocusable(false);
+            if (resumed) map.start();
+        } else {
+            root.removeView(map.view);
+            map.destroy();
+            map = null;
+            shelfView.setFocusable(!heroItems.isEmpty());
+        }
+        heroShown = was && (!heroItems.isEmpty() || map != null) && !folderMode;
+        applyHeroShown();
+    }
+
+    /** "To <destination>" and End Route, bottom-left of the map while a route runs (touch; remotes use Settings). */
+    void updateRouteBox() {
+        boolean show = map != null && heroShown && Route.active(this);
+        if (show && routeBox == null) {
+            routeBox = new LinearLayout(this);
+            routeBox.setOrientation(LinearLayout.VERTICAL);
+            routeName = text(30, Ui.font(this, "display"), 1f);
+            routeName.setSingleLine(true);
+            routeName.setEllipsize(TextUtils.TruncateAt.END);
+            routeBox.addView(routeName, new LinearLayout.LayoutParams(screenW / 2, ViewGroup.LayoutParams.WRAP_CONTENT));
+            TextView end = text(14, Ui.font(this, "semibold"), 1f);
+            end.setShadowLayer(0, 0, 0, 0);
+            end.setText("End Route");
+            end.setTextColor(0xFF111114);
+            end.setGravity(Gravity.CENTER);
+            end.setPadding(dp(18), 0, dp(18), 0);
+            GradientDrawable bg = new GradientDrawable();
+            bg.setColor(0xFFFFFFFF);
+            bg.setCornerRadius(dp(16));
+            end.setBackground(bg);
+            end.setOnClickListener(v -> {
+                Route.end(this);
+                applyMap();
+            });
+            end.setFocusable(false);  // touch only; remotes end a route in Settings
+            LinearLayout.LayoutParams elp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(32));
+            elp.topMargin = dp(10);
+            routeBox.addView(end, elp);
+            FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM | Gravity.START);
+            lp.leftMargin = side;
+            lp.bottomMargin = screenH - shelfH + dp(28);
+            root.addView(routeBox, lp);
+        }
+        if (routeBox == null) return;
+        if (show) routeName.setText(Route.name(this));
+        routeBox.setVisibility(show ? View.VISIBLE : View.GONE);
+    }
+
+    /** adb hooks for testing the map: --es map_mode off|always|route · --es route "Name,lat,lon" · --ez route_end true · --es map_tiles <url>|default */
+    boolean mapIntent(Intent intent) {
+        String r = intent.getStringExtra("route");
+        String tiles = intent.getStringExtra("map_tiles");
+        if (r != null) {
+            String[] p = r.split(",");
+            try {
+                Route.start(this, p[0].trim(), Double.parseDouble(p[1].trim()), Double.parseDouble(p[2].trim()));
+            } catch (RuntimeException e) {
+                return true;
+            }
+        } else if (intent.getBooleanExtra("route_end", false)) {
+            Route.end(this);
+        } else if (intent.getStringExtra("map_mode") != null) {
+            MapShelf.setMode(this, intent.getStringExtra("map_mode"));
+        } else if (tiles != null) {
+            SharedPreferences mp = getSharedPreferences("map", MODE_PRIVATE);
+            if (tiles.equals("default")) mp.edit().remove("tiles").apply();
+            else mp.edit().putString("tiles", tiles).apply();
+            if (map != null) {  // rebuild the map with the new source
+                String mode = MapShelf.mode(this);
+                MapShelf.setMode(this, MapShelf.OFF);
+                applyMap();
+                MapShelf.setMode(this, mode);
+            }
+        } else {
+            return false;
+        }
+        applyMap();
+        return true;
+    }
+
+    /** Touch has no focused tile: Home counts as "on the dock" while the grid is scrolled to the top. */
+    boolean touchDock() {
+        return getCurrentFocus() == null && root != null && root.isInTouchMode() && scroll != null
+                && scroll.getScrollY() < shelfH / 4 && !folderMode && pickerLayer == null;
+    }
+
+    /** On a touch screen nothing takes focus, so nothing would ever bring the carousel in: do it here. */
+    void touchHome() {
+        if (touchDock()) setHeroShown(true);
+    }
+
+    /** Dragging the grid by finger: the carousel gives way to the wallpaper as the apps come up. */
+    void touchScrolled() {
+        if (root == null || getCurrentFocus() != null || !root.isInTouchMode() || folderMode || idle || pickerLayer != null) return;
+        setHeroShown(scroll.getScrollY() < shelfH / 4);
+    }
+
+    /** After a drag that ends near the top, settle exactly at the top (as focus does with a remote). */
+    final Runnable touchSnap = () -> {
+        if (root == null || getCurrentFocus() != null || !root.isInTouchMode() || folderMode) return;
+        int y = scroll.getScrollY();
+        if (y > 0 && y < shelfH / 4) scroll.smoothScrollTo(0, 0);
+    };
+
+    boolean shelfTouchable() {
+        return !folderMode && launchOverlay == null && menuLayer == null && pickerLayer == null && moveIndex < 0 && heroShown;
+    }
+
+    /** A tap on the shelf: the maps app when the map is showing, else the carousel's current title. */
+    void shelfTapped() {
+        if (!shelfTouchable()) return;
+        if (map != null) {
+            if (!map.open()) toast("No maps app is installed");
+        } else if (!heroItems.isEmpty()) {
+            openHeroItem(heroItems.get(heroIndex));
+        }
+    }
+
+    /** A long press on the shelf: the same options Hold OK gives on a remote. */
+    void shelfHeld() {
+        if (shelfTouchable() && map == null && heroHasMenu()) heroMenu(heroItems.get(heroIndex));
+    }
+
+    /** A sideways swipe on the shelf: next (+1) or previous (-1) title. */
+    void shelfSwiped(int dir) {
+        if (shelfTouchable() && map == null) heroStep(dir, true);
+    }
+
+    @Override
+    public boolean dispatchTouchEvent(android.view.MotionEvent ev) {
+        int act = ev.getActionMasked();
+        if (act == android.view.MotionEvent.ACTION_DOWN) {
+            if (idle) {  // like the first key press: a touch only brings Home back
+                exitIdle();
+                touchSwallow = true;
+            } else {
+                resetIdle();
+            }
+        }
+        if (touchSwallow) {
+            if (act == android.view.MotionEvent.ACTION_UP || act == android.view.MotionEvent.ACTION_CANCEL) touchSwallow = false;
+            return true;
+        }
+        if (launchOverlay != null) return true;
+        if (moveIndex >= 0 && menuLayer == null) {  // moving an app by touch: a tap drops it there
+            if (act == android.view.MotionEvent.ACTION_UP) {
+                int[] xy = new int[2];
+                for (int i = 0; i < tiles.size(); i++) {
+                    View t = tiles.get(i);
+                    t.getLocationOnScreen(xy);
+                    if (ev.getRawX() >= xy[0] && ev.getRawX() < xy[0] + t.getWidth()
+                            && ev.getRawY() >= xy[1] && ev.getRawY() < xy[1] + t.getHeight()) {
+                        moveTo(i);
+                        break;
+                    }
+                }
+                endMove();
+            }
+            return true;
+        }
+        if (act == android.view.MotionEvent.ACTION_UP || act == android.view.MotionEvent.ACTION_CANCEL) {
+            handler.removeCallbacks(touchSnap);
+            handler.postDelayed(touchSnap, 450);
+        }
+        return super.dispatchTouchEvent(ev);
     }
 
     // ---------------------------------------------------------------- keys
@@ -3230,6 +3545,10 @@ public class MainActivity extends Activity {
         plp.topMargin = dp(72);
         plp.rightMargin = dockOuter;
         layer.addView(panel, plp);
+        // Korie: a tap outside the panel closes it. The panel only swallows taps; it must not take remote focus.
+        panel.setClickable(true);
+        panel.setFocusable(false);
+        layer.setOnClickListener(v -> closeProfilePicker());
 
         root.addView(layer, match());
         pickerLayer = layer;
@@ -3546,6 +3865,10 @@ public class MainActivity extends Activity {
         plp.topMargin = dp(72);
         plp.rightMargin = dockOuter;
         layer.addView(panel, plp);
+        // Korie: a tap outside the panel closes it. The panel only swallows taps; it must not take remote focus.
+        panel.setClickable(true);
+        panel.setFocusable(false);
+        layer.setOnClickListener(v -> closeProfilePicker());
 
         root.addView(layer, match());
         pickerLayer = layer;
@@ -3729,7 +4052,7 @@ public class MainActivity extends Activity {
         refreshButton.animate().cancel();
         refreshButton.setRotation(0);
         refreshButton.animate().rotation(360).setDuration(Motion.d(700)).setInterpolator(EASE).start();
-        Suggestions.expire(this);  // keeps showing the current items until fresh ones arrive
+        Suggestions.changed(this);  // Korie: a new pick from the add-ons' lists
         AppRows.invalidate();
         lastCwSig = "";
         loadHero();
@@ -3764,7 +4087,7 @@ public class MainActivity extends Activity {
      * fade, and the carousel keeps playing full screen with its title and summary at the bottom.
      */
     void enterIdle() {
-        if (idle || !resumed || !heroShown || heroItems.isEmpty() || continueMode() || folderMode
+        if (idle || !resumed || !heroShown || heroItems.isEmpty() || map != null || continueMode() || folderMode
                 || launchOverlay != null || pickerLayer != null || menuLayer != null || moveIndex >= 0) {
             resetIdle();
             return;
@@ -3876,6 +4199,10 @@ public class MainActivity extends Activity {
         plp.topMargin = dp(24);
         plp.leftMargin = dockOuter;
         layer.addView(panel, plp);
+        // Korie: a tap outside the panel closes it. The panel only swallows taps; it must not take remote focus.
+        panel.setClickable(true);
+        panel.setFocusable(false);
+        layer.setOnClickListener(v -> closeProfilePicker());
 
         root.addView(layer, match());
         pickerLayer = layer;
@@ -4151,6 +4478,7 @@ public class MainActivity extends Activity {
         if (req == SearchPanel.REQ_MIC && search != null) {
             search.onMicPermission(results.length > 0 && results[0] == PackageManager.PERMISSION_GRANTED);
         }
+        if (req == Perms.REQ_LOCATION && map != null) map.listen();
         if (req == Perms.REQ_TV_LISTINGS) {
             AppRows.invalidate();
             lastCwSig = "";
@@ -4161,7 +4489,7 @@ public class MainActivity extends Activity {
 
     boolean statusFocused() {
         View f = getCurrentFocus();
-        return f != null && (f == ccButton || f == avatarView || f == refreshButton || f == searchButton);
+        return f != null && (f == ccButton || f == avatarView || f == refreshButton || f == searchButton || f == nowPlaying);
     }
 
     /** Directional focus inside a popover: nearest cell whose centre lies in that direction. */
@@ -4437,6 +4765,7 @@ public class MainActivity extends Activity {
         menuLayer = new FrameLayout(this);
         menuLayer.setBackgroundColor(0x00000000);
         menuLayer.setClickable(true);
+        menuLayer.setOnClickListener(v -> closeMenu());  // Korie: a tap outside the menu closes it
 
         LinearLayout panel = new LinearLayout(this);
         panel.setOrientation(LinearLayout.VERTICAL);
@@ -4553,7 +4882,7 @@ public class MainActivity extends Activity {
         moveIndex = index;
         focusIndex(index);
         startWiggle(tiles.get(index));
-        toast("Use arrows to move \u00b7 OK when done");
+        toast(root.isInTouchMode() ? "Tap where it should go" : "Use arrows to move \u00b7 OK when done");
     }
 
     void moveTo(int to) {

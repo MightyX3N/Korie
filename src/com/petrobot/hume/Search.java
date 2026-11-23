@@ -40,6 +40,9 @@ final class Search {
         String service = "", tech = "", monetization = "", web = "", deeplink = "", icon = "";
         /** The app that plays it ("" when none is installed) and the app to get otherwise. */
         String pkg = "", getPkg = "";
+        /** Korie: the add-on this offer comes from ("" for none) and the add-on's own record of the title. */
+        String addon = "";
+        Map<String, Object> item;
 
         boolean installed() {
             return !pkg.isEmpty();
@@ -147,7 +150,12 @@ final class Search {
             + " package { clearName technicalName icon(profile: S100, format: PNG) } } } } } }";
 
     /** Titles matching q on any service in India (JustWatch), best match first. */
+    /** Korie: Movies & TV come from the installed add-ons (the built-in JustWatch lookup below is no longer called). */
     static List<Title> titles(Context c, String q, Apps apps) throws Exception {
+        return Addons.search(c, q);
+    }
+
+    static List<Title> titlesJustWatch(Context c, String q, Apps apps) throws Exception {
         JSONObject vars = new JSONObject().put("q", q).put("first", MAX_TITLES);
         JSONObject res = post("https://apis.justwatch.com/graphql",
                 new JSONObject().put("query", JW_SEARCH).put("variables", vars).toString());

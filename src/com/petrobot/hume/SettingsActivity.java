@@ -1,3 +1,4 @@
+// Changed for Korie: Top Shelf → Map and End route. See NOTICE.
 package com.petrobot.hume;
 
 import android.app.Activity;
@@ -35,6 +36,8 @@ public class SettingsActivity extends Activity {
     @Override
     protected void onCreate(Bundle b) {
         super.onCreate(b);
+        WatchNext.init(this);  // Korie: is there a TV provider at all?
+        Addons.init(this);
         Clicks.init(this);
         Motion.init(this);
         String token = getIntent().getStringExtra("tmdb_token");
@@ -51,7 +54,7 @@ public class SettingsActivity extends Activity {
     // tvOS-style pages: the main list opens a page per section; Back returns to the main list.
     static final String ROOT = "root", PROFILES = "Profiles", SHELF = "Top Shelf", PRESENT = "Presentation",
             INPUTS = "Inputs", WEATHER = "Weather", WATCHING = "Continue Watching", HOME = "Home",
-            PERMS = "Permissions", ABOUT = "About";
+            PERMS = "Permissions", ABOUT = "About", ADDONS = "Add-ons";
 
     FrameLayout leftPane;
     ScrollView scroller;
@@ -81,6 +84,8 @@ public class SettingsActivity extends Activity {
         scroller.addView(list);
         split.addView(scroller, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1.25f));
         setContentView(root);
+        Ui.fullscreen(this);  // Korie
+        Ui.backButton(this, () -> true);
         Clicks.quiet(root);
         show(ROOT);
     }
@@ -104,6 +109,7 @@ public class SettingsActivity extends Activity {
             case HOME: pageHome(); break;
             case PERMS: pagePermissions(); break;
             case ABOUT: pageAbout(); break;
+            case ADDONS: AddonUi.page(this); break;  // Korie
             default: pageRoot(); break;
         }
         scroller.scrollTo(0, 0);
@@ -160,7 +166,7 @@ public class SettingsActivity extends Activity {
             plate.setCornerRadius(Ui.px(this, 12));
             tile.setBackground(plate);
             ImageView mark = new ImageView(this);
-            mark.setImageResource(R.drawable.petrobot_mark);
+            mark.setImageResource(R.drawable.ic_launcher);
             mark.setScaleType(ImageView.ScaleType.FIT_CENTER);
             tile.addView(mark, new FrameLayout.LayoutParams(Ui.px(this, 58), Ui.px(this, 58), Gravity.CENTER));
             icon = tile;
@@ -187,17 +193,6 @@ public class SettingsActivity extends Activity {
         tlp.topMargin = Ui.px(this, 22);
         left.addView(title, tlp);
 
-        if (p.equals(ROOT)) {
-            TextView by = new TextView(this);
-            by.setText("Hume Launcher by Petrobot");
-            by.setTextColor(0x8CFFFFFF);
-            by.setTypeface(Ui.font(this, "regular"));
-            Ui.textSize(by, 13);
-            by.setGravity(Gravity.CENTER);
-            LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            blp.topMargin = Ui.px(this, 4);
-            left.addView(by, blp);
-        }
         leftPane.addView(left, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER));
     }
@@ -210,6 +205,7 @@ public class SettingsActivity extends Activity {
         switch (p) {
             case PROFILES: grad = new int[]{0xFFBF5AF2, 0xFF7D3CCB}; glyph = null; break;
             case SHELF: grad = new int[]{0xFF64D2FF, 0xFF0A84FF}; glyph = "shelf"; break;
+            case ADDONS: grad = new int[]{0xFFFF9F0A, 0xFFE0700A}; glyph = "controls"; break;
             case INPUTS: grad = new int[]{0xFF6E6E73, 0xFF2C2C2E}; glyph = "input"; break;
             case WEATHER: grad = new int[]{0xFF5AC8FA, 0xFF2D6BD8}; glyph = null; break;
             case WATCHING: grad = new int[]{0xFFFF6482, 0xFFD6305A}; glyph = "present"; break;
@@ -242,6 +238,10 @@ public class SettingsActivity extends Activity {
             if (Suggestions.showRecs(this)) on.add("Recommendations");
             if (Suggestions.showNews(this)) on.add("News");
             return on.isEmpty() ? "Off" : on.size() > 2 ? on.size() + " sources" : String.join(" & ", on);
+        });
+        nav(ADDONS, () -> {  // Korie
+            int n = Addons.installed(this).size();
+            return n == 0 ? "None" : n + " installed";
         });
         nav(PRESENT, () -> com.petrobot.hume.present.Presenter.enabled(this) ? "On" : "Off");
         if (!Inputs.list(this).isEmpty()) nav(INPUTS, () -> Inputs.showCard(this) ? "On" : "Off");
@@ -282,7 +282,7 @@ public class SettingsActivity extends Activity {
 
     /** On / Off for a source that reads the TV's lists, or what it still needs. */
     String tvSourceState(String key) {
-        if (!WatchNext.supported()) return "Not on this TV";
+        if (!WatchNext.supported()) return "Not on this device";
         if (!WatchNext.granted(this)) return "Allow\u2026";
         return Profiles.homePrefs(this).getBoolean(key, true) ? "On" : "Off";
     }
@@ -308,16 +308,28 @@ public class SettingsActivity extends Activity {
      * one's options. (Continue Watching used to have its own page; it plays here, so it lives here.)
      */
     void pageShelf() {
-        row("Continue Watching", () -> tvSourceState("cw_enabled"), () -> toggleTvSource("cw_enabled", "Continue Watching"));
-        row("From Your Apps", () -> tvSourceState("app_rows"), () -> toggleTvSource("app_rows", "From Your Apps"));
+        if (!WatchNext.noProvider) {  // Korie: not shown on devices without Android TV's lists
+            row("Continue Watching", () -> tvSourceState("cw_enabled"), () -> toggleTvSource("cw_enabled", "Continue Watching"));
+            row("From Your Apps", () -> tvSourceState("app_rows"), () -> toggleTvSource("app_rows", "From Your Apps"));
+        }
         row("Recommendations", () -> Suggestions.showRecs(this) ? "On" : "Off", () -> {
             Suggestions.setShelf(this, !Suggestions.showRecs(this), Suggestions.showNews(this));
             showAndFocus(SHELF, "Recommendations");
         });
-        row("News", () -> Suggestions.showNews(this) ? "On" : "Off", () -> {
-            Suggestions.setShelf(this, Suggestions.showRecs(this), !Suggestions.showNews(this));
-            showAndFocus(SHELF, "News");
+        // Korie: the News source (Indian newsrooms only) is no longer offered; an add-on can put news on the carousel.
+        // Korie: the map can take the carousel's place (car boxes). Off on TVs.
+        row("Map", () -> MapShelf.modeName(MapShelf.mode(this)), () -> {
+            String m = MapShelf.mode(this);
+            MapShelf.setMode(this, MapShelf.OFF.equals(m) ? MapShelf.ALWAYS : MapShelf.ALWAYS.equals(m) ? MapShelf.ROUTE : MapShelf.OFF);
+            if (!MapShelf.OFF.equals(MapShelf.mode(this)) && !Perms.hasLocation(this)) Perms.requestLocation(this);
+            showAndFocus(SHELF, "Map");
         });
+        if (Route.active(this)) {
+            row("End route", () -> Route.name(this), () -> {
+                Route.end(this);
+                showAndFocus(SHELF, "Map");
+            });
+        }
         if (cwOn()) {
             section("Continue Watching");
             row("Clear history", () -> "", () -> {
@@ -334,33 +346,10 @@ public class SettingsActivity extends Activity {
         }
         if (Suggestions.showRecs(this)) {
             section("Recommendations");
-            row("Source", () -> Suggestions.sourceName(Suggestions.source(this)), this::chooseSource);
             row("Content", () -> {
                 String t = Suggestions.types(this);
                 return t.equals("movie") ? "Movies" : t.equals("tv") ? "TV Series" : "Movies & Series";
             }, this::chooseTypes);
-        }
-        if (Suggestions.showRecs(this) && Suggestions.source(this).equals(Suggestions.SRC_STREMIO)) {
-            row("Opens in", () -> {
-                Suggestions.Provider p = Suggestions.stremioApp(this);
-                return Suggestions.installed(this, p.pkg) ? p.name : "Stremio (not installed)";
-            }, () -> Toast.makeText(this, "Titles open in Stremio, or in Nuvio when only Nuvio is installed.",
-                    Toast.LENGTH_LONG).show());
-        } else if (Suggestions.showRecs(this)) {
-            row("Streaming services", () -> {
-                int n = Suggestions.providers(this).size();
-                return n == Suggestions.PROVIDERS.size() ? "All" : n + " selected";
-            }, this::chooseProviders);
-            row("Languages", () -> {
-                Set<String> l = Suggestions.languages(this);
-                if (l.isEmpty()) return "Any";
-                List<String> names = new ArrayList<>();
-                for (int i = 0; i < Suggestions.LANG_CODES.length; i++) {
-                    if (l.contains(Suggestions.LANG_CODES[i])) names.add(Suggestions.LANG_NAMES[i]);
-                }
-                return names.size() > 2 ? names.size() + " languages" : String.join(", ", names);
-            }, this::chooseLanguages);
-            row("TMDB token", () -> Suggestions.hasToken(this) ? "Connected" : "Not set", this::enterToken);
         }
         if (Suggestions.showNews(this)) {
             section("News");
@@ -534,7 +523,7 @@ public class SettingsActivity extends Activity {
     }
 
     void pageHome() {
-        row("Home screen", () -> Perms.isDefaultHome(this) ? "Hume Launcher" : "Make Hume the home screen\u2026",
+        row("Home screen", () -> Perms.isDefaultHome(this) ? "Korie" : "Make Korie the home screen\u2026",
                 () -> Perms.requestDefaultHome(this));
         row("Background", () -> {
             String k = Profiles.homePrefs(this).getString("wallpaper", "aurora");
@@ -549,9 +538,9 @@ public class SettingsActivity extends Activity {
                 d.dismiss();
             }).show();
         });
-        row("Home button opens Hume", () -> PowerService.HomeButton.isDefaultHome(this) ? "Not needed"
+        row("Home button opens Korie", () -> PowerService.HomeButton.isDefaultHome(this) ? "Not needed"
                 : !PowerService.HomeButton.enabled(this) ? "Off"
-                : Perms.hasAccessibility(this) ? "On" : "Needs Hume\u2019s switch\u2026", this::toggleHomeButton);
+                : Perms.hasAccessibility(this) ? "On" : "Needs Korie\u2019s switch\u2026", this::toggleHomeButton);
         section("Start with the TV");
         row("Open", () -> Startup.label(this), this::chooseStartup);
         if (!Startup.target(this).isEmpty()) {
@@ -562,14 +551,14 @@ public class SettingsActivity extends Activity {
                     d.dismiss();
                     refreshAll();
                     if (w == 1 && !Perms.hasAccessibility(this)) {
-                        Perms.requestAccessibility(this, "Android lets Hume open an app when the TV wakes only "
-                                + "with Hume\u2019s accessibility switch on.");
+                        Perms.requestAccessibility(this, "Android lets Korie open an app when the TV wakes only "
+                                + "with Korie\u2019s accessibility switch on.");
                     }
                 }).show();
             });
             if (Startup.onWake(this) && !Perms.hasAccessibility(this)) {
-                row("Waking into it", () -> "Needs Hume\u2019s switch\u2026", () -> Perms.requestAccessibility(this,
-                        "Android lets Hume open an app when the TV wakes only with Hume\u2019s accessibility switch on."));
+                row("Waking into it", () -> "Needs Korie\u2019s switch\u2026", () -> Perms.requestAccessibility(this,
+                        "Android lets Korie open an app when the TV wakes only with Korie\u2019s accessibility switch on."));
             }
             if (com.petrobot.hume.present.Presenter.enabled(this) && com.petrobot.hume.present.Presenter.startOnBoot(this)) {
                 row("At boot", () -> "Presentation starts instead", () -> show(PRESENT));
@@ -602,8 +591,8 @@ public class SettingsActivity extends Activity {
             }).show();
         });
         section("Screensaver");
-        row("Screensaver on Home", () -> screensaverAllowed() ? "System screensaver" : "Hume carousel", () -> {
-            String[] names = {"System screensaver  (" + dreamLabel() + ")", "Hume full-screen carousel"};
+        row("Screensaver on Home", () -> screensaverAllowed() ? "System screensaver" : "Korie carousel", () -> {
+            String[] names = {"System screensaver  (" + dreamLabel() + ")", "Korie full-screen carousel"};
             dialog("Screensaver on Home").setSingleChoiceItems(names, screensaverAllowed() ? 0 : 1, (d, w) -> {
                 getSharedPreferences("screensaver", MODE_PRIVATE).edit().putBoolean("allow", w == 0).apply();
                 refreshAll();
@@ -638,12 +627,12 @@ public class SettingsActivity extends Activity {
     /** Home button override: on/off, asking for the accessibility switch when it's needed. */
     void toggleHomeButton() {
         if (PowerService.HomeButton.isDefaultHome(this)) {
-            Toast.makeText(this, "Hume is already the home app, so the Home button opens it.", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "Korie is already the home app, so the Home button opens it.", Toast.LENGTH_LONG).show();
             return;
         }
         boolean on = PowerService.HomeButton.enabled(this);
         if (on && !Perms.hasAccessibility(this)) {
-            Perms.requestAccessibility(this, "This TV keeps its own home screen. With Hume\u2019s switch on, Hume opens "
+            Perms.requestAccessibility(this, "This TV keeps its own home screen. With Korie\u2019s switch on, Korie opens "
                     + "whenever that home screen appears, so the Home button brings you here.");
             return;
         }
@@ -675,26 +664,26 @@ public class SettingsActivity extends Activity {
 
     void pagePermissions() {
         row("Home button & Start with the TV", () -> Perms.hasAccessibility(this) ? "Allowed" : "Allow\u2026",
-                () -> Perms.requestAccessibility(this, "Hume\u2019s switch lets it open itself when the TV\u2019s own "
+                () -> Perms.requestAccessibility(this, "Korie\u2019s switch lets it open itself when the TV\u2019s own "
                         + "home screen appears, and open your chosen app when the TV wakes."));
-        row("Continue Watching (apps\u2019 Watch Next)", () -> Perms.hasTvListings(this) ? "Allowed"
-                : WatchNext.supported() ? "Allow\u2026" : "Not on this TV", () -> Perms.requestTvListings(this));
+        if (!WatchNext.noProvider) row("Continue Watching (apps\u2019 Watch Next)", () -> Perms.hasTvListings(this) ? "Allowed"
+                : WatchNext.supported() ? "Allow\u2026" : "Not on this device", () -> Perms.requestTvListings(this));
         row("Do Not Disturb", () -> Perms.hasListener(this) ? "Allowed"
-                : Perms.listenerSupported(this) ? "Allow\u2026" : "Not on this TV",
+                : Perms.listenerSupported(this) ? "Allow\u2026" : "Not on this device",
                 () -> Perms.requestListener(this));
         row("Power Off & Sleep Timer", () -> Perms.hasAdmin(this) ? "Allowed"
-                : Perms.adminSupported(this) ? "Allow\u2026" : "Not on this TV", () -> Perms.requestAdmin(this));
-        row("Hume as the home screen", () -> Perms.isDefaultHome(this) ? "Yes" : "Set\u2026",
+                : Perms.adminSupported(this) ? "Allow\u2026" : "Not on this device", () -> Perms.requestAdmin(this));
+        row("Korie as the home screen", () -> Perms.isDefaultHome(this) ? "Yes" : "Set\u2026",
                 () -> Perms.requestDefaultHome(this));
         row("Wi-Fi name in Control Center", () -> Perms.hasLocation(this) ? "Allowed" : "Allow\u2026",
                 () -> Perms.requestLocation(this));
     }
 
     void pageAbout() {
-        row("Hume Launcher", () -> "Version " + version(), () -> { });
-        row("Made by", () -> "Petrobot", () -> { });
+        row("Korie", () -> "Version " + version(), () -> { });
+        row("Based on", () -> "Hume Launcher by Petrobot", () -> { });
+        row("Map", () -> MapShelf.ATTRIBUTION, () -> { });
         row("Weather", () -> Weather.sourceName(Weather.source(this)), () -> { });
-        row("News", () -> News.sources(this).size() + " Indian newsrooms", () -> { });
     }
 
     boolean screensaverAllowed() {
