@@ -8,7 +8,7 @@ Android Studio or Gradle needed: the project builds with the plain Android SDK c
 | | Version | Why |
 |---|---|---|
 | JDK | 17 or newer | `javac` compiles the Java sources (`--release 11`) |
-| Android SDK build-tools | **34.0.0** | `aapt2`, `d8`, `zipalign`, `apksigner` |
+| Android SDK build-tools | **34.0.0** and **36.0.0** | `aapt2`, `zipalign`, `apksigner` (34); `d8` (36, needed for the player library) |
 | Android SDK platform | **android-34** | `android.jar` to compile against |
 | Android SDK platform-tools | latest | `adb` to install and debug |
 | A device | Android TV 7.0+ (API 24+) | A TV box/TV, or the Android TV emulator |
@@ -25,7 +25,7 @@ brew install --cask temurin@17                      # JDK 17 (or any JDK 17+)
 brew install --cask android-commandlinetools        # sdkmanager
 export ANDROID_HOME="$HOME/Library/Android/sdk"
 yes | sdkmanager --sdk_root="$ANDROID_HOME" --licenses
-sdkmanager --sdk_root="$ANDROID_HOME" "platform-tools" "build-tools;34.0.0" "platforms;android-34"
+sdkmanager --sdk_root="$ANDROID_HOME" "platform-tools" "build-tools;34.0.0" "build-tools;36.0.0" "platforms;android-34"
 ```
 
 ### Linux (Debian/Ubuntu)
@@ -38,7 +38,7 @@ unzip commandlinetools-linux-*.zip && mv cmdline-tools latest
 export ANDROID_HOME="$HOME/Android/Sdk"
 export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH"
 yes | sdkmanager --licenses
-sdkmanager "platform-tools" "build-tools;34.0.0" "platforms;android-34"
+sdkmanager "platform-tools" "build-tools;34.0.0" "build-tools;36.0.0" "platforms;android-34"
 ```
 
 ### Windows

@@ -174,7 +174,7 @@ final class News {
         HttpURLConnection con = (HttpURLConnection) new URL(url).openConnection();
         con.setConnectTimeout(8000);
         con.setReadTimeout(12000);
-        con.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android TV) HumeLauncher");
+        con.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android TV) KorieLauncher");
         List<Suggestions.Item> out = new ArrayList<>();
         try (InputStream in = con.getInputStream()) {
             XmlPullParser x = XmlPullParserFactory.newInstance().newPullParser();

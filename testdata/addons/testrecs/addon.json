@@ -1,0 +1,7 @@
+{
+  "id": "testrecs",
+  "name": "Test Recs",
+  "version": "1.0",
+  "description": "Fixture: a list with artwork for Recommendations.",
+  "main": "main.lua"
+}

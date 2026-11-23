@@ -51,10 +51,8 @@ final class SearchPanel {
     static final long DEBOUNCE_MS = 350;
     static final String LATIN = "abcdefghijklmnopqrstuvwxyz";
     static final String DIGITS = "1234567890.-'&:!?";
-    static final String HINDI = "अआइईउऊएऐओऔ"
-            + "कखगघचछजझटठडढण"
-            + "तथदधनपफबभमयरलव"
-            + "शषसहािीुूेैोौं्";
+    /** Korie: letters beyond a–z (the Hindi page this replaces went with the India-only sources). */
+    static final String HINDI = "æøåäöüéèáàíóúñçß";
 
     final MainActivity a;
     final FrameLayout layer;
@@ -93,7 +91,7 @@ final class SearchPanel {
     String failed;
     FrameLayout sheet;
     View sheetReturn;
-    LinearLayout titleRow, stremioRow;
+    LinearLayout titleRow, stremioRow, radioRow;
     TextView titleStatus;
     boolean closed;
 
@@ -112,13 +110,14 @@ final class SearchPanel {
         col.setOrientation(LinearLayout.VERTICAL);
         col.setClipChildren(false);
         layer.addView(col, a.match());
+        body = col;
 
         // Header: the dictation mic (as in tvOS's search field) and what you typed or said.
         LinearLayout head = new LinearLayout(a);
         head.setOrientation(LinearLayout.HORIZONTAL);
         head.setGravity(Gravity.CENTER_VERTICAL);
         head.setClipChildren(false);
-        head.setPadding(a.dockOuter, a.dp(30), a.dockOuter, 0);
+        head.setPadding(a.dockOuter, a.dp(Ui.touchDevice(a) ? 54 : 30), a.dockOuter, 0);  // Korie: room for the Back button on touch devices
         if (voice || live) {
             mic = new ImageView(a);
             mic.setId(View.generateViewId());
@@ -142,6 +141,7 @@ final class SearchPanel {
         queryView.setSingleLine(true);
         queryView.setEllipsize(TextUtils.TruncateAt.START);
         head.addView(queryView, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        if (Ui.touchDevice(a)) addSystemKeyboard(head);
         col.addView(head, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         keyScroll = new HorizontalScrollView(a);
@@ -189,7 +189,7 @@ final class SearchPanel {
         made.add(key("space", a.dp(64), () -> type(" ")));
         made.add(key("⌫", a.dp(40), this::backspace));
         made.add(key(mode == 1 ? "abc" : "123", a.dp(48), () -> switchMode(mode == 1 ? 0 : 1)));
-        made.add(key(mode == 2 ? "abc" : "अआ", a.dp(48), () -> switchMode(mode == 2 ? 0 : 2)));
+        made.add(key(mode == 2 ? "abc" : "\u00e6\u00f8\u00e5", a.dp(48), () -> switchMode(mode == 2 ? 0 : 2)));
         made.add(key("clear", a.dp(56), this::clear));
         View focus = made.get(0);
         for (View k : made) {
@@ -234,7 +234,67 @@ final class SearchPanel {
     void switchMode(int m) {
         int prev = mode;
         mode = m;
-        buildKeys(m != 0 ? "abc" : prev == 1 ? "123" : "\u0905\u0906");
+        buildKeys(m != 0 ? "abc" : prev == 1 ? "123" : "\u00e6\u00f8\u00e5");
+    }
+
+    /**
+     * Korie, touch devices only: a "Keyboard" button that opens Android's own keyboard. What is typed
+     * there goes into an unseen text field and from it into the search text. Neither view can take
+     * the remote's focus.
+     */
+    android.widget.EditText sysEdit;
+    boolean syncingEdit;
+
+    /** Keeps the unseen text field equal to the search text, however that changed (Delete, clear, the letter row, voice). */
+    void syncSystemKeyboard() {
+        if (sysEdit == null || sysEdit.getText().toString().equals(query.toString())) return;
+        syncingEdit = true;
+        sysEdit.setText(query.toString());
+        sysEdit.setSelection(sysEdit.getText().length());
+        syncingEdit = false;
+    }
+
+    void addSystemKeyboard(LinearLayout head) {
+        final android.widget.EditText edit = new android.widget.EditText(a);
+        edit.setSingleLine(true);
+        edit.setAlpha(0f);
+        edit.setFocusable(false);
+        edit.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH
+                | android.view.inputmethod.EditorInfo.IME_FLAG_NO_EXTRACT_UI | android.view.inputmethod.EditorInfo.IME_FLAG_NO_FULLSCREEN);
+        edit.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+        edit.addTextChangedListener(new android.text.TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int st, int c, int n) { }
+            @Override public void onTextChanged(CharSequence s, int st, int b, int c) { }
+            @Override public void afterTextChanged(android.text.Editable s) {
+                if (!syncingEdit && edit.hasFocus() && !s.toString().equals(query.toString())) setQuery(s.toString());
+            }
+        });
+        final android.view.inputmethod.InputMethodManager imm =
+                (android.view.inputmethod.InputMethodManager) a.getSystemService(android.content.Context.INPUT_METHOD_SERVICE);
+        edit.setOnEditorActionListener((v, id, ev) -> {
+            imm.hideSoftInputFromWindow(edit.getWindowToken(), 0);
+            return true;
+        });
+        head.addView(edit, new LinearLayout.LayoutParams(1, 1));
+        sysEdit = edit;
+        TextView kb = a.text(13, Ui.font(a, "semibold"), 1f);
+        kb.setShadowLayer(0, 0, 0, 0);
+        kb.setText("Keyboard");
+        kb.setGravity(Gravity.CENTER);
+        kb.setPadding(a.dp(14), 0, a.dp(14), 0);
+        GradientDrawable bg = new GradientDrawable();
+        bg.setCornerRadius(a.dp(16));
+        bg.setColor(0x33FFFFFF);
+        kb.setBackground(bg);
+        kb.setFocusable(false);
+        kb.setOnClickListener(v -> {
+            edit.setFocusableInTouchMode(true);
+            edit.setText(query.toString());
+            edit.setSelection(edit.getText().length());
+            edit.requestFocus();
+            imm.showSoftInput(edit, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT);
+        });
+        head.addView(kb, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, a.dp(32)));
     }
 
     void type(String s) {
@@ -314,8 +374,8 @@ final class SearchPanel {
     Intent speechIntent() {
         return new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
                 .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_WEB_SEARCH)
-                .putExtra(RecognizerIntent.EXTRA_LANGUAGE, "en-IN")
-                .putExtra("android.speech.extra.EXTRA_ADDITIONAL_LANGUAGES", new String[]{"hi-IN"})
+                .putExtra(RecognizerIntent.EXTRA_LANGUAGE, java.util.Locale.getDefault().toLanguageTag())  // Korie: the device's language
+                .putExtra("android.speech.extra.EXTRA_ADDITIONAL_LANGUAGES", new String[]{"en-US"})
                 .putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
                 .putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
                 .putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, a.getPackageName())
@@ -410,6 +470,7 @@ final class SearchPanel {
 
     /** Every key press: the local rows at once; titles from the cache, or fetched once typing pauses. */
     void changed() {
+        syncSystemKeyboard();
         showQuery();
         a.handler.removeCallbacks(fetch);
         gen++;
@@ -431,7 +492,7 @@ final class SearchPanel {
         View focus = a.getCurrentFocus();
         boolean inResults = focus != null && isInside(focus, list);
         list.removeAllViews();
-        titleRow = stremioRow = null;
+        titleRow = stremioRow = radioRow = null;
         titleStatus = null;
         String q = q();
         if (q.isEmpty()) {
@@ -521,7 +582,7 @@ final class SearchPanel {
         l.add(new Object[]{"Control Center", "controls power sleep", "controls", (Runnable) () -> { close(); a.showControlCenter(); }});
         l.add(new Object[]{"Weather Forecast", "weather temperature rain", "refresh", (Runnable) () -> { close(); a.showWeather(); }});
         l.add(new Object[]{"Switch Profile", "profile user who", "controls", (Runnable) () -> { close(); a.showProfilePicker(false); }});
-        l.add(new Object[]{"Hume Settings", "settings launcher preferences", "gear", (Runnable) () -> {
+        l.add(new Object[]{"Korie Settings", "settings launcher preferences", "gear", (Runnable) () -> {
             a.returningFromSettings = true;
             a.startActivity(new Intent(a, SettingsActivity.class));
         }});
@@ -624,10 +685,10 @@ final class SearchPanel {
                 else failed = q;
                 if (g != gen) return;
                 if (res != null) fillTitles(res);
-                else titleStatus("Can’t reach the internet");
+                else titleStatus("Search failed");
             });
         });
-        if (Search.hasStremioApp(a) && !stremioCache.containsKey(key)) {
+        if (false && Search.hasStremioApp(a) && !stremioCache.containsKey(key)) {  // Korie: add-ons are the sources
             net.execute(() -> {
                 List<Search.Title> r;
                 try {
@@ -647,12 +708,33 @@ final class SearchPanel {
     void fillTitles(List<Search.Title> ts) {
         if (titleRow == null) return;
         if (ts.isEmpty()) {
-            titleStatus("No movies or shows found");
+            titleStatus(Addons.running().isEmpty() ? "Add-ons bring movies and shows here (Settings \u2192 Add-ons)" : "No movies or shows found");
             return;
         }
-        List<View> cards = new ArrayList<>();
-        for (Search.Title t : ts) cards.add(titleCard(t));
-        setItems(titleRow, cards);
+        // Korie: radio stations get their own row of square cards under Movies & TV.
+        List<View> cards = new ArrayList<>(), stations = new ArrayList<>();
+        for (Search.Title t : ts) {
+            if (t.type.equals("radio")) stations.add(radioCard(t));
+            else cards.add(titleCard(t));
+        }
+        if (cards.isEmpty() && !stations.isEmpty()) {
+            // Only stations matched: take the empty Movies & TV row (its heading and the row) away.
+            View hs = (View) titleRow.getParent();
+            int at = list.indexOfChild(hs);
+            if (at > 0) {
+                list.removeViewAt(at);
+                list.removeViewAt(at - 1);
+            }
+            titleRow = null;
+        } else if (cards.isEmpty()) {
+            titleStatus("No movies or shows found");
+        } else {
+            setItems(titleRow, cards);
+        }
+        if (!stations.isEmpty()) {
+            if (radioRow == null) radioRow = addRow("Radio", stations, a.dp(96 + 26));
+            else setItems(radioRow, stations);
+        }
         // Stremio-only titles may have arrived first; drop the ones JustWatch now lists.
         List<Search.Title> sh = stremioCache.get(q().toLowerCase());
         if (sh != null) fillStremio(sh);
@@ -733,6 +815,25 @@ final class SearchPanel {
                 Gravity.BOTTOM | Gravity.START));
         if (!t.poster.isEmpty()) load(poster, t.poster, w, fallback);
         View cell = cell(art, w, h, t.title + (t.year.isEmpty() ? "" : "  ·  " + t.year), a.dp(8));
+        cell.setOnClickListener(v -> showSheet(t, v));
+        return cell;
+    }
+
+    /** A radio station: its logo on a square card (the name when it has none). */
+    View radioCard(Search.Title t) {
+        int w = a.dp(96);
+        FrameLayout art = new FrameLayout(a);
+        art.setBackgroundColor(0x26FFFFFF);
+        TextView fallback = a.text(12, Ui.font(a, "semibold"), 0.85f);
+        fallback.setText(t.title);
+        fallback.setGravity(Gravity.CENTER);
+        fallback.setPadding(a.dp(6), 0, a.dp(6), 0);
+        art.addView(fallback, a.match());
+        ImageView logo = new ImageView(a);
+        logo.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        art.addView(logo, a.match());
+        if (!t.poster.isEmpty()) load(logo, t.poster, w, fallback);
+        View cell = cell(art, w, w, t.title, a.dp(8));
         cell.setOnClickListener(v -> showSheet(t, v));
         return cell;
     }
@@ -856,7 +957,7 @@ final class SearchPanel {
         col.addView(title, new LinearLayout.LayoutParams(a.dp(520), ViewGroup.LayoutParams.WRAP_CONTENT));
         List<String> meta = new ArrayList<>();
         if (!t.year.isEmpty()) meta.add(t.year);
-        meta.add(t.type.equals("tv") ? "Series" : "Movie");
+        meta.add(t.type.equals("tv") ? "Series" : t.type.equals("radio") ? "Radio" : "Movie");
         if (!t.genres.isEmpty()) meta.add(t.genres);
         if (t.rating > 0) meta.add(String.format(java.util.Locale.US, "IMDb %.1f", t.rating));
         TextView m = a.text(13, Ui.font(a, "medium"), 0.75f);
@@ -874,35 +975,209 @@ final class SearchPanel {
             olp.topMargin = a.dp(12);
             col.addView(o, olp);
         }
-        TextView how = a.text(13, Ui.font(a, "semibold"), 0.7f);
-        how.setText("HOW TO WATCH");
-        how.setLetterSpacing(0.06f);
-        LinearLayout.LayoutParams hlp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        hlp.topMargin = a.dp(22);
-        hlp.bottomMargin = a.dp(8);
-        col.addView(how, hlp);
-        List<View> buttons = new ArrayList<>();
-        for (Search.Offer o : t.offers) {
-            if (buttons.size() >= 5) break;
-            View b = offerButton(t, o);
-            LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(a.dp(380), a.dp(40));
-            blp.bottomMargin = a.dp(8);
-            col.addView(b, blp);
-            buttons.add(b);
-        }
-        if (buttons.isEmpty()) {
-            TextView none = a.text(14, Ui.font(a, "regular"), 0.7f);
-            none.setText("Not streaming in India right now.");
-            col.addView(none);
-        }
+        // Korie: what is under the summary comes from the add-ons that have this title.
+        LinearLayout box = new LinearLayout(a);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setClipChildren(false);
+        box.setClipToPadding(false);
+        LinearLayout.LayoutParams boxlp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        boxlp.topMargin = a.dp(14);
+        col.addView(box, boxlp);
         s.addView(col, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         layer.addView(s, a.match());
         sheet = s;
+        // The search screen stays underneath: keep the remote's focus on this page while it is open.
+        body.setDescendantFocusability(ViewGroup.FOCUS_BLOCK_DESCENDANTS);
         s.setAlpha(0f);
         s.animate().alpha(1f).setDuration(Motion.d(220)).start();
-        if (!buttons.isEmpty()) buttons.get(0).requestFocus();
-        else s.setFocusable(true);
-        if (buttons.isEmpty()) s.requestFocus();
+        s.setFocusable(true);
+        s.requestFocus();  // until the buttons arrive
+        if (t.offers.size() == 1) fillSource(t.offers.get(0), box, s);
+        else fillSources(t, box, s);
+    }
+
+    int sheetGen;
+    /** The search screen itself (typed text, keyboard, results), under any title page. */
+    ViewGroup body;
+
+    /** Several add-ons have the title: "How to Watch", one button per add-on. */
+    void fillSources(Search.Title t, LinearLayout box, FrameLayout s) {
+        box.removeAllViews();
+        box.addView(sheetLabel("HOW TO WATCH"));
+        View first = null;
+        int n = 0;
+        for (Search.Offer o : t.offers) {
+            if (n++ >= 5) break;
+            View b = pill("\u25B6  Watch in " + o.service, "", o.icon);
+            b.setOnClickListener(v -> fillSource(o, box, s));
+            box.addView(b, pillParams());
+            if (first == null) first = b;
+        }
+        if (first != null) first.requestFocus();
+    }
+
+    /** One add-on's part of the page: its buttons (Play, Resume…) and, for a series, a season button and the episodes. */
+    void fillSource(Search.Offer o, LinearLayout box, FrameLayout s) {
+        int g = ++sheetGen;
+        box.removeAllViews();
+        TextView wait = sheetLabel("Loading\u2026");
+        box.addView(wait);
+        net.execute(() -> {
+            Addons.Detail d = Addons.detail(o);
+            a.handler.post(() -> {
+                if (sheet != s || g != sheetGen || closed) return;
+                box.removeAllViews();
+                View first = null;
+                for (Addons.Button b : d.buttons) {
+                    View p = pill("\u25B6  " + b.label, b.sub, "");
+                    p.setOnClickListener(v -> Addons.act(o.addon, o.item, b.id));
+                    box.addView(p, pillParams());
+                    if (first == null) first = p;
+                }
+                if (!d.seasons.isEmpty()) {
+                    View seasonBtn = pill(d.seasons.get(0).name + (d.seasons.size() > 1 ? "  \u25BE" : ""), "", "");
+                    box.addView(seasonBtn, pillParams());
+                    LinearLayout row = episodeRow(box);
+                    seasonBtn.setOnClickListener(v -> {
+                        if (d.seasons.size() < 2) return;
+                        List<String> names = new ArrayList<>();
+                        List<Runnable> acts = new ArrayList<>();
+                        for (Addons.Season se : d.seasons) {
+                            names.add(se.name);
+                            acts.add(() -> {
+                                ((TextView) seasonBtn.getTag()).setText(se.name + "  \u25BE");
+                                loadEpisodes(o, se.id, row, s, seasonBtn);
+                            });
+                        }
+                        a.showMenu(seasonBtn, "Season", names, acts, -1);
+                    });
+                    loadEpisodes(o, d.seasons.get(0).id, row, s, seasonBtn);
+                    if (first == null) first = seasonBtn;
+                }
+                if (first != null) first.requestFocus();
+            });
+        });
+    }
+
+    TextView sheetLabel(String text) {
+        TextView how = a.text(13, Ui.font(a, "semibold"), 0.7f);
+        how.setText(text);
+        how.setLetterSpacing(0.06f);
+        how.setShadowLayer(0, 0, 0, 0);
+        how.setPadding(0, a.dp(8), 0, a.dp(8));
+        return how;
+    }
+
+    LinearLayout.LayoutParams pillParams() {
+        LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(a.dp(380), a.dp(40));
+        blp.bottomMargin = a.dp(8);
+        return blp;
+    }
+
+    /** The sideways row of episode cards, built like the rows of search results. */
+    LinearLayout episodeRow(LinearLayout box) {
+        HorizontalScrollView hs = new HorizontalScrollView(a);
+        hs.setHorizontalScrollBarEnabled(false);
+        hs.setOverScrollMode(View.OVER_SCROLL_NEVER);
+        hs.setClipToPadding(false);
+        hs.setClipChildren(false);
+        hs.setPadding(0, a.dp(10), a.dockOuter, a.dp(10));
+        LinearLayout row = new LinearLayout(a);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setClipChildren(false);
+        hs.addView(row);
+        box.addView(hs, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, a.dp(90 + 26 + 20)));
+        return row;
+    }
+
+    int episodeGen;
+
+    void loadEpisodes(Search.Offer o, String seasonId, LinearLayout row, FrameLayout s, View seasonBtn) {
+        int g = ++episodeGen;
+        row.removeAllViews();
+        net.execute(() -> {
+            List<Addons.Episode> eps = Addons.episodes(o, seasonId);
+            a.handler.post(() -> {
+                if (sheet != s || g != episodeGen || closed) return;
+                List<View> cards = new ArrayList<>();
+                for (Addons.Episode ep : eps) cards.add(episodeCard(o, ep));
+                if (cards.isEmpty()) {
+                    row.addView(sheetLabel("No episodes"));
+                    return;
+                }
+                setItems(row, cards);
+                // Focus hints for Android: Down from the season button starts at the first episode,
+                // Up from any episode returns to the season button.
+                if (seasonBtn.getId() == View.NO_ID) seasonBtn.setId(View.generateViewId());
+                seasonBtn.setNextFocusDownId(cards.get(0).getId());
+                for (View c : cards) c.setNextFocusUpId(seasonBtn.getId());
+            });
+        });
+    }
+
+    View episodeCard(Search.Offer o, Addons.Episode ep) {
+        int w = a.dp(160), h = a.dp(90);
+        FrameLayout art = new FrameLayout(a);
+        art.setBackgroundColor(0x26FFFFFF);
+        ImageView thumb = new ImageView(a);
+        thumb.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        art.addView(thumb, a.match());
+        TextView fallback = a.text(12, Ui.font(a, "semibold"), 0.85f);
+        fallback.setText(ep.title);
+        fallback.setGravity(Gravity.CENTER);
+        fallback.setPadding(a.dp(6), 0, a.dp(6), 0);
+        art.addView(fallback, a.match());
+        if (ep.progress > 0f) {  // watched so far, along the bottom edge
+            View bar = new View(a);
+            bar.setBackgroundColor(Color.WHITE);
+            art.addView(bar, new FrameLayout.LayoutParams(Math.max(1, (int) (w * Math.min(1f, ep.progress))), a.dp(3), Gravity.BOTTOM | Gravity.START));
+        }
+        if (!ep.thumb.isEmpty()) load(thumb, ep.thumb, w, fallback);
+        View cell = cell(art, w, h, ep.title, a.dp(8));
+        cell.setOnClickListener(v -> Addons.act(o.addon, ep.item, "play"));
+        return cell;
+    }
+
+    /** A white-on-focus capsule button, as "Open in …" was: text, a quieter note on the right, an optional icon. Its tag is the text view. */
+    View pill(String text, String note, String icon) {
+        LinearLayout b = new LinearLayout(a);
+        b.setOrientation(LinearLayout.HORIZONTAL);
+        b.setGravity(Gravity.CENTER_VERTICAL);
+        b.setFocusable(true);
+        b.setClickable(true);
+        b.setPadding(a.dp(icon.isEmpty() ? 16 : 8), 0, a.dp(16), 0);
+        GradientDrawable bg = new GradientDrawable();
+        bg.setCornerRadius(a.dp(20));
+        bg.setColor(0x33FFFFFF);
+        b.setBackground(bg);
+        if (!icon.isEmpty()) {
+            ImageView logo = new ImageView(a);
+            logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            round(logo, a.dp(6));
+            LinearLayout.LayoutParams llp = new LinearLayout.LayoutParams(a.dp(26), a.dp(26));
+            llp.rightMargin = a.dp(10);
+            b.addView(logo, llp);
+            load(logo, icon, a.dp(26), null);
+        }
+        TextView name = a.text(15, Ui.font(a, "semibold"), 1f);
+        name.setShadowLayer(0, 0, 0, 0);
+        name.setSingleLine(true);
+        name.setEllipsize(TextUtils.TruncateAt.END);
+        name.setText(text);
+        b.addView(name, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        TextView kind = a.text(12, Ui.font(a, "medium"), 0.7f);
+        kind.setShadowLayer(0, 0, 0, 0);
+        kind.setText(note);
+        b.addView(kind);
+        b.setTag(name);
+        b.setOnFocusChangeListener((v, has) -> {
+            bg.setColor(has ? Color.WHITE : 0x33FFFFFF);
+            name.setTextColor(has ? 0xFF111114 : Color.WHITE);
+            kind.setTextColor(has ? 0xFF111114 : Color.WHITE);
+            v.animate().scaleX(has ? 1.05f : 1f).scaleY(has ? 1.05f : 1f).setDuration(Motion.d(180)).setInterpolator(MainActivity.LIFT).start();
+        });
+        b.setPivotX(0);
+        return b;
     }
 
     /** [logo] Open in Prime Video ... Subscription, or Get JioHotstar for apps that aren't installed. */
@@ -959,6 +1234,7 @@ final class SearchPanel {
         sheet = null;
         if (s == null) return;
         s.animate().alpha(0f).setDuration(Motion.d(180)).withEndAction(() -> layer.removeView(s)).start();
+        body.setDescendantFocusability(ViewGroup.FOCUS_AFTER_DESCENDANTS);
         if (sheetReturn != null && sheetReturn.isAttachedToWindow()) sheetReturn.requestFocus();
         else firstKey().requestFocus();
     }
@@ -977,7 +1253,12 @@ final class SearchPanel {
             return true;
         }
         if (sheet != null) {
-            return k == KeyEvent.KEYCODE_DPAD_LEFT || k == KeyEvent.KEYCODE_DPAD_RIGHT;
+            // Korie: Left / Right move along a row of episode cards (Android's focus, as in the
+            // search rows); everywhere else on the page they do nothing, as before.
+            View sf = a.getCurrentFocus();
+            boolean inRow = sf != null && sf.getParent() instanceof LinearLayout
+                    && ((View) sf.getParent()).getParent() instanceof HorizontalScrollView;
+            return (k == KeyEvent.KEYCODE_DPAD_LEFT || k == KeyEvent.KEYCODE_DPAD_RIGHT) && !inRow;
         }
         if (k == KeyEvent.KEYCODE_DEL) {
             if (down) backspace();

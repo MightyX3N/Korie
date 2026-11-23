@@ -78,7 +78,7 @@ final class AppRows {
             try {
                 read(c, r);
             } catch (Exception e) {
-                android.util.Log.w("Hume", "app rows: " + e);
+                android.util.Log.w("Korie", "app rows: " + e);
             }
         }
         cache = r;

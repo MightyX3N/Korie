@@ -1,0 +1,27 @@
+{
+  "name": "Korie add-ons",
+  "addons": [
+    {
+      "id": "openfilms",
+      "name": "Open Films",
+      "version": "1.1",
+      "author": "Korie",
+      "description": "Two free films from the Blender Foundation (CC BY), streamed from download.blender.org and played in Korie's own player, with Resume. Also the smallest example of a Korie add-on.",
+      "uses": [
+        "internet"
+      ],
+      "file": "dist/openfilms.korie"
+    },
+    {
+      "id": "radio",
+      "name": "Radio",
+      "version": "1.0",
+      "author": "Korie",
+      "description": "Internet radio by country, from the free Radio Browser directory. Find a station in Search and it plays in the background, with the now-playing pill on Home.",
+      "uses": [
+        "internet"
+      ],
+      "file": "dist/radio.korie"
+    }
+  ]
+}

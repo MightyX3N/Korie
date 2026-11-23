@@ -89,7 +89,7 @@ final class Perms {
         // Once refused with "Don't ask again", Android answers without showing the prompt.
         if (p.getBoolean("asked_tv_listings", false) && !a.shouldShowRequestPermissionRationale(WatchNext.PERM)) {
             lastResort(a, "Continue Watching",
-                    "adb shell pm grant com.petrobot.hume android.permission.READ_TV_LISTINGS");
+                    "adb shell pm grant io.github.mightyx3n.korie android.permission.READ_TV_LISTINGS");
             return;
         }
         p.edit().putBoolean("asked_tv_listings", true).apply();
@@ -106,8 +106,8 @@ final class Perms {
         if (hasAccessibility(a)) return;
         Intent acc = accessibilityScreen(a);
         if (acc == null) {
-            lastResort(a, "Hume Launcher switch", "adb shell settings put secure enabled_accessibility_services "
-                    + "com.petrobot.hume/com.petrobot.hume.PowerService\n"
+            lastResort(a, "Korie switch", "adb shell settings put secure enabled_accessibility_services "
+                    + "io.github.mightyx3n.korie/com.petrobot.hume.PowerService\n"
                     + "adb shell settings put secure accessibility_enabled 1");
             return;
         }
@@ -116,10 +116,10 @@ final class Perms {
         String on = Settings.Secure.getString(a.getContentResolver(), Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES);
         boolean stale = on != null && on.contains(a.getPackageName() + "/");
         Clicks.dialog(a)
-                .setTitle(stale ? "Restart Hume\u2019s switch" : "Turn on Hume\u2019s switch")
+                .setTitle(stale ? "Restart Korie\u2019s switch" : "Turn on Korie\u2019s switch")
                 .setMessage(why + (stale
-                        ? "\n\nIt is on but Android has paused it. In the next screen, choose \u201cHume Launcher\u201d, turn it off, then on again."
-                        : "\n\nIn the next screen, choose \u201cHume Launcher\u201d and turn it on."))
+                        ? "\n\nIt is on but Android has paused it. In the next screen, choose \u201cKorie\u201d, turn it off, then on again."
+                        : "\n\nIn the next screen, choose \u201cKorie\u201d and turn it on."))
                 .setPositiveButton("Open Accessibility", (d, w) -> tryStart(a, acc))
                 .setNegativeButton("Cancel", null).show();
     }
@@ -143,8 +143,8 @@ final class Perms {
             Intent acc = accessibilityScreen(a);
             Clicks.dialog(a)
                     .setTitle("Turn on Power Off")
-                    .setMessage("In the next screen, choose \u201cHume Launcher\u201d and turn it on. "
-                            + "It lets Hume put the TV to sleep (and handle the Home button and Start with the TV).")
+                    .setMessage("In the next screen, choose \u201cKorie\u201d and turn it on. "
+                            + "It lets Korie put the TV to sleep (and handle the Home button and Start with the TV).")
                     .setPositiveButton("Open Accessibility", (d, w) -> tryStart(a, acc))
                     .setNegativeButton("Cancel", null).show();
             return;
@@ -152,10 +152,10 @@ final class Perms {
         Intent i = new Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN)
                 .putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, admin(a))
                 .putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION,
-                        "Lets Hume Launcher turn the screen off for Power Off and the Sleep Timer. It can't do anything else.");
+                        "Lets Korie turn the screen off for Power Off and the Sleep Timer. It can't do anything else.");
         if (tryStart(a, i)) return;
         lastResort(a, "Power Off & Sleep Timer",
-                "adb shell dpm set-active-admin com.petrobot.hume/.SleepReceiver\\$Admin");
+                "adb shell dpm set-active-admin io.github.mightyx3n.korie/com.petrobot.hume.SleepReceiver\\$Admin");
     }
 
     static void requestListener(Activity a) {
@@ -176,7 +176,7 @@ final class Perms {
         if (tryStart(a, new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))) return;
         if (tryStart(a, new Intent("android.settings.NOTIFICATION_POLICY_ACCESS_SETTINGS"))) return;
         lastResort(a, "Do Not Disturb",
-                "adb shell cmd notification allow_listener com.petrobot.hume/com.petrobot.hume.MediaWatchService");
+                "adb shell cmd notification allow_listener io.github.mightyx3n.korie/com.petrobot.hume.MediaWatchService");
     }
 
     /** Starts a system screen if the TV really has it (many TVs map settings actions to empty stubs). */
@@ -225,12 +225,12 @@ final class Perms {
         // TVs that keep their own launcher (Google TV): Hume can take over the Home button instead.
         if (accessibilityScreen(a) != null || hasAccessibility(a)) {
             PowerService.HomeButton.setEnabled(a, true);
-            requestAccessibility(a, "This TV doesn\u2019t let you choose another home app. With Hume\u2019s switch on, "
-                    + "Hume opens whenever the TV\u2019s own home screen appears, so the Home button brings you here.");
+            requestAccessibility(a, "This TV doesn\u2019t let you choose another home app. With Korie\u2019s switch on, "
+                    + "Korie opens whenever the TV\u2019s own home screen appears, so the Home button brings you here.");
             return;
         }
         lastResort(a, "Home screen",
-                "adb shell cmd package set-home-activity com.petrobot.hume/.MainActivity\n"
+                "adb shell cmd package set-home-activity io.github.mightyx3n.korie/com.petrobot.hume.MainActivity\n"
                         + "(on Google TV also: adb shell pm disable-user --user 0 com.google.android.tvlauncher)");
     }
 
