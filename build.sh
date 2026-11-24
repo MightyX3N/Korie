@@ -34,7 +34,7 @@ LIBPKGS="org.osmdroid.library:androidx.annotation.experimental:androidx.core:and
 "$BT/aapt2" link -o build/unsigned.apk -I "$JAR" --manifest AndroidManifest.xml \
     $LIBRES --auto-add-overlay --extra-packages "$LIBPKGS" --custom-package com.petrobot.hume \
     -A assets --java build/gen --min-sdk-version 24 --target-sdk-version 34 \
-    --version-code "${VERSION_CODE:-1}" --version-name "${VERSION_NAME:-1.0}" build/res.zip
+    --version-code "${VERSION_CODE:-$(sed -n 2p VERSION)}" --version-name "${VERSION_NAME:-$(sed -n 1p VERSION)}" build/res.zip
 
 LIBS=$(ls libs/*.jar libs/m3/*.jar | tr '\n' ':')
 javac -encoding UTF-8 --release 11 -classpath "$JAR:$LIBS" \
@@ -48,8 +48,9 @@ D8="$SDK/build-tools/36.0.0/d8"
 "$BT/zipalign" -f 4 build/unsigned.apk build/aligned.apk
 
 # Signing. Release builds: RELEASE_KEYSTORE + RELEASE_KEYSTORE_PASS (the private key lives in the
-# separate, private hume-launcher-signing repo). Development builds: a local debug key, created on
-# first use and never committed (it's in .gitignore).
+# separate, private hume-launcher-signing repo). Otherwise: debug.keystore in this folder, created on
+# first use and never committed (it's in .gitignore). Android only installs an update signed with the
+# same key as the installed app, so releases must always be built with the same debug.keystore.
 if [ -n "${RELEASE_KEYSTORE:-}" ]; then
     [ -n "${RELEASE_KEYSTORE_PASS:-}" ] || { echo "Set RELEASE_KEYSTORE_PASS for $RELEASE_KEYSTORE" >&2; exit 1; }
     "$BT/apksigner" sign --ks "$RELEASE_KEYSTORE" --ks-pass env:RELEASE_KEYSTORE_PASS \
@@ -63,7 +64,7 @@ else
     fi
     "$BT/apksigner" sign --ks "$KS" --ks-pass pass:android --key-pass pass:android \
         --out build/korie.apk build/aligned.apk
-    echo "Signed with the local debug key (development build)"
+    echo "Signed with debug.keystore"
 fi
 
 echo "Built build/korie.apk"

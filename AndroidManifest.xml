@@ -7,6 +7,9 @@
 
     <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Korie: updating itself from its GitHub releases (Android still asks before installing). -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" />
     <!-- Korie: finding .korie add-on files in the Download folder (asked for only when that is chosen). -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="29" />
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
@@ -136,6 +139,7 @@
             </intent-filter>
         </receiver>
         <receiver android:name="com.petrobot.hume.SleepReceiver" android:exported="false" />
+        <receiver android:name="com.petrobot.hume.UpdateReceiver" android:exported="false" />
         <service
             android:name="com.petrobot.hume.PowerService"
             android:exported="true"

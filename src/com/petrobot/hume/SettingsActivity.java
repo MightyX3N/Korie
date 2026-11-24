@@ -681,6 +681,8 @@ public class SettingsActivity extends Activity {
 
     void pageAbout() {
         row("Korie", () -> "Version " + version(), () -> { });
+        // Korie: updates of the app and the add-ons from the Korie repository on GitHub (see Updater).
+        row("Update", () -> Updater.state(this), () -> Updater.pressed(this, this::refreshAll));
         row("Based on", () -> "Hume Launcher by Petrobot", () -> { });
         row("Map", () -> MapShelf.ATTRIBUTION, () -> { });
         row("Weather", () -> Weather.sourceName(Weather.source(this)), () -> { });
