@@ -433,7 +433,7 @@ public class SetupActivity extends Activity {
 
     void profile() {
         title("Create Your Profile");
-        subtitle("Pick a name and an avatar. Each profile keeps its own apps, background and Home Screen; up to three people can have one.");
+        subtitle("Pick a name and an avatar. Each profile keeps its own apps, background and Home Screen; up to eight people can have one.");
         Profiles.Profile p = Profiles.current(this);
         LinearLayout l = list();
         Row name = row(l, "Name", null, ACTION, false, () -> { });  // its click is set below (needs the row)

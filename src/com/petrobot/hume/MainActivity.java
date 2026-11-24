@@ -4306,8 +4306,11 @@ public class MainActivity extends Activity {
         row.setGravity(Gravity.CENTER);
         row.setClipChildren(false);
         row.setClipToPadding(false);
-        profileAvatarSize = dp(120);
         List<Profiles.Profile> ps = Profiles.list(this);
+        // Korie: with more profiles the circles get smaller so the whole row fits the screen (no change to how it is navigated).
+        int count = ps.size() + (Profiles.canAdd(this) ? 1 : 0);
+        int room = (root.getWidth() > 0 ? root.getWidth() : Ui.screen(this).x) - dp(48);
+        profileAvatarSize = Math.max(dp(56), Math.min(dp(120), room / Math.max(1, count) - dp(64)));
         String cur = Profiles.current(this).id;
         List<View> cells = new ArrayList<>();
         for (Profiles.Profile p : ps) {

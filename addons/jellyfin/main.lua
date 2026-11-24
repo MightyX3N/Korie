@@ -183,6 +183,8 @@ local function try_without_password()
   return false
 end
 
+local offer_profiles  -- defined with the other profile code further down
+
 local function quick_connect()
   if call("GET", "/QuickConnect/Enabled", nil, nil, nil, false) ~= true then
     korie.ask{ title = "Quick Connect", message = "Quick Connect is turned off on this server. Sign in with a user name and password instead, or turn it on in the server's Dashboard." }
@@ -204,6 +206,7 @@ local function quick_connect()
     if type(state) == "table" and state.Authenticated then
       if signed_in(call("POST", "/Users/AuthenticateWithQuickConnect", nil, { Secret = qc.Secret }, nil, false)) then
         korie.toast("Jellyfin: signed in as " .. account().name)
+        offer_profiles()
       else
         korie.ask{ title = "Quick Connect", message = "The server did not accept the sign-in. Try again." }
       end
@@ -221,6 +224,7 @@ local function password_sign_in()
   local result, why = call("POST", "/Users/AuthenticateByName", nil, { Username = name, Pw = pw }, nil, false)
   if signed_in(result) then
     korie.toast("Jellyfin: signed in as " .. account().name)
+    offer_profiles()
   else
     korie.ask{ title = "Jellyfin", message = (why == "not signed in" or why == "the server answered 401") and "Wrong user name or password." or ("Could not sign in: " .. tostring(why)) }
   end
@@ -294,34 +298,77 @@ function buttons.account()
   end
 end
 
--- One Korie profile per Jellyfin user. Jellyfin only lists the users it shows on its sign-in screen.
+-- The server's users. Signed in, Jellyfin gives the whole list (GET /Users). Not signed in, it only
+-- gives the users shown on its sign-in screen (GET /Users/Public), and Jellyfin hides users from
+-- that screen unless the server's owner unticks it, so that list is usually empty.
+local function server_users()
+  local users, why
+  if account() then users, why = api("GET", "/Users", { isDisabled = "false" }) end
+  if type(users) ~= "table" then users, why = call("GET", "/Users/Public", nil, nil, nil, false) end
+  if type(users) ~= "table" then return nil, why end
+  return users
+end
+
+-- Jellyfin users that have no Korie profile yet (the signed-in user counts as this profile).
+local function users_without_profile(users)
+  local have, a = {}, account()
+  for _, p in ipairs(korie.profiles.list()) do have[p.name:lower()] = true end
+  if a then have[a.name:lower()] = true end
+  local out = {}
+  for _, u in ipairs(users) do
+    if u.Name and not have[u.Name:lower()] then out[#out + 1] = u.Name end
+  end
+  return out
+end
+
+local function make_profiles(names)
+  local made, full = {}, nil
+  for _, name in ipairs(names) do
+    local p, reason = korie.profiles.add(name)
+    if p then made[#made + 1] = name else full = reason; break end
+  end
+  return made, full
+end
+
+-- One Korie profile per Jellyfin user.
 function buttons.profiles()
   if not server() then
     korie.ask{ title = "Jellyfin", message = "Set the server first." }
     return
   end
-  local users, why = call("GET", "/Users/Public", nil, nil, nil, false)
-  if type(users) ~= "table" then
+  local users, why = server_users()
+  if not users then
     korie.ask{ title = "Profiles", message = "Could not get the users: " .. tostring(why) }
     return
   end
-  local have = {}
-  for _, p in ipairs(korie.profiles.list()) do have[p.name:lower()] = true end
-  local made, full = {}, nil
-  for _, u in ipairs(users) do
-    if u.Name and not have[u.Name:lower()] then
-      local p, reason = korie.profiles.add(u.Name)
-      if p then made[#made + 1] = u.Name else full = reason; break end
-    end
-  end
+  local missing = users_without_profile(users)
   local text
   if #users == 0 then
-    text = "The server shows no users on its sign-in screen (they are hidden there), so there is nothing to make profiles from."
-  elseif #made > 0 then
-    text = "Made: " .. table.concat(made, ", ") .. ".\n\nSwitch to a profile on Home, then sign it in here."
+    text = "The server gives no users before someone is signed in. Sign in first, then choose this again."
+  elseif #missing == 0 then
+    text = "Every Jellyfin user already has a profile."
   else
-    text = "Every Jellyfin user shown by the server already has a profile."
+    local made, full = make_profiles(missing)
+    text = (#made > 0 and ("Made: " .. table.concat(made, ", ") .. ".\n\nSwitch to a profile on Home, then sign it in here.") or "No profile could be made.")
+    if full then text = text .. "\n\nNot all users got one: " .. full .. "." end
   end
+  korie.ask{ title = "Profiles", message = text }
+end
+
+-- Straight after a sign-in: offer a profile for each of the server's other users.
+function offer_profiles()
+  local users = server_users()
+  if not users then return end
+  local missing = users_without_profile(users)
+  if #missing == 0 then return end
+  local pick = korie.ask{
+    title = "Profiles",
+    message = "This server also has: " .. table.concat(missing, ", ") .. ".\n\nMake a Korie profile for each of them?",
+    choices = { "Make profiles", "Not now" },
+  }
+  if pick ~= 1 then return end
+  local made, full = make_profiles(missing)
+  local text = #made > 0 and ("Made: " .. table.concat(made, ", ") .. ".\n\nSwitch to a profile on Home, then sign it in under Settings → Add-ons → Jellyfin.") or "No profile could be made."
   if full then text = text .. "\n\nNot all users got one: " .. full .. "." end
   korie.ask{ title = "Profiles", message = text }
 end

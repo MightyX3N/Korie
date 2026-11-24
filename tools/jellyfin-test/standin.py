@@ -16,7 +16,9 @@ VIDEO, PICTURE = sys.argv[1], sys.argv[2]
 PORT = int(sys.argv[3]) if len(sys.argv) > 3 else 8096
 TICKS = 10_000_000
 RUNTIME = 1200 * TICKS
-USERS = {"u-alice": {"Name": "Alice", "pw": ""}, "u-bob": {"Name": "Bob", "pw": "pw"}}
+USERS = {"u-alice": {"Name": "Alice", "pw": ""}, "u-bob": {"Name": "Bob", "pw": "pw"}, "u-carol": {"Name": "Carol", "pw": "c"},
+         "u-dave": {"Name": "Dave", "pw": "d"}, "u-eve": {"Name": "Eve", "pw": "e"}, "u-frank": {"Name": "Frank", "pw": "f"}}
+HIDDEN = True  # like a real server: users are hidden from the sign-in screen unless that is unticked
 TOKENS = {}      # token -> user id
 POSITION = {}    # (user, item) -> ticks
 PLAYED = set()   # (user, item)
@@ -87,7 +89,7 @@ class H(BaseHTTPRequestHandler):
     def do_GET(self):
         u = urlparse(self.path); p = u.path; q = {k: v[0] for k, v in parse_qs(u.query).items()}
         if p == "/System/Info/Public": return self.send(200, {"Id": "srv1", "ServerName": "Stand-in Jellyfin", "Version": "12.4.0"})
-        if p == "/Users/Public": return self.send(200, [{"Id": i, "Name": x["Name"], "HasPassword": x["pw"] != ""} for i, x in USERS.items()])
+        if p == "/Users/Public": return self.send(200, [] if HIDDEN else [{"Id": i, "Name": x["Name"], "HasPassword": x["pw"] != ""} for i, x in USERS.items()])
         if p == "/QuickConnect/Enabled": return self.send(200, True)
         if p == "/QuickConnect/Connect":
             if q.get("secret") not in QC: return self.send(404)
@@ -103,6 +105,7 @@ class H(BaseHTTPRequestHandler):
         user = self.user()
         if not user: return self.send(401)
         if q.get("userId") not in (None, user): return self.send(403)
+        if p == "/Users": return self.send(200, [{"Id": i, "Name": x["Name"], "HasPassword": x["pw"] != ""} for i, x in USERS.items()])
         if p == "/Items":
             items = [with_user(x, user) for x in MOVIES + [SERIES]]
             s = int(q.get("startIndex", 0)); n = int(q.get("limit", 100))
