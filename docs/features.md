@@ -379,7 +379,7 @@ repository: `update.json` (the newest version of the app) and `addons/index.json
 - **Add-ons** update by themselves when the list has a newer version. One that asks to use more
   than the installed version waits for the usual install question in Settings → Add-ons.
 - **The app** is offered, not installed by itself: Home says once that a version is available, and
-  the Update row shows it. OK on the row downloads the APK from the GitHub release and hands it to
+  the Update row shows it. OK on the row downloads the APK from the repository's `apk` branch and hands it to
   Android's installer, which asks before installing. The first time, Android also asks to allow
   Korie to install apps. On Android 12 and later, updates after the first need no question.
 

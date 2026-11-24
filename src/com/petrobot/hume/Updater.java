@@ -21,7 +21,7 @@ import java.util.Map;
 /**
  * Korie: updates from the Korie repository on GitHub. Once a day (and from Settings → About →
  * Update) Korie reads two small files there: update.json (the newest version of the app and where
- * its APK is, a GitHub release) and addons/index.json (the add-on list).
+ * its APK is, on the repository's "apk" branch) and addons/index.json (the add-on list).
  *
  * Add-ons are updated at once when the list has a newer version, as long as the new version uses
  * nothing more than the installed one; otherwise it waits for the usual install question. The app
