@@ -253,7 +253,7 @@ final class AddonUi {
         new Thread(() -> {
             List<Object> list;
             try {
-                Object parsed = AddonLua.parseJson(new String(fetch(STORE), StandardCharsets.UTF_8));
+                Object parsed = AddonLua.parseJson(new String(fetch(Updater.storeUrl(a)), StandardCharsets.UTF_8));
                 list = AddonLua.list(parsed instanceof Map ? AddonLua.map(parsed).get("addons") : parsed);
             } catch (Exception e) {
                 Addons.toast("Could not get the add-on list: " + AddonEngine.message(e));
@@ -272,7 +272,7 @@ final class AddonUi {
                 }
                 a.dialog("Add-on list").setItems(names, (d, w) -> {
                     String file = AddonLua.str(AddonLua.map(list.get(w)).get("file"), "");
-                    String url = file.startsWith("http") ? file : STORE.substring(0, STORE.lastIndexOf('/') + 1) + file;
+                    String url = file.startsWith("http") ? file : Updater.storeUrl(a).substring(0, Updater.storeUrl(a).lastIndexOf('/') + 1) + file;
                     install(a, () -> new ByteArrayInputStream(fetch(url)), () -> a.showAndFocus(SettingsActivity.ADDONS, "From the Korie add-on list"));
                 }).show();
             });

@@ -297,6 +297,14 @@ public class MainActivity extends Activity {
             }
             return;
         }
+        // Korie test hook: --es update_base <address ending in /> | default  (where update.json and the add-on list are read)
+        String ub = intent.getStringExtra("update_base");
+        if (ub != null) {
+            android.content.SharedPreferences.Editor ed = Updater.prefs(this).edit().remove("checked");
+            if (ub.equals("default")) ed.remove("base"); else ed.putString("base", ub);
+            ed.apply();
+            return;
+        }
         // adb hook for screenshots: am start -n com.petrobot.hume/.MainActivity --es panel cc|inputs|weather
         String panel = intent.getStringExtra("panel");
         if (panel != null) {
@@ -360,6 +368,7 @@ public class MainActivity extends Activity {
         returningFromSettings = false;
         applyMap();
         loadHero();
+        Updater.auto(this);  // Korie: a quiet check for updates once a day
         handler.post(this::touchHome);
         if (launchOverlay != null) finishLaunchReturn();
         // Setup not finished (e.g. Home was pressed during it): pick it up again.
