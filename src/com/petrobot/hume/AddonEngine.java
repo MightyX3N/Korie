@@ -190,7 +190,10 @@ final class AddonEngine implements AddonLua.Host {
                 Playback.playAudio(app, r);
             } else {
                 PlayerActivity.next = r;
-                app.startActivity(new Intent(app, PlayerActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+                // A player that is open (on to the next episode) takes this over in place; otherwise a new one opens.
+                PlayerActivity open = PlayerActivity.open;
+                if (open != null && !open.isFinishing() && !open.isDestroyed()) open.takeOver();
+                else app.startActivity(new Intent(app, PlayerActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
             }
         });
         return true;

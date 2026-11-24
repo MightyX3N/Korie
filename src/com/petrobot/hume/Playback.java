@@ -31,6 +31,17 @@ final class Playback {
         boolean audio;
         Object ref;
         Map<String, String> headers = new LinkedHashMap<>();
+        /** Parts that can be skipped: {type, start, end} in seconds; type is intro, recap or credits. */
+        java.util.List<Segment> segments = new java.util.ArrayList<>();
+        /** What comes after this (the next episode): its name for the button, or "" when there is nothing. */
+        String next = "";
+        /** Start what comes next by itself when this ends. */
+        boolean autoNext;
+    }
+
+    static final class Segment {
+        String type = "";
+        double start, end;
     }
 
     static Request request(String addon, Map<String, Object> m) {
@@ -43,6 +54,17 @@ final class Playback {
         r.start = AddonLua.num(m.get("start"), 0);
         r.audio = AddonLua.bool(m.get("audio"), false);
         r.ref = m.get("ref");
+        for (Object o : AddonLua.list(m.get("segments"))) {
+            Map<String, Object> sm = AddonLua.map(o);
+            Segment sg = new Segment();
+            sg.type = AddonLua.str(sm.get("type"), "");
+            sg.start = AddonLua.num(sm.get("start"), 0);
+            sg.end = AddonLua.num(sm.get("end"), 0);
+            if (sg.end > sg.start) r.segments.add(sg);
+        }
+        Object nx = m.get("next");
+        if (nx != null) r.next = nx instanceof Map ? AddonLua.str(AddonLua.map(nx).get("title"), "Next") : AddonLua.str(nx, "");
+        r.autoNext = AddonLua.bool(m.get("autonext"), false);
         for (Map.Entry<String, Object> h : AddonLua.map(m.get("headers")).entrySet()) r.headers.put(h.getKey(), AddonLua.str(h.getValue(), ""));
         return r;
     }

@@ -22,12 +22,32 @@ korie.on("action", function(item, button)
   korie.log("ACTION " .. tostring(item.id) .. " " .. tostring(button))
   if item.id == "a1" then
     korie.play({ url = korie.addon.dir .. "/tone.wav", title = "Fixture Radio", audio = true, ref = "a1" })
+  elseif tostring(item.id):match("^s%de%d+$") then
+    play_episode(item.id)
   else
     korie.play({ url = korie.addon.dir .. "/test.mp4", title = item.title, start = (button == "resume") and 20 or 0, ref = item.id })
   end
 end)
+-- Episodes: an intro at 0:05-5:00 and credits from 5:10, to try Skip Intro and Next Episode.
+-- Episode 2 starts 12 seconds before its end, to try the next one starting by itself.
+function play_episode(id)
+  local season, n = id:match("^s(%d)e(%d+)$")
+  n = tonumber(n)
+  korie.play({
+    url = korie.addon.dir .. "/test.mp4", title = "Fixture Series", subtitle = "S" .. season .. " E" .. n,
+    start = (n == 2) and 1188 or 0,
+    segments = { { type = "intro", start = 5, ["end"] = 300 }, { type = "credits", start = 310, ["end"] = 1200 } },
+    next = (n < 3) and { title = "S" .. season .. " E" .. (n + 1) } or nil,
+    autonext = true,
+    ref = { id = id, next = (n < 3) and ("s" .. season .. "e" .. (n + 1)) or nil },
+  })
+end
+korie.on("next", function(ref)
+  korie.log("NEXT " .. tostring(ref.next))
+  if ref.next then play_episode(ref.next) end
+end)
 korie.on("playback", function(ref, info)
-  korie.log("PLAYBACK " .. tostring(ref) .. " " .. info.state .. " " .. string.format("%.0f/%.0f", info.position, info.duration))
+  korie.log("PLAYBACK " .. tostring(type(ref) == "table" and ref.id or ref) .. " " .. info.state .. " " .. string.format("%.0f/%.0f", info.position, info.duration))
 end)
 korie.on("home", function()
   return { { id = "m1", type = "movie", title = "Fixture Movie", year = 2020, overview = "From the test add-on.", backdrop = korie.addon.dir and (korie.addon.dir .. "/bd.jpg") or "" } }

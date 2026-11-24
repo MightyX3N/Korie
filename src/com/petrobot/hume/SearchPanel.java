@@ -241,6 +241,7 @@ final class SearchPanel {
     boolean libraryDirty;
 
     void libraryChanged() {
+        refreshSheet();
         if (library == null) return;
         if (sheet != null) libraryDirty = true;
         else renderLibrary();
@@ -1099,6 +1100,9 @@ final class SearchPanel {
         s.animate().alpha(1f).setDuration(Motion.d(220)).start();
         s.setFocusable(true);
         s.requestFocus();  // until the buttons arrive
+        sheetOffer = null;
+        sheetBox = null;
+        sheetRow = null;
         if (t.offers.size() == 1) fillSource(t.offers.get(0), box, s);
         else fillSources(t, box, s);
     }
@@ -1123,17 +1127,52 @@ final class SearchPanel {
         if (first != null) first.requestFocus();
     }
 
+    // Korie: what the open title page shows, so it can be brought up to date after something was watched.
+    Search.Offer sheetOffer;
+    LinearLayout sheetBox, sheetRow;
+    String sheetSeason = "";
+
+    /**
+     * Home came back to the front (from the player): the page's Resume button, minutes left and the
+     * episodes' progress are fetched again. The focus stays where it was: the same button, the season
+     * button, or the same episode.
+     */
+    void refreshSheet() {
+        FrameLayout s = sheet;
+        if (s == null || sheetOffer == null || sheetBox == null) return;
+        View f = a.getCurrentFocus();
+        int kind = 0, index = 0;  // 0: a button of the page (by its place), 1: an episode (by its place in the row)
+        if (f != null && sheetRow != null && f.getParent() == sheetRow) {
+            kind = 1;
+            index = sheetRow.indexOfChild(f);
+        } else if (f != null && f.getParent() == sheetBox) {
+            index = sheetBox.indexOfChild(f);
+        }
+        fillSource(sheetOffer, sheetBox, s, true, sheetSeason, kind, index);
+    }
+
     /** One add-on's part of the page: its buttons (Play, Resume…) and, for a series, a season button and the episodes. */
     void fillSource(Search.Offer o, LinearLayout box, FrameLayout s) {
+        fillSource(o, box, s, false, "", 0, 0);
+    }
+
+    void fillSource(Search.Offer o, LinearLayout box, FrameLayout s, boolean refresh, String season, int focusKind, int focusIndex) {
         int g = ++sheetGen;
-        box.removeAllViews();
-        TextView wait = sheetLabel("Loading\u2026");
-        box.addView(wait);
+        sheetOffer = o;
+        sheetBox = box;
+        if (!refresh) {  // a refresh keeps the page as it is until the new answer is here
+            sheetRow = null;
+            sheetSeason = "";
+            box.removeAllViews();
+            TextView wait = sheetLabel("Loading\u2026");
+            box.addView(wait);
+        }
         net.execute(() -> {
             Addons.Detail d = Addons.detail(o);
             a.handler.post(() -> {
                 if (sheet != s || g != sheetGen || closed) return;
                 box.removeAllViews();
+                sheetRow = null;
                 View first = null;
                 for (Addons.Button b : d.buttons) {
                     View p = pill("\u25B6  " + b.label, b.sub, "");
@@ -1142,9 +1181,13 @@ final class SearchPanel {
                     if (first == null) first = p;
                 }
                 if (!d.seasons.isEmpty()) {
-                    View seasonBtn = pill(d.seasons.get(0).name + (d.seasons.size() > 1 ? "  \u25BE" : ""), "", "");
+                    Addons.Season shown = d.seasons.get(0);
+                    for (Addons.Season se : d.seasons) if (refresh && se.id.equals(season)) shown = se;
+                    View seasonBtn = pill(shown.name + (d.seasons.size() > 1 ? "  \u25BE" : ""), "", "");
                     box.addView(seasonBtn, pillParams());
                     LinearLayout row = episodeRow(box);
+                    sheetRow = row;
+                    sheetSeason = shown.id;
                     seasonBtn.setOnClickListener(v -> {
                         if (d.seasons.size() < 2) return;
                         List<String> names = new ArrayList<>();
@@ -1153,15 +1196,20 @@ final class SearchPanel {
                             names.add(se.name);
                             acts.add(() -> {
                                 ((TextView) seasonBtn.getTag()).setText(se.name + "  \u25BE");
-                                loadEpisodes(o, se.id, row, s, seasonBtn);
+                                sheetSeason = se.id;
+                                loadEpisodes(o, se.id, row, s, seasonBtn, -1);
                             });
                         }
                         a.showMenu(seasonBtn, "Season", names, acts, -1);
                     });
-                    loadEpisodes(o, d.seasons.get(0).id, row, s, seasonBtn);
+                    loadEpisodes(o, shown.id, row, s, seasonBtn, refresh && focusKind == 1 ? focusIndex : -1);
                     if (first == null) first = seasonBtn;
                 }
-                if (first != null) first.requestFocus();
+                if (refresh && focusKind == 0 && focusIndex >= 0 && focusIndex < box.getChildCount() && box.getChildAt(focusIndex).isFocusable()) {
+                    first = box.getChildAt(focusIndex);
+                }
+                if (first != null && !(refresh && focusKind == 1)) first.requestFocus();
+                else if (first != null && a.getCurrentFocus() == null) first.requestFocus();  // until the episodes are back
             });
         });
     }
@@ -1199,7 +1247,7 @@ final class SearchPanel {
 
     int episodeGen;
 
-    void loadEpisodes(Search.Offer o, String seasonId, LinearLayout row, FrameLayout s, View seasonBtn) {
+    void loadEpisodes(Search.Offer o, String seasonId, LinearLayout row, FrameLayout s, View seasonBtn, int focusAt) {
         int g = ++episodeGen;
         row.removeAllViews();
         net.execute(() -> {
@@ -1218,6 +1266,7 @@ final class SearchPanel {
                 if (seasonBtn.getId() == View.NO_ID) seasonBtn.setId(View.generateViewId());
                 seasonBtn.setNextFocusDownId(cards.get(0).getId());
                 for (View c : cards) c.setNextFocusUpId(seasonBtn.getId());
+                if (focusAt >= 0) cards.get(Math.min(focusAt, cards.size() - 1)).requestFocus();  // a refresh: back on the same episode
             });
         });
     }
