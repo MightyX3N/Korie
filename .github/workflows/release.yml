@@ -1,0 +1,35 @@
+# Builds Korie and publishes it as a GitHub release whenever the VERSION file changes on main.
+# The signing key is the repository secret KORIE_KEYSTORE_B64 (the keystore file, base64).
+name: Release
+on:
+  push:
+    branches: [main]
+    paths: [VERSION]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: Android SDK parts
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "build-tools;34.0.0" "build-tools;36.0.0" "platforms;android-34" > /dev/null
+      - name: Signing key
+        env:
+          KEY: ${{ secrets.KORIE_KEYSTORE_B64 }}
+        run: |
+          [ -n "$KEY" ] || { echo "Add the repository secret KORIE_KEYSTORE_B64 first." >&2; exit 1; }
+          echo "$KEY" | base64 -d > debug.keystore
+      - name: Build
+        run: ./build.sh
+      - name: Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          V=$(sed -n 1p VERSION)
+          gh release create "v$V" build/korie.apk --title "Korie $V" --notes "Korie $V"
