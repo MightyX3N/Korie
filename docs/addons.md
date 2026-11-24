@@ -58,10 +58,12 @@ Register a function for each question the add-on can answer: `korie.on(name, fn)
 |---|---|---|
 | `catalog` | | The add-on's **whole list** of items. Korie saves it on the device, searches it there (instantly, and without internet) and refreshes it every 6 hours. Use this when the list can be fetched whole. |
 | `search` | text | Items for that text. For sources too big to list; asked on every search, after typing pauses. Not asked when the add-on answers `catalog`. |
-| `home` | | Up to 8 items for the carousel; each needs a `backdrop`. |
+| `home` | | Up to 8 items for the carousel; each needs a `backdrop`. An item that was started can carry `progress` (0 to 1) and `remaining` (minutes): the carousel then says "18 min left" and its button reads Resume. |
 | `detail` | item | `{ buttons = { {id, label, sub} }, seasons = { {id, name} } }` — what the title's page shows for this add-on. A film gives buttons (Play; Resume with `sub = "42 min left"`); a series gives seasons. Without a `detail` function there is one Play button. |
 | `episodes` | item, season id | `{ {id, title, thumb, overview, progress} }` for the row of episodes. |
 | `playback` | ref, info | Korie's player reports on what `korie.play` started: `info = {state, position, duration}` in seconds; `state` is `"playing"` (every 10 seconds), `"paused"`, `"stopped"` (the viewer left) or `"ended"`. Save the position, or pass it on to a server. |
+| `button` | key | A settings row of type `action` was pressed (see Settings). |
+| `profile` | profile | Home switched to another profile: `{id, name}`. Add-ons that keep one sign-in per profile follow it. |
 | `action` | item, button id | A button was chosen — or an episode, which arrives as the item with the button id `"play"`. Do it: `korie.play{...}`, `korie.open{...}`. |
 
 An **item** is a table. Korie reads these fields and hands the whole table back unchanged, so keep
@@ -86,6 +88,9 @@ Answers must come within 8 seconds (`catalog`: 60).
 | `korie.play{url=, title=, start=, audio=, mime=, headers=, ref=}` | Plays in Korie's own player. Video opens the player screen (`start` in seconds). `audio = true` plays sound in the background and shows the now-playing pill on Home. `ref` is any value; it comes back with every `playback` report. |
 | `korie.stop()` | Stops background sound. |
 | `korie.open{...}` / `korie.apps.list()` / `korie.apps.open(pkg)` | Opens a link or an app. |
+| `korie.ask{title=, message=, choices={...}, input="text" or "password", value=}` | A question on screen, in a system dialog that works with a remote and by touch. Waits for the answer and returns the number of the chosen entry, the typed text, `true` for a plain message, or `nil` when cancelled. With a `message`, up to three `choices` become the dialog's buttons. |
+| `korie.net.broadcast(port, message, seconds)` | Sends one UDP message to everything on the local network and returns the answers as `{ {address, text} }`: how a server on the home network is found without typing its address. Needs `internet`. |
+| `korie.profile()` · `korie.profiles.list()` · `korie.profiles.add(name)` | The current Korie profile `{id, name}` · all of them · make one (returns it, or `nil` and the reason when Korie is full). |
 | `korie.toast(text)` · `korie.log(...)` | A short message on screen · a line in the add-on's log (`adb logcat -s KorieAddon`). |
 | `korie.timer(seconds, fn, repeat)` / `korie.cancel(id)` | Timers. |
 | `korie.device()` | `{tv, touch, android, model, language, korie}` |
@@ -99,3 +104,11 @@ Each add-on runs on its own thread with the Lua standard library (no `io`, `os.e
 
 `bash tools/addon-test/run.sh` runs the add-ons' Lua on the computer with a fake Korie and checks
 what they answer.
+
+## Settings of type `action`
+
+`{ "key": "account", "title": "Signed in as", "type": "action" }` is a row that does something
+instead of holding a value. Pressing it calls the add-on's `button` handler with the key; the
+add-on asks what it needs with `korie.ask`. Whatever the add-on puts there with
+`korie.set_setting(key, text)` is shown beside the title ("Signed in as:  Bob"). The Jellyfin
+add-on is the example: finding the server, signing in and making profiles are all `action` rows.

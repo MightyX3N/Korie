@@ -27,6 +27,7 @@ Everything Hume does is still there: **[docs/features.md](docs/features.md)**.
 
 | Add-on | What it does |
 |---|---|
+| [Jellyfin](addons/jellyfin) | Films and series from your own Jellyfin server: finds it on the network, Quick Connect or password, one sign-in per profile, Continue Watching from the server |
 | [Radio](addons/radio) | Stations of a chosen country from Radio Browser; can start the last station with Korie |
 | [Open Films](addons/openfilms) | Two open films from the Blender Foundation, as the smallest example |
 

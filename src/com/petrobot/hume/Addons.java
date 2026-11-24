@@ -56,6 +56,8 @@ final class Addons {
     static synchronized void init(Context c) {
         if (app != null) return;
         app = c.getApplicationContext();
+        if (app instanceof android.app.Application) watchScreens((android.app.Application) app);
+        if (c instanceof android.app.Activity) front = new java.lang.ref.WeakReference<>((android.app.Activity) c);
         for (AddonPack p : installed(app)) if (enabled(app, p.id)) start(p);
     }
 
@@ -153,6 +155,113 @@ final class Addons {
         return new File(new File(c.getFilesDir(), "addon-data"), id);
     }
 
+    // ------------------------------------------------------------------ profiles and questions
+
+    static Map<String, Object> profile(Context c, Profiles.Profile p) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("id", p.id);
+        m.put("name", p.name);
+        m.put("current", p.id.equals(Profiles.current(c).id));
+        return m;
+    }
+
+    /** Home switched to another profile: add-ons that keep one sign-in per profile follow it. */
+    static void profileChanged(Context c) {
+        Map<String, Object> m = profile(c, Profiles.current(c));
+        for (AddonEngine e : running()) e.fire("profile", m);
+        changed();
+    }
+
+    /** The screen in front, for an add-on's question. */
+    static volatile java.lang.ref.WeakReference<android.app.Activity> front = new java.lang.ref.WeakReference<>(null);
+
+    static void watchScreens(android.app.Application a) {
+        a.registerActivityLifecycleCallbacks(new android.app.Application.ActivityLifecycleCallbacks() {
+            @Override public void onActivityResumed(android.app.Activity x) { front = new java.lang.ref.WeakReference<>(x); }
+            @Override public void onActivityPaused(android.app.Activity x) { if (front.get() == x) front = new java.lang.ref.WeakReference<>(null); }
+            @Override public void onActivityCreated(android.app.Activity x, android.os.Bundle b) { }
+            @Override public void onActivityStarted(android.app.Activity x) { }
+            @Override public void onActivityStopped(android.app.Activity x) { }
+            @Override public void onActivitySaveInstanceState(android.app.Activity x, android.os.Bundle b) { }
+            @Override public void onActivityDestroyed(android.app.Activity x) { }
+        });
+    }
+
+    /**
+     * korie.ask{title=, message=, choices={...}, input="text"|"password", value=}: a system dialog
+     * (the kind Settings uses, which works with a remote and by touch). Returns the number of the
+     * chosen entry, the typed text, true for a plain message, or nil when it was cancelled or no
+     * screen of Korie is in front. Must not be called on the UI thread.
+     */
+    static Object ask(AddonEngine e, Map<String, Object> q) {
+        final Object[] answer = {null};
+        final java.util.concurrent.CountDownLatch done = new java.util.concurrent.CountDownLatch(1);
+        ui.post(() -> {
+            android.app.Activity a = front.get();
+            if (a == null || a.isFinishing()) {
+                done.countDown();
+                return;
+            }
+            android.app.AlertDialog.Builder b = Clicks.dialog(a).setTitle(AddonLua.str(q.get("title"), e.pack.name));
+            String message = AddonLua.str(q.get("message"), "");
+            List<Object> choices = AddonLua.list(q.get("choices"));
+            String input = AddonLua.str(q.get("input"), "");
+            if (!choices.isEmpty()) {
+                String[] labels = new String[choices.size()];
+                for (int i = 0; i < labels.length; i++) labels[i] = AddonLua.str(choices.get(i), "");
+                if (message.isEmpty()) {
+                    b.setItems(labels, (d, w) -> answer[0] = (double) (w + 1));
+                } else {  // a message and a list don't fit one dialog: up to three choices become its buttons
+                    b.setMessage(message);
+                    b.setPositiveButton(labels[0], (d, w) -> answer[0] = 1d);
+                    if (labels.length > 1) b.setNegativeButton(labels[1], (d, w) -> answer[0] = 2d);
+                    if (labels.length > 2) b.setNeutralButton(labels[2], (d, w) -> answer[0] = 3d);
+                }
+            } else if (!input.isEmpty()) {
+                android.widget.EditText in = new android.widget.EditText(a);
+                in.setSingleLine(true);
+                if (input.equals("password")) in.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);
+                else in.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+                in.setText(AddonLua.str(q.get("value"), ""));
+                if (!message.isEmpty()) b.setMessage(message);
+                android.widget.FrameLayout box = new android.widget.FrameLayout(a);  // the field lines up with the dialog's text
+                int pad = Ui.px(a, 20);
+                box.setPadding(pad, 0, pad, 0);
+                box.addView(in);
+                b.setView(box);
+                b.setPositiveButton("OK", (d, w) -> answer[0] = in.getText().toString());
+                b.setNegativeButton("Cancel", null);
+            } else {
+                b.setMessage(message);
+                b.setPositiveButton("OK", (d, w) -> answer[0] = Boolean.TRUE);
+            }
+            try {
+                android.app.AlertDialog d = b.create();
+                d.setOnDismissListener(x -> done.countDown());
+                d.show();
+            } catch (Exception ex) {
+                done.countDown();
+            }
+        });
+        try {
+            while (!done.await(1, java.util.concurrent.TimeUnit.SECONDS)) if (!e.running) return null;
+        } catch (InterruptedException ex) {
+            return null;
+        }
+        return answer[0];
+    }
+
+    /** Home sets this: something the carousel is made from changed (an add-on started, its list arrived, the profile switched). */
+    static volatile Runnable onChanged;
+
+    static void changed() {
+        version++;
+        ui.post(() -> {
+            Runnable r = onChanged;
+            if (r != null) r.run();
+        });
+    }
+
     static void toast(String s) {
         if (app != null) ui.post(() -> Toast.makeText(app, s, Toast.LENGTH_LONG).show());
     }
@@ -184,7 +293,7 @@ final class Addons {
         if (!catalogs.containsKey(e.pack.id) && f.exists()) {
             try (InputStream in = new FileInputStream(f)) {
                 catalogs.put(e.pack.id, AddonLua.list(AddonLua.parseJson(new String(AddonPack.readAll(in), StandardCharsets.UTF_8))));
-                version++;
+                changed();
             } catch (Exception ex) {
                 android.util.Log.w("KorieAddon", e.pack.id + " catalog: " + ex);
             }
@@ -212,7 +321,7 @@ final class Addons {
         } catch (Exception ex) {
             android.util.Log.w("KorieAddon", e.pack.id + " catalog: " + ex);
         }
-        version++;
+        changed();
     }
 
     // ------------------------------------------------------------------ search
@@ -385,6 +494,8 @@ final class Addons {
                 if (it.year.endsWith(".0")) it.year = it.year.substring(0, it.year.length() - 2);
                 it.genres = AddonLua.str(m.get("genres"), "");
                 it.rating = AddonLua.num(m.get("rating"), 0);
+                it.progress = (float) AddonLua.num(m.get("progress"), -1);  // 0..1: shown as Resume with a bar
+                it.remainingMin = (int) AddonLua.num(m.get("remaining"), -1);  // minutes left
                 it.addon = e.pack.id;
                 it.addonItem = m;
                 out.add(it);

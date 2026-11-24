@@ -57,7 +57,8 @@ public final class AddonLua {
         "store.get", "store.set", "store.remove",
         "setting", "set_setting",
         "apps.list", "apps.open", "open", "play", "stop",
-        "toast", "timer", "cancel", "on", "device", "log", "refresh"
+        "toast", "timer", "cancel", "on", "device", "log", "refresh",
+        "ask", "net.broadcast", "profile", "profiles.list", "profiles.add"
     };
 
     public final Globals globals;

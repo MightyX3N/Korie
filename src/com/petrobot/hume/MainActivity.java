@@ -203,6 +203,9 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle b) {
         super.onCreate(b);
         WatchNext.init(this);  // Korie: is there a TV provider at all?
+        Addons.onChanged = () -> {  // Korie: an add-on started, or its list arrived: the carousel follows
+            if (resumed && !isFinishing()) loadHero();
+        };
         Addons.init(this);
         // The wallpaper/artwork always covers the screen: skip the window's own full-screen fill
         // (this Mali-450 GPU is fill-rate bound, so every hidden full-screen layer costs frames).
@@ -1979,10 +1982,14 @@ public class MainActivity extends Activity {
         meta.add(it.type.equals("tv") ? "Series" : "Movie");
         if (!it.genres.isEmpty()) meta.add(it.genres);
         if (it.rating > 0) meta.add(String.format(java.util.Locale.US, "\u2605 %.1f", it.rating));
+        // Korie: an add-on's title that was started (Continue Watching from its server) says how much is left.
+        if (!it.addon.isEmpty() && it.remainingMin > 0) meta.add(it.remainingMin >= 60
+                ? (it.remainingMin / 60) + " h " + (it.remainingMin % 60) + " min left" : it.remainingMin + " min left");
         heroMeta.setText(String.join("  \u00B7  ", meta));
         heroOverview.setText(it.overview);
         Suggestions.Provider p = it.provider(this);
-        heroBtnText.setText(p != null && !Suggestions.installed(this, p.pkg) ? "Get" : "\u25B6  Open");
+        heroBtnText.setText(!it.addon.isEmpty() ? (it.remainingMin > 0 ? "\u25B6  Resume" : "\u25B6  Play")
+                : p != null && !Suggestions.installed(this, p.pkg) ? "Get" : "\u25B6  Open");
         int icon = p == null ? 0 : getResources().getIdentifier("provider_" + p.jwShort, "drawable", getPackageName());
         heroProvider.setImageResource(icon);
         heroProvider.setVisibility(icon == 0 ? View.GONE : View.VISIBLE);
@@ -4735,6 +4742,7 @@ public class MainActivity extends Activity {
             return;
         }
         Profiles.setCurrent(this, id);
+        Addons.profileChanged(this);  // Korie
         prefs = Profiles.homePrefs(this);
         refreshAvatar();
         wallStyle = prefs.getString("wallpaper", "aurora");
