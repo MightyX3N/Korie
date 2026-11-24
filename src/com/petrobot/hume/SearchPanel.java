@@ -95,8 +95,16 @@ final class SearchPanel {
     TextView titleStatus;
     boolean closed;
 
+    /** Korie: null for Search; "movie" or "tv" for the library screen behind the Movies and Series tiles. */
+    final String library;
+
     SearchPanel(MainActivity a) {
+        this(a, null);
+    }
+
+    SearchPanel(MainActivity a, String library) {
         this.a = a;
+        this.library = library;
         apps = Search.apps(a, a.all);
         voice = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).resolveActivity(a.getPackageManager()) != null;
         live = SpeechRecognizer.isRecognitionAvailable(a);
@@ -118,7 +126,7 @@ final class SearchPanel {
         head.setGravity(Gravity.CENTER_VERTICAL);
         head.setClipChildren(false);
         head.setPadding(a.dockOuter, a.dp(Ui.touchDevice(a) ? 54 : 30), a.dockOuter, 0);  // Korie: room for the Back button on touch devices
-        if (voice || live) {
+        if ((voice || live) && library == null) {
             mic = new ImageView(a);
             mic.setId(View.generateViewId());
             mic.setScaleType(ImageView.ScaleType.CENTER);
@@ -141,7 +149,7 @@ final class SearchPanel {
         queryView.setSingleLine(true);
         queryView.setEllipsize(TextUtils.TruncateAt.START);
         head.addView(queryView, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        if (Ui.touchDevice(a)) addSystemKeyboard(head);
+        if (Ui.touchDevice(a) && library == null) addSystemKeyboard(head);
         col.addView(head, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         keyScroll = new HorizontalScrollView(a);
@@ -157,6 +165,7 @@ final class SearchPanel {
         LinearLayout.LayoutParams klp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, a.dp(50));
         klp.topMargin = a.dp(10);
         col.addView(keyScroll, klp);
+        if (library != null) keyScroll.setVisibility(View.GONE);  // the library has no keyboard: only its rows
 
         results = new ScrollView(a);
         results.setVerticalScrollBarEnabled(false);
@@ -169,10 +178,104 @@ final class SearchPanel {
         list.setClipChildren(false);
         results.addView(list, new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         col.addView(results, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+        if (library != null) {
+            // Rows scrolled up must not draw over the "Movies" heading: cut them at the list's own top edge,
+            // with enough room above the first row for a focused card to grow.
+            results.setClipChildren(true);
+            results.setClipToPadding(true);
+            results.setPadding(0, a.dp(6), 0, 0);
+            list.setPadding(0, 0, 0, a.dp(40));
+        }
 
         buildKeys(null);
         showQuery();
+        if (library != null) queryView.setText(library.equals("movie") ? "Movies" : "Series");
         render();
+    }
+
+    // ---------------------------------------------------------------- library (Korie)
+
+    /** Rows of the add-ons' titles: Continue Watching, Recently Added, everything, then by genre. */
+    void renderLibrary() {
+        if (list.getChildCount() == 0) addNote("Loading\u2026");
+        // Where the focus is (row heading and place in the row), to put it back after the rows are rebuilt.
+        View f = a.getCurrentFocus();
+        String rowTitle = null;
+        int at = 0;
+        if (f != null && isInside(f, list) && f.getParent() instanceof LinearLayout) {
+            LinearLayout row = (LinearLayout) f.getParent();
+            at = row.indexOfChild(f);
+            int i = list.indexOfChild((View) row.getParent());
+            if (i > 0 && list.getChildAt(i - 1) instanceof TextView) rowTitle = rowName(((TextView) list.getChildAt(i - 1)).getText().toString());
+        }
+        final String wantRow = rowTitle;
+        final int wantAt = at;
+        Addons.io.execute(() -> {
+            Map<String, List<Search.Title>> rows = Addons.library(a, library);
+            a.runOnUiThread(() -> {
+                if (closed) return;
+                list.removeAllViews();
+                if (rows.isEmpty()) {
+                    addNote(Addons.running().isEmpty() ? "Add-ons bring movies and series here (Settings \u2192 Add-ons)"
+                            : "Nothing here yet. If you just signed in, the list is still being fetched.");
+                    return;
+                }
+                View target = null;
+                for (Map.Entry<String, List<Search.Title>> r : rows.entrySet()) {
+                    LinearLayout row = libraryRow(r.getKey(), r.getValue());
+                    if (r.getKey().equals(wantRow) && row.getChildCount() > 0) target = row.getChildAt(Math.min(wantAt, row.getChildCount() - 1));
+                }
+                if (target == null) target = firstResult();
+                if (target != null && sheet == null) target.requestFocus();
+            });
+        });
+    }
+
+    /** A row heading without its count ("All Movies  ·  312" is the row "All Movies"). */
+    static String rowName(String heading) {
+        int i = heading.indexOf("  \u00B7  ");
+        return i < 0 ? heading : heading.substring(0, i);
+    }
+
+    /** Home came back to the front (from the player, say): what was watched may have changed the rows. */
+    boolean libraryDirty;
+
+    void libraryChanged() {
+        if (library == null) return;
+        if (sheet != null) libraryDirty = true;
+        else renderLibrary();
+    }
+
+    /**
+     * A row that can hold a whole library: the first cards now, the rest added a batch at a time as
+     * the row is scrolled towards its end, so opening the screen does not load hundreds of posters.
+     */
+    LinearLayout libraryRow(String title, List<Search.Title> ts) {
+        final int batch = 14;
+        List<View> first = new ArrayList<>();
+        for (int i = 0; i < Math.min(batch, ts.size()); i++) first.add(titleCard(ts.get(i)));
+        LinearLayout row = addRow(title + (ts.size() > batch ? "  \u00B7  " + ts.size() : ""), first, a.dp(176));
+        if (ts.size() <= batch) return row;
+        HorizontalScrollView hs = (HorizontalScrollView) row.getParent();
+        int[] next = {batch};
+        hs.setOnScrollChangeListener((v, x, y, ox, oy) -> {
+            if (next[0] >= ts.size() || x + hs.getWidth() < row.getWidth() - a.dp(600)) return;
+            // The card that was last no longer ends the row; the new last one does (as setItems does it).
+            View last = row.getChildAt(row.getChildCount() - 1);
+            if (last != null) last.setNextFocusRightId(View.NO_ID);
+            int to = Math.min(ts.size(), next[0] + batch);
+            for (int i = next[0]; i < to; i++) {
+                View card = titleCard(ts.get(i));
+                card.setId(View.generateViewId());
+                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                lp.rightMargin = a.dp(16);
+                row.addView(card, lp);
+            }
+            next[0] = to;
+            View end = row.getChildAt(row.getChildCount() - 1);
+            end.setNextFocusRightId(end.getId());
+        });
+        return row;
     }
 
     // ---------------------------------------------------------------- keyboard
@@ -491,6 +594,10 @@ final class SearchPanel {
     void render() {
         View focus = a.getCurrentFocus();
         boolean inResults = focus != null && isInside(focus, list);
+        if (library != null) {  // Korie: the library screen has its own rows and no query
+            renderLibrary();
+            return;
+        }
         list.removeAllViews();
         titleRow = stremioRow = radioRow = null;
         titleStatus = null;
@@ -1236,7 +1343,12 @@ final class SearchPanel {
         s.animate().alpha(0f).setDuration(Motion.d(180)).withEndAction(() -> layer.removeView(s)).start();
         body.setDescendantFocusability(ViewGroup.FOCUS_AFTER_DESCENDANTS);
         if (sheetReturn != null && sheetReturn.isAttachedToWindow()) sheetReturn.requestFocus();
+        else if (library != null && firstResult() != null) firstResult().requestFocus();
         else firstKey().requestFocus();
+        if (library != null && libraryDirty) {  // Korie: something was watched while this page was open
+            libraryDirty = false;
+            renderLibrary();
+        }
     }
 
     // ---------------------------------------------------------------- keys and lifecycle
@@ -1259,6 +1371,13 @@ final class SearchPanel {
             boolean inRow = sf != null && sf.getParent() instanceof LinearLayout
                     && ((View) sf.getParent()).getParent() instanceof HorizontalScrollView;
             return (k == KeyEvent.KEYCODE_DPAD_LEFT || k == KeyEvent.KEYCODE_DPAD_RIGHT) && !inRow;
+        }
+        if (library != null) {
+            // Korie: nothing to type here. Up from the first row stays put (there is no keyboard above it);
+            // every other move is Android's own, as between the rows of Search.
+            View lf = a.getCurrentFocus();
+            if (k == KeyEvent.KEYCODE_DPAD_UP && lf != null && lf.getParent() == firstRow()) return true;
+            return k == KeyEvent.KEYCODE_DEL || k == KeyEvent.KEYCODE_SEARCH || k == KeyEvent.KEYCODE_VOICE_ASSIST;
         }
         if (k == KeyEvent.KEYCODE_DEL) {
             if (down) backspace();

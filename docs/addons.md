@@ -71,6 +71,7 @@ whatever else you need in it (ids, stream addresses):
 
 `title` (required) · `type` (`"movie"` or `"series"`) · `year` · `overview` · `genres` · `rating` ·
 `poster` · `backdrop` (web addresses, or files in the add-on's folder: `korie.addon.dir .. "/x.jpg"`) ·
+`added` (when the source got it, as text that sorts by date, for the Recently Added row) ·
 `key` — an id shared between add-ons, such as `"tmdb:603"`. Items with the same `key` from different
 add-ons become **one** title in Search with one button per add-on ("How to Watch"). With one
 add-on the page shows that add-on's buttons directly.

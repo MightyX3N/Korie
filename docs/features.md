@@ -393,9 +393,24 @@ Films and series from the user's own Jellyfin server, in Search, on the carousel
   `http://`, `https://` and the port 8096 are tried for you.
 - **Sign-in**: Quick Connect (a code entered in another Jellyfin app, no typing on the TV) or user
   name and password. The password is not saved; Korie keeps the token the server hands back.
-- **Profiles**: the sign-in is kept per Korie profile, so each profile is its own Jellyfin user. "Make
-  profiles from Jellyfin users" creates a Korie profile for each user the server shows on its sign-in
-  screen. A user without a password signs in by itself when the profile has the same name.
+- **Profiles**: the sign-in is kept per Korie profile, so each profile is its own Jellyfin user. After
+  the first sign-in the add-on offers to make a Korie profile for each of the server's other users.
+  A user without a password signs in by itself when the profile has the same name.
 - **Continue Watching** and Next Up come from the server and lead the carousel, with Resume.
 - **Playing**: the original file when Korie's player can play it, otherwise the server converts it.
   Progress, pause and stop are reported to the server, so every Jellyfin app shows the same state.
+
+## Movies and Series (Korie)
+
+When an add-on has films or series, Home gets a **Movies** and a **Series** tile at the front of the
+dock (they can be moved and hidden like apps). A tile opens the library: rows of posters from the
+add-ons' saved lists.
+
+- **Continue Watching** (what the add-ons report, such as Jellyfin's resume list and Next Up)
+- **Recently Added**
+- **All Movies** / **All Series**, A to Z
+- one row per **genre** that has a few titles
+
+A poster opens the same title page as in Search (Play and Resume, or seasons and episodes). Long
+rows are filled a batch at a time as they are scrolled, so a big library opens quickly. The screen
+is the Search screen without its keyboard, so the remote moves through it the same way.

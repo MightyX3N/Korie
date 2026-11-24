@@ -369,6 +369,103 @@ final class Addons {
         return starts;
     }
 
+    // ------------------------------------------------------------------ library (browsing)
+
+    /** Whether any add-on's saved list has a title of this type ("movie" or "tv"): Home shows its tile then. */
+    static boolean hasType(String type) {
+        if (typesVersion != version) {  // worked out once per change of the lists, not on every look
+            boolean m = false, t = false;
+            for (AddonEngine e : running()) {
+                List<Object> cat = catalogs.get(e.pack.id);
+                if (cat == null) continue;
+                for (Object o : cat) {
+                    String ty = AddonLua.str(AddonLua.map(o).get("type"), "movie");
+                    if (ty.equals("radio")) continue;
+                    if (ty.equals("series") || ty.equals("tv") || ty.equals("show")) t = true; else m = true;
+                    if (m && t) break;
+                }
+            }
+            hasMovies = m;
+            hasSeries = t;
+            typesVersion = version;
+        }
+        return type.equals("movie") ? hasMovies : hasSeries;
+    }
+
+    private static volatile int typesVersion = -1;
+    private static volatile boolean hasMovies, hasSeries;
+
+    /**
+     * The library screen behind the Movies and Series tiles: rows of titles from the add-ons' saved
+     * lists. Continue Watching (what the add-ons put on the carousel), Recently Added, everything
+     * A to Z, then one row per genre. type is "movie" or "tv". Not on the UI thread.
+     */
+    static Map<String, List<Search.Title>> library(Context c, String type) {
+        init(c);
+        Map<String, List<Search.Title>> rows = new LinkedHashMap<>();
+        // Continue Watching and Next Up, as the add-ons answer for the carousel.
+        List<Search.Title> cont = new ArrayList<>();
+        for (AddonEngine e : running()) {
+            if (!e.answers("home")) continue;
+            for (Object o : AddonLua.list(e.request("home", ASK_MS))) {
+                Map<String, Object> m = AddonLua.map(o);
+                Search.Title t = title(m);
+                if (!t.type.equals(type) || t.title.isEmpty()) continue;
+                if (t.poster.isEmpty()) t.poster = t.backdrop;
+                String ep = AddonLua.str(m.get("episode"), "");
+                if (!ep.isEmpty()) t.year = ep;  // shown after the name: "Breaking Bad · S1 E2 · ..."
+                t.offers.add(offer(e, m));
+                cont.add(t);
+            }
+        }
+        if (!cont.isEmpty()) rows.put("Continue Watching", cont);
+        // Every title of this type, one per key across add-ons.
+        Map<String, Search.Title> byKey = new LinkedHashMap<>();
+        List<Search.Title> all = new ArrayList<>();
+        for (AddonEngine e : running()) {
+            List<Object> cat = catalogs.get(e.pack.id);
+            if (cat == null) continue;
+            for (Object o : cat) {
+                Map<String, Object> m = AddonLua.map(o);
+                Search.Title t = title(m);
+                if (!t.type.equals(type) || t.title.isEmpty()) continue;
+                String key = AddonLua.str(m.get("key"), "");
+                Search.Title have = key.isEmpty() ? null : byKey.get(key);
+                if (have == null) {
+                    if (!key.isEmpty()) byKey.put(key, t);
+                    all.add(t);
+                    have = t;
+                } else if (t.added.compareTo(have.added) > 0) {
+                    have.added = t.added;
+                }
+                have.offers.add(offer(e, m));
+            }
+        }
+        if (all.isEmpty()) return rows;
+        List<Search.Title> recent = new ArrayList<>();
+        for (Search.Title t : all) if (!t.added.isEmpty()) recent.add(t);
+        java.util.Collections.sort(recent, (x, y) -> y.added.compareTo(x.added));
+        if (!recent.isEmpty()) rows.put("Recently Added", new ArrayList<>(recent.subList(0, Math.min(30, recent.size()))));
+        java.util.Collections.sort(all, (x, y) -> x.title.compareToIgnoreCase(y.title));
+        rows.put(type.equals("movie") ? "All Movies" : "All Series", all);
+        Map<String, List<Search.Title>> genres = new java.util.TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        for (Search.Title t : all) {
+            for (String g : t.genres.split(",")) {
+                g = g.trim();
+                if (g.isEmpty()) continue;
+                List<Search.Title> l = genres.get(g);
+                if (l == null) genres.put(g, l = new ArrayList<>());
+                l.add(t);
+            }
+        }
+        // A genre is worth a row when it has a few titles and is not simply the whole library again.
+        for (Map.Entry<String, List<Search.Title>> g : genres.entrySet()) {
+            int n = g.getValue().size();
+            if (n >= Math.min(3, all.size()) && (n < all.size() || genres.size() == 1)) rows.put(g.getKey(), g.getValue());
+        }
+        return rows;
+    }
+
     static Search.Title title(Map<String, Object> m) {
         Search.Title t = new Search.Title();
         t.title = AddonLua.str(m.get("title"), "");
@@ -381,6 +478,7 @@ final class Addons {
         t.poster = AddonLua.str(m.get("poster"), "");
         t.backdrop = AddonLua.str(m.get("backdrop"), "");
         t.rating = AddonLua.num(m.get("rating"), 0);
+        t.added = AddonLua.str(m.get("added"), "");
         return t;
     }
 

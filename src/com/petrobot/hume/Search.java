@@ -76,6 +76,8 @@ final class Search {
     static final class Title {
         String title = "", type = "movie", year = "", overview = "", genres = "", poster = "", backdrop = "", imdb = "";
         double rating;
+        /** Korie: when the add-on's source got it (any text that sorts by date, such as 2026-11-24T10:00:00), for Recently Added. */
+        String added = "";
         /** One offer per app, best first (installed apps, then subscription before rent/buy). */
         List<Offer> offers = new ArrayList<>();
     }

@@ -169,17 +169,22 @@ local function signed_in(result)
   return true
 end
 
--- A Jellyfin user with no password and the profile's name signs in by itself.
+-- A Jellyfin user with no password and the profile's name signs in by itself. The server does not
+-- say which users have no password (it reports one for everybody), so this simply tries the
+-- profile's name with an empty password, once per profile and server: a wrong guess is one failed
+-- sign-in, and repeating it could lock the user out on the server.
 local function try_without_password()
-  if not server() or account() then return false end
-  local users = call("GET", "/Users/Public", nil, nil, nil, false, 6)
-  if type(users) ~= "table" then return false end
-  local name = korie.profile().name:lower()
-  for _, u in ipairs(users) do
-    if u.Name and u.Name:lower() == name and u.HasPassword == false then
-      return signed_in(call("POST", "/Users/AuthenticateByName", nil, { Username = u.Name, Pw = "" }, nil, false))
-    end
+  local s = server()
+  if not s or account() then return false end
+  local mark = "tried:" .. tostring(s.id) .. ":" .. profile_id()
+  if korie.store.get(mark, false) then return false end
+  korie.store.set(mark, true)
+  local name = korie.profile().name
+  if signed_in(call("POST", "/Users/AuthenticateByName", nil, { Username = name, Pw = "" }, nil, false, 8)) then
+    korie.toast("Jellyfin: signed in as " .. account().name)
+    return true
   end
+  korie.toast("Jellyfin: sign " .. name .. " in under Settings → Add-ons → Jellyfin")
   return false
 end
 
@@ -416,6 +421,7 @@ local function to_item(it)
     overview = it.Overview or "", genres = genres(it), rating = it.CommunityRating,
     poster = image(it.Id, "Primary", it.ImageTags and it.ImageTags.Primary, 400),
     backdrop = backdrop_of(it, 1920),
+    added = it.DateCreated,
     key = tmdb and ("tmdb:" .. (series and "tv" or "movie") .. ":" .. tostring(tmdb)) or nil,
   }
 end
@@ -428,7 +434,7 @@ korie.on("catalog", function()
   while true do
     local data, why = api("GET", "/Items", {
       userId = a.user, recursive = "true", includeItemTypes = "Movie,Series", sortBy = "SortName",
-      fields = "Overview,Genres,ProviderIds", enableUserData = "false", imageTypeLimit = 1,
+      fields = "Overview,Genres,ProviderIds,DateCreated", enableUserData = "false", imageTypeLimit = 1,
       enableImageTypes = "Primary,Backdrop", startIndex = start, limit = page,
     })
     if type(data) ~= "table" or type(data.Items) ~= "table" then error("no library: " .. tostring(why)) end
@@ -459,6 +465,7 @@ local function home_item(it)
       id = it.Id, kind = "Episode", type = "series", title = it.SeriesName or it.Name or "",
       overview = (n ~= "" and (n .. " · ") or "") .. (it.Name or ""),
       episode = (n ~= "" and (n .. " · ") or "") .. (it.Name or ""),
+      poster = image(it.SeriesId, "Primary", it.SeriesPrimaryImageTag, 400),
     }
   else
     item = to_item(it)
