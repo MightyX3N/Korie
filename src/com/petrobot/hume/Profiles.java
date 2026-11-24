@@ -23,8 +23,8 @@ import java.util.List;
 final class Profiles {
     private Profiles() { }
 
-    /** At most three profiles. */
-    static final int MAX = 3;
+    /** Korie: up to eight profiles (Hume had three); the switcher makes the avatars smaller to fit them in one row. */
+    static final int MAX = 8;
 
     static boolean canAdd(Context c) {
         return list(c).size() < MAX;
