@@ -240,6 +240,16 @@ public class RealTest {
                     h.plays.clear();
                     ask(lua, h, "action", AddonLua.map(eps.get(0)), "play");
                     ok(!h.plays.isEmpty(), "an episode plays: " + (h.plays.isEmpty() ? "" : h.plays.get(0).get("title") + " / " + h.plays.get(0).get("subtitle")));
+                    if (!h.plays.isEmpty() && eps.size() > 1) {
+                        Map<String, Object> first = h.plays.get(0);
+                        ok(first.get("next") != null, "it knows the next episode: " + AddonLua.toJson(first.get("next")) + ", starts by itself: " + first.get("autonext"));
+                        System.out.println("      parts to skip from the server: " + AddonLua.toJson(first.get("segments")));
+                        ask(lua, h, "playback", first.get("ref"), info("playing", 0, 120));
+                        ask(lua, h, "playback", first.get("ref"), info("ended", 120, 120));
+                        h.plays.clear();
+                        ask(lua, h, "next", first.get("ref"));
+                        ok(!h.plays.isEmpty() && String.valueOf(h.plays.get(0).get("subtitle")).contains("E2"), "Next starts the second episode: " + (h.plays.isEmpty() ? "nothing" : h.plays.get(0).get("subtitle")));
+                    }
                     if (!h.plays.isEmpty()) {
                         ask(lua, h, "playback", h.plays.get(0).get("ref"), info("playing", 0, 120));
                         ask(lua, h, "playback", h.plays.get(0).get("ref"), info("ended", 120, 120));

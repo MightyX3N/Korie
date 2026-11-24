@@ -64,6 +64,7 @@ Register a function for each question the add-on can answer: `korie.on(name, fn)
 | `playback` | ref, info | Korie's player reports on what `korie.play` started: `info = {state, position, duration}` in seconds; `state` is `"playing"` (every 10 seconds), `"paused"`, `"stopped"` (the viewer left) or `"ended"`. Save the position, or pass it on to a server. |
 | `button` | key | A settings row of type `action` was pressed (see Settings). |
 | `profile` | profile | Home switched to another profile: `{id, name}`. Add-ons that keep one sign-in per profile follow it. |
+| `next` | ref | The player wants what comes after the one it is showing (Next Episode was pressed, or it ended with `autonext`). Start it with `korie.play{...}`; it takes over the open player. |
 | `action` | item, button id | A button was chosen — or an episode, which arrives as the item with the button id `"play"`. Do it: `korie.play{...}`, `korie.open{...}`. |
 
 An **item** is a table. Korie reads these fields and hands the whole table back unchanged, so keep
@@ -113,3 +114,16 @@ instead of holding a value. Pressing it calls the add-on's `button` handler with
 add-on asks what it needs with `korie.ask`. Whatever the add-on puts there with
 `korie.set_setting(key, text)` is shown beside the title ("Signed in as:  Bob"). The Jellyfin
 add-on is the example: finding the server, signing in and making profiles are all `action` rows.
+
+## Skip and next in the player
+
+`korie.play{...}` can also carry:
+
+- `segments = { {type="intro", start=5, ["end"]=60}, ... }`: parts in seconds. `intro` and `recap` get a
+  "Skip Intro" / "Skip Recap" button while they play; `credits` is the cue for "Next Episode".
+- `next = {title="S1 E3 · Name"}`: there is something after this. "Next Episode" shows from the credits
+  (or the last 30 seconds without credits), and the `next` event asks the add-on to start it.
+- `autonext = true`: when this ends, the next one starts by itself.
+
+The button sits bottom right and never takes the focus: while it shows and the controls do not, OK
+presses it; on a touch screen it is tapped.

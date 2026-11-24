@@ -414,3 +414,13 @@ add-ons' saved lists.
 A poster opens the same title page as in Search (Play and Resume, or seasons and episodes). Long
 rows are filled a batch at a time as they are scrolled, so a big library opens quickly. The screen
 is the Search screen without its keyboard, so the remote moves through it the same way.
+
+## Player: skip and next episode (Korie)
+
+- **Skip Intro / Skip Recap** shows bottom right for the whole intro or recap, when the add-on knows
+  where it is (Jellyfin: when the server has media segments, e.g. from the Intro Skipper plugin).
+- **Next Episode** shows through the credits, or in the last 30 seconds when the credits are unknown.
+- **The next episode starts by itself** when one ends (Jellyfin: setting "Next episode starts by itself").
+- The button never takes the focus: while it shows and the controls do not, OK presses it.
+- Back from the player: the title page under it updates by itself (Resume, minutes left, watched
+  episodes) and keeps the focus where it was.

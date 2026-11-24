@@ -560,6 +560,36 @@ local DEVICE_PROFILE = {
 
 local started = {}  -- play sessions the server has been told about
 
+-- The parts of a video the server knows can be skipped (Jellyfin 10.10 and later, and only when the
+-- server has something that finds them, such as the Intro Skipper plugin). Korie's player shows
+-- "Skip Intro" / "Skip Recap" over them, and uses the credits as the cue for "Next Episode".
+local SEGMENT = { Intro = "intro", Recap = "recap", Outro = "credits", Commercial = "ad" }
+
+local function segments_of(id)
+  local data = call("GET", "/MediaSegments/" .. id, nil, nil, nil, nil, 6)
+  local out = {}
+  for _, sg in ipairs(type(data) == "table" and data.Items or {}) do
+    local kind = SEGMENT[sg.Type]
+    if kind and sg.StartTicks and sg.EndTicks and sg.EndTicks > sg.StartTicks then
+      out[#out + 1] = { type = kind, start = sg.StartTicks / TICKS, ["end"] = sg.EndTicks / TICKS }
+    end
+  end
+  return out
+end
+
+local function episode_label(it)
+  return (it.ParentIndexNumber and ("S" .. it.ParentIndexNumber .. " ") or "") .. (it.IndexNumber and ("E" .. it.IndexNumber .. " · ") or "") .. (it.Name or "")
+end
+
+-- The episode after this one, across seasons, in the server's own order.
+local function next_episode(it, user)
+  if it.Type ~= "Episode" or not it.SeriesId then return nil end
+  local data = api("GET", "/Shows/" .. it.SeriesId .. "/Episodes", { userId = user, startItemId = it.Id, limit = 2 })
+  local items = type(data) == "table" and data.Items or {}
+  if items[1] and items[1].Id == it.Id and items[2] then return items[2] end
+  return nil
+end
+
 local function play(item, resume)
   local a = account()
   if not server() or not a then
@@ -594,15 +624,21 @@ local function play(item, resume)
   end
   local pos = it.UserData and it.UserData.PlaybackPositionTicks or 0
   local title, subtitle = it.Name or item.title, nil
+  local following
   if it.Type == "Episode" then
     title = it.SeriesName or title
-    subtitle = (it.ParentIndexNumber and ("S" .. it.ParentIndexNumber .. " ") or "") .. (it.IndexNumber and ("E" .. it.IndexNumber .. " · ") or "") .. (it.Name or "")
+    subtitle = episode_label(it)
+    following = next_episode(it, a.user)
   end
   korie.play{
     url = url, mime = mime, title = title, subtitle = subtitle,
     start = resume and (pos / TICKS) or 0,
     headers = { ["Authorization"] = auth_header(a.token) },
-    ref = { id = item.id, source = src.Id, session = info.PlaySessionId, method = method, profile = profile_id() },
+    segments = segments_of(item.id),
+    next = following and { title = episode_label(following) } or nil,
+    autonext = korie.setting("autonext") ~= false,
+    ref = { id = item.id, source = src.Id, session = info.PlaySessionId, method = method, profile = profile_id(),
+      next = following and following.Id or nil },
   }
 end
 
@@ -614,6 +650,11 @@ korie.on("action", function(item, button)
   -- An episode chosen in the row, or a title on the carousel, carries on where it was left.
   local resume = button == "resume" or item.row == true
   play(item, resume)
+end)
+
+-- The player asks for what comes after the one it is showing ("Next Episode", or the episode ended).
+korie.on("next", function(ref)
+  if type(ref) == "table" and ref.next then play({ id = ref.next, kind = "Episode" }, false) end
 end)
 
 -- Korie's player reports; the server hears it, so every Jellyfin app shows the same progress.

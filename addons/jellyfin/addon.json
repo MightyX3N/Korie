@@ -1,18 +1,49 @@
 {
   "id": "jellyfin",
   "name": "Jellyfin",
-  "version": "1.2",
+  "version": "1.3",
   "author": "Korie",
   "description": "Films and series from your own Jellyfin server, played in Korie's player. Finds the server on your network or takes its address, signs in with Quick Connect or a password, and keeps one sign-in per Korie profile so everyone has their own Continue Watching.",
-  "uses": ["internet"],
+  "uses": [
+    "internet"
+  ],
   "settings": [
-    { "key": "server", "title": "Server", "type": "action" },
-    { "key": "account", "title": "Signed in as", "type": "action" },
-    { "key": "profiles", "title": "Make profiles from Jellyfin users", "type": "action" },
-    { "key": "quality", "title": "Video", "type": "choice", "default": "original",
+    {
+      "key": "server",
+      "title": "Server",
+      "type": "action"
+    },
+    {
+      "key": "account",
+      "title": "Signed in as",
+      "type": "action"
+    },
+    {
+      "key": "profiles",
+      "title": "Make profiles from Jellyfin users",
+      "type": "action"
+    },
+    {
+      "key": "quality",
+      "title": "Video",
+      "type": "choice",
+      "default": "original",
       "options": [
-        { "value": "original", "label": "Original, converted only when needed" },
-        { "value": "convert", "label": "Always converted by the server" }
-      ] }
+        {
+          "value": "original",
+          "label": "Original, converted only when needed"
+        },
+        {
+          "value": "convert",
+          "label": "Always converted by the server"
+        }
+      ]
+    },
+    {
+      "key": "autonext",
+      "title": "Next episode starts by itself",
+      "type": "toggle",
+      "default": true
+    }
   ]
 }
