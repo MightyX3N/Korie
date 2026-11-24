@@ -52,7 +52,10 @@ final class AddonUi {
         List<String> items = new ArrayList<>();
         items.add(on ? "Turn Off" : "Turn On");
         items.add("Remove");
-        for (Map<String, Object> def : p.settings) items.add(AddonLua.str(def.get("title"), AddonLua.str(def.get("key"), "")) + ":  " + shown(a, p, def));
+        for (Map<String, Object> def : p.settings) {
+            String shown = shown(a, p, def);
+            items.add(AddonLua.str(def.get("title"), AddonLua.str(def.get("key"), "")) + (shown.isEmpty() ? "" : ":  " + shown));
+        }
         items.add("Version " + p.version + (p.author.isEmpty() ? "" : "  \u00b7  " + p.author)
                 + (e != null && e.error != null ? "\nError: " + e.error : ""));
         a.dialog(p.name).setItems(items.toArray(new String[0]), (d, w) -> {
@@ -97,6 +100,7 @@ final class AddonUi {
         Object v = value(a, p, def);
         String type = AddonLua.str(def.get("type"), "text");
         if (type.equals("toggle")) return AddonLua.bool(v, false) ? "On" : "Off";
+        if (type.equals("action")) return AddonLua.str(v, "");  // what the add-on last put there with korie.set_setting
         String s = AddonLua.str(v, "");
         if (type.equals("choice")) {
             for (String[] o : options(def)) if (o[0].equals(s)) return o[1];
@@ -116,7 +120,11 @@ final class AddonUi {
     static void change(SettingsActivity a, AddonPack p, Map<String, Object> def) {
         String type = AddonLua.str(def.get("type"), "text");
         String title = AddonLua.str(def.get("title"), AddonLua.str(def.get("key"), ""));
-        if (type.equals("toggle")) {
+        if (type.equals("action")) {  // a button: the add-on takes it from here (korie.ask for questions)
+            AddonEngine e = Addons.engine(p.id);
+            if (e == null || !e.running) Addons.toast("Turn " + p.name + " on first");
+            else e.fire("button", AddonLua.str(def.get("key"), ""));
+        } else if (type.equals("toggle")) {
             save(a, p, def, !AddonLua.bool(value(a, p, def), false));
         } else if (type.equals("choice")) {
             List<String[]> opts = options(def);

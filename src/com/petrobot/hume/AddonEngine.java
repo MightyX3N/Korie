@@ -87,6 +87,7 @@ final class AddonEngine implements AddonLua.Host {
                 lua = new AddonLua(pack.dir, this, info);
                 lua.run(new File(pack.dir, pack.main));
                 log("started (version " + pack.version + ")");
+                Addons.changed();  // Home asks again now that this add-on can answer
             } catch (Throwable t) {
                 error = message(t);
                 log("could not start: " + error);
@@ -312,9 +313,78 @@ final class AddonEngine implements AddonLua.Host {
             case "refresh":  // fetch the catalog again now (after a setting changed what it should hold)
                 Addons.io.execute(() -> Addons.loadCatalog(this, true));
                 return null;
+            case "ask":  // a question on screen; waits here (on the add-on's thread) for the answer
+                return Addons.ask(this, AddonLua.map(arg(a, 0)));
+            case "net.broadcast":
+                need(AddonPack.USE_INTERNET, null);
+                return broadcast((int) AddonLua.num(arg(a, 0), 0), arg(a, 1), AddonLua.num(arg(a, 2), 2));
+            case "profile":
+                return Addons.profile(app, Profiles.current(app));
+            case "profiles.list": {
+                List<Object> out = new ArrayList<>();
+                for (Profiles.Profile x : Profiles.list(app)) out.add(Addons.profile(app, x));
+                return out;
+            }
+            case "profiles.add": {
+                String n = AddonLua.str(arg(a, 0), "").trim();
+                if (n.isEmpty()) return new Object[]{null, "a profile needs a name"};
+                for (Profiles.Profile x : Profiles.list(app)) if (x.name.equalsIgnoreCase(n)) return Addons.profile(app, x);
+                Profiles.Profile made = Profiles.add(app, n);
+                if (made == null) return new Object[]{null, "Korie has room for " + Profiles.MAX + " profiles"};
+                return Addons.profile(app, made);
+            }
             default:
                 throw new Exception("is not available");
         }
+    }
+
+    /**
+     * Sends one message to everything on the local network (UDP broadcast) and collects the answers
+     * for a few seconds: how servers such as Jellyfin are found without typing an address.
+     */
+    private Object broadcast(int port, Object message, double seconds) {
+        List<Object> out = new ArrayList<>();
+        if (port <= 0 || port > 65535) return out;
+        byte[] data = message instanceof byte[] ? (byte[]) message : AddonLua.str(message, "").getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        long end = System.currentTimeMillis() + (long) (Math.max(0.5, Math.min(seconds, 10)) * 1000);
+        try (java.net.DatagramSocket s = new java.net.DatagramSocket()) {
+            s.setBroadcast(true);
+            java.util.Set<java.net.InetAddress> to = new java.util.LinkedHashSet<>();
+            to.add(java.net.InetAddress.getByName("255.255.255.255"));
+            try {  // each network's own broadcast address too; some routers drop the general one
+                for (java.net.NetworkInterface ni : java.util.Collections.list(java.net.NetworkInterface.getNetworkInterfaces())) {
+                    if (!ni.isUp() || ni.isLoopback()) continue;
+                    for (java.net.InterfaceAddress ia : ni.getInterfaceAddresses()) if (ia.getBroadcast() != null) to.add(ia.getBroadcast());
+                }
+            } catch (Exception ignored) {
+            }
+            for (java.net.InetAddress t : to) {
+                try {
+                    s.send(new java.net.DatagramPacket(data, data.length, t, port));
+                } catch (Exception ignored) {
+                }
+            }
+            byte[] buf = new byte[8192];
+            java.util.Set<String> seen = new java.util.HashSet<>();
+            while (System.currentTimeMillis() < end && out.size() < 32) {
+                s.setSoTimeout((int) Math.max(1, end - System.currentTimeMillis()));
+                java.net.DatagramPacket p = new java.net.DatagramPacket(buf, buf.length);
+                try {
+                    s.receive(p);
+                } catch (java.net.SocketTimeoutException e) {
+                    break;
+                }
+                String text = new String(p.getData(), 0, p.getLength(), java.nio.charset.StandardCharsets.UTF_8);
+                if (!seen.add(p.getAddress().getHostAddress() + text)) continue;
+                Map<String, Object> m = new LinkedHashMap<>();
+                m.put("address", p.getAddress().getHostAddress());
+                m.put("text", text);
+                out.add(m);
+            }
+        } catch (Exception e) {
+            log("broadcast: " + message(e));
+        }
+        return out;
     }
 
     private static Object arg(Object[] a, int i) {

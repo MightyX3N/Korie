@@ -384,3 +384,18 @@ repository: `update.json` (the newest version of the app) and `addons/index.json
   Korie to install apps. On Android 12 and later, updates after the first need no question.
 
 Releases are made with `tools/release.sh` after raising the two lines in `VERSION`.
+
+## Jellyfin add-on (Korie)
+
+Films and series from the user's own Jellyfin server, in Search, on the carousel and in Korie's player.
+
+- **Server**: found on the network (Jellyfin's own discovery) or by typing its IP address or domain;
+  `http://`, `https://` and the port 8096 are tried for you.
+- **Sign-in**: Quick Connect (a code entered in another Jellyfin app, no typing on the TV) or user
+  name and password. The password is not saved; Korie keeps the token the server hands back.
+- **Profiles**: the sign-in is kept per Korie profile, so each profile is its own Jellyfin user. "Make
+  profiles from Jellyfin users" creates a Korie profile for each user the server shows on its sign-in
+  screen. A user without a password signs in by itself when the profile has the same name.
+- **Continue Watching** and Next Up come from the server and lead the carousel, with Resume.
+- **Playing**: the original file when Korie's player can play it, otherwise the server converts it.
+  Progress, pause and stop are reported to the server, so every Jellyfin app shows the same state.

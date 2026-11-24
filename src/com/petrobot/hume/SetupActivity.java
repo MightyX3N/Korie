@@ -86,11 +86,13 @@ public class SetupActivity extends Activity {
         steps.add(this::homeAndPermissions);
         steps.add(this::finish_);
         if (getIntent().getBooleanExtra("skip", false)) {  // adb: --ez skip true marks setup as done
-            getSharedPreferences("setup", MODE_PRIVATE).edit().putBoolean(K_DONE, true).apply();
+            getSharedPreferences("setup", MODE_PRIVATE).edit().putBoolean(K_DONE, true).putInt("page", 0).apply();
             finish();
             return;
         }
-        show(getIntent().getIntExtra("step", 0), 0);  // adb: --ei step N opens a page directly
+        // Korie: setup comes back on the page it was on. Choosing Korie as the home app makes Android
+        // start Home afresh, which opens setup again; without this it began at the first page.
+        show(getIntent().getIntExtra("step", getSharedPreferences("setup", MODE_PRIVATE).getInt("page", 0)), 0);  // adb: --ei step N opens a page directly
     }
 
     int u(float v) {
@@ -102,6 +104,7 @@ public class SetupActivity extends Activity {
     void show(int i, int dir) {
         handler.removeCallbacksAndMessages(null);
         index = Math.max(0, Math.min(i, steps.size() - 1));
+        getSharedPreferences("setup", MODE_PRIVATE).edit().putInt("page", index).apply();
         page.animate().cancel();
         page.removeAllViews();
         firstChoice = null;
@@ -719,7 +722,7 @@ public class SetupActivity extends Activity {
         title("You\u2019re All Set");
         subtitle("Change any of this later in Settings, from the gear in Control Center.");
         buttons("Go to Home Screen", () -> {
-            getSharedPreferences("setup", MODE_PRIVATE).edit().putBoolean(K_DONE, true).apply();
+            getSharedPreferences("setup", MODE_PRIVATE).edit().putBoolean(K_DONE, true).putInt("page", 0).apply();
             startActivity(new Intent(this, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP));
             finish();
             overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out);
