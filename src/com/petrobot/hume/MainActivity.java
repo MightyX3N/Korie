@@ -79,6 +79,12 @@ public class MainActivity extends Activity {
     static final String SETTINGS_KEY = "special:settings";
     static final String PRESENT_KEY = "special:present";
     static final String INPUTS_KEY = "special:inputs";
+    /** Korie: the Movies and Series tiles (shown when an add-on has such titles); OK opens the library screen. */
+    static final String MOVIES_KEY = "special:movies", SERIES_KEY = "special:series";
+
+    static boolean isLibrary(AppEntry e) {
+        return MOVIES_KEY.equals(e.key) || SERIES_KEY.equals(e.key);
+    }
     static final String FOLDER_KEY = "special:folder";
     static final String PREF_ORDER = "order";
     static final String PREF_HIDDEN = "hidden";
@@ -204,7 +210,11 @@ public class MainActivity extends Activity {
         super.onCreate(b);
         WatchNext.init(this);  // Korie: is there a TV provider at all?
         Addons.onChanged = () -> {  // Korie: an add-on started, or its list arrived: the carousel follows
-            if (resumed && !isFinishing()) loadHero();
+            if (!resumed || isFinishing()) return;
+            loadHero();
+            // The Movies and Series tiles come and go with what the add-ons have.
+            if (!librarySig().equals(librarySig) && search == null && pickerLayer == null && menuLayer == null
+                    && moveIndex < 0 && !folderMode && launchOverlay == null) reload(currentKey());
         };
         Addons.init(this);
         // The wallpaper/artwork always covers the screen: skip the window's own full-screen fill
@@ -372,6 +382,10 @@ public class MainActivity extends Activity {
         applyMap();
         loadHero();
         Updater.auto(this);  // Korie: a quiet check for updates once a day
+        if (search != null) search.libraryChanged();  // Korie: back from the player: Continue Watching may have changed
+        // Korie: the Movies and Series tiles follow what the add-ons have (it may have changed while Home was not in front).
+        if (!librarySig().equals(librarySig) && search == null && pickerLayer == null && menuLayer == null
+                && moveIndex < 0 && !folderMode && launchOverlay == null) reload(currentKey());
         handler.post(this::touchHome);
         if (launchOverlay != null) finishLaunchReturn();
         // Setup not finished (e.g. Home was pressed during it): pick it up again.
@@ -2397,6 +2411,10 @@ public class MainActivity extends Activity {
             showInputs(tile);
             return;
         }
+        if (isLibrary(a)) {  // Korie
+            showLibrary(MOVIES_KEY.equals(a.key) ? "movie" : "tv", tile);
+            return;
+        }
 
         int[] loc = new int[2];
         tile.getLocationInWindow(loc);
@@ -3231,6 +3249,9 @@ public class MainActivity extends Activity {
         if (com.petrobot.hume.present.Presenter.enabled(this)) addPresentEntry();
         inputs = Inputs.list(this);
         if (Inputs.showCard(this) && !inputs.isEmpty()) addInputsEntry();
+        librarySig = librarySig();  // Korie: Movies and Series tiles
+        if (librarySig.contains("m")) addLibraryEntry(MOVIES_KEY, "Movies", "film", 0xFFFF375F, 0xFFB5123A);
+        if (librarySig.contains("s")) addLibraryEntry(SERIES_KEY, "Series", "series", 0xFF5E5CE6, 0xFF2B2A9C);
         for (AppEntry e : all.values()) {
             if (e.banner == null || TVOS_CARD_PKGS.contains(e.pkg)) {
                 e.banner = new BitmapDrawable(getResources(), tvosCard(e));
@@ -3255,6 +3276,16 @@ public class MainActivity extends Activity {
             return px != py ? Integer.compare(px, py) : x.label.compareToIgnoreCase(y.label);
         });
         apps.addAll(rest);
+        // Korie: Movies and Series start at the front of the dock until they are moved.
+        for (String k : new String[]{SERIES_KEY, MOVIES_KEY}) {
+            if (Arrays.asList(prefs.getString(PREF_ORDER, "").split(",")).contains(k)) continue;
+            for (int i = 0; i < apps.size(); i++) {
+                if (k.equals(apps.get(i).key)) {
+                    apps.add(0, apps.remove(i));
+                    break;
+                }
+            }
+        }
         // Inputs starts as the first card in the dock until it is moved.
         if (!Arrays.asList(prefs.getString(PREF_ORDER, "").split(",")).contains(INPUTS_KEY)) {
             for (int i = 0; i < apps.size(); i++) {
@@ -3313,6 +3344,34 @@ public class MainActivity extends Activity {
         p.setShader(new LinearGradient(0, 0, 0, h, 0xFF6E6E73, 0xFF2C2C2E, Shader.TileMode.CLAMP));
         c.drawRect(0, 0, w, h, p);
         Bitmap g = Glyphs.get("input", (int) (h * 0.5f), Color.WHITE);
+        c.drawBitmap(g, (w - g.getWidth()) / 2f, (h - g.getHeight()) / 2f, null);
+        e.banner = new BitmapDrawable(getResources(), b);
+        e.icon = e.banner;
+        all.put(e.key, e);
+    }
+
+    /** Korie: which library tiles there are right now: "m" for films, "s" for series. */
+    String librarySig = "";
+
+    String librarySig() {
+        return (Addons.hasType("movie") ? "m" : "") + (Addons.hasType("tv") ? "s" : "");
+    }
+
+    /** Korie: a Movies or Series tile, drawn like the Inputs card: a gradient with a white glyph. */
+    void addLibraryEntry(String key, String label, String glyph, int top, int bottom) {
+        AppEntry e = new AppEntry();
+        e.key = key;
+        e.pkg = getPackageName();
+        e.label = label;
+        e.system = true;
+        e.color = bottom;
+        int w = 640, h = 384;
+        Bitmap b = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+        Canvas c = new Canvas(b);
+        Paint p = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.DITHER_FLAG);
+        p.setShader(new LinearGradient(0, 0, 0, h, top, bottom, Shader.TileMode.CLAMP));
+        c.drawRect(0, 0, w, h, p);
+        Bitmap g = Glyphs.get(glyph, (int) (h * 0.56f), Color.WHITE);
         c.drawBitmap(g, (w - g.getWidth()) / 2f, (h - g.getHeight()) / 2f, null);
         e.banner = new BitmapDrawable(getResources(), b);
         e.icon = e.banner;
@@ -3463,7 +3522,7 @@ public class MainActivity extends Activity {
                 actions.add(() -> setHidden(a, true));
             }
         }
-        if (!isSettings(a) && !INPUTS_KEY.equals(a.key)) {
+        if (!isSettings(a) && !INPUTS_KEY.equals(a.key) && !isLibrary(a)) {
             labels.add("App Info");
             actions.add(() -> startSafe(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
                     Uri.parse("package:" + a.pkg))));
@@ -4395,6 +4454,32 @@ public class MainActivity extends Activity {
             }
         }).start();
         if (q != null && !q.isEmpty()) search.setQuery(q);
+    }
+
+    /** Korie: the library screen (the Search screen without its keyboard, filled with rows of the add-ons' titles). */
+    void showLibrary(String type, View from) {
+        if (search != null) closeSearch();
+        dropPicker();
+        closeMenu();
+        stopSway(null);
+        popoverReturn = from;
+        search = new SearchPanel(this, type);
+        pickerLayer = search.layer;
+        pickerCells = new ArrayList<>();
+        root.addView(search.layer, match());
+        SearchPanel opened = search;
+        search.layer.setAlpha(0f);
+        search.layer.animate().alpha(1f).setDuration(Motion.d(200)).withEndAction(() -> {
+            if (search != opened) return;
+            hiddenUnderSearch.clear();
+            for (int i = 0; i < root.getChildCount(); i++) {
+                View c = root.getChildAt(i);
+                if (c != opened.layer && c != launchOverlay && c.getVisibility() == View.VISIBLE) {
+                    c.setVisibility(View.INVISIBLE);
+                    hiddenUnderSearch.add(c);
+                }
+            }
+        }).start();
     }
 
     /** How long Back is held on Home to open Search. */

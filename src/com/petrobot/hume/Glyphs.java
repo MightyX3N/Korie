@@ -328,6 +328,25 @@ final class Glyphs {
                 c.drawArc(r, 0, 180, false, p);
                 c.drawLine(m, s * 0.72f, m, s * 0.88f, p);
                 break;
+            case "film":  // Movies: a clapperboard
+                r.set(s * 0.14f, s * 0.42f, s * 0.86f, s * 0.84f);
+                c.drawRoundRect(r, s * 0.06f, s * 0.06f, p);
+                path.moveTo(s * 0.14f, s * 0.42f);
+                path.lineTo(s * 0.12f, s * 0.27f);
+                path.lineTo(s * 0.82f, s * 0.14f);
+                path.lineTo(s * 0.86f, s * 0.29f);
+                path.close();
+                c.drawPath(path, p);
+                c.drawLine(s * 0.33f, s * 0.235f, s * 0.40f, s * 0.37f, p);
+                c.drawLine(s * 0.55f, s * 0.195f, s * 0.62f, s * 0.33f, p);
+                break;
+            case "series":  // Series: a TV with a stand, two episode cards behind it
+                r.set(s * 0.12f, s * 0.3f, s * 0.88f, s * 0.76f);
+                c.drawRoundRect(r, s * 0.07f, s * 0.07f, p);
+                c.drawLine(s * 0.36f, s * 0.87f, s * 0.64f, s * 0.87f, p);
+                c.drawLine(s * 0.24f, s * 0.19f, s * 0.76f, s * 0.19f, p);
+                c.drawLine(s * 0.34f, s * 0.09f, s * 0.66f, s * 0.09f, p);
+                break;
             case "present":  // Presentation: screen with a play triangle
                 r.set(s * 0.1f, s * 0.2f, s * 0.9f, s * 0.74f);
                 c.drawRoundRect(r, s * 0.08f, s * 0.08f, p);
