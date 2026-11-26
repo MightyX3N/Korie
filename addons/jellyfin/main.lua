@@ -460,12 +460,15 @@ end
 local function home_item(it)
   local item
   if it.Type == "Episode" then
+    -- An episode on Home stands for its series: OK opens the series page at this episode
+    -- (the page's "focus" comes from the server's Next Up for the series).
     local n = (it.ParentIndexNumber and ("S" .. it.ParentIndexNumber .. " ") or "") .. (it.IndexNumber and ("E" .. it.IndexNumber) or "")
     item = {
-      id = it.Id, kind = "Episode", type = "series", title = it.SeriesName or it.Name or "",
+      id = it.SeriesId, kind = "Series", type = "series", title = it.SeriesName or it.Name or "",
       overview = (n ~= "" and (n .. " · ") or "") .. (it.Name or ""),
       episode = (n ~= "" and (n .. " · ") or "") .. (it.Name or ""),
       poster = image(it.SeriesId, "Primary", it.SeriesPrimaryImageTag, 400),
+      focus_episode = it.Id, focus_season = it.SeasonId,
     }
   else
     item = to_item(it)
@@ -487,8 +490,9 @@ korie.on("home", function()
   local out, seen = {}, {}
   local function add(list)
     for _, it in ipairs(list or {}) do
-      if #out < 8 and not seen[it.Id] then
-        seen[it.Id] = true
+      local key = (it.Type == "Episode" and it.SeriesId) or it.Id
+      if #out < 8 and not seen[key] then
+        seen[key] = true
         local item = home_item(it)
         if item.backdrop ~= "" then out[#out + 1] = item end
       end
@@ -512,7 +516,17 @@ korie.on("detail", function(item)
     local data = api("GET", "/Shows/" .. item.id .. "/Seasons", { userId = a.user })
     local seasons = {}
     for _, s in ipairs(type(data) == "table" and data.Items or {}) do seasons[#seasons + 1] = { id = s.Id, name = s.Name } end
-    return { seasons = seasons }
+    -- Where to open: the episode the carousel showed, else the server's Next Up for this series
+    -- (the episode in progress, or the one after the last watched), as Jellyfin's own app does.
+    local focus
+    if item.focus_episode then
+      focus = { season = item.focus_season, episode = item.focus_episode }
+    else
+      local nu = api("GET", "/Shows/NextUp", { userId = a.user, seriesId = item.id, limit = 1, enableResumable = "true", fields = "SeasonId" })
+      local ep = type(nu) == "table" and nu.Items and nu.Items[1]
+      if ep then focus = { season = ep.SeasonId, episode = ep.Id } end
+    end
+    return { seasons = seasons, focus = focus }
   end
   local it = api("GET", "/Items/" .. item.id, { userId = a.user })
   local left = type(it) == "table" and minutes_left(it)
@@ -563,9 +577,10 @@ local started = {}  -- play sessions the server has been told about
 -- The parts of a video the server knows can be skipped (Jellyfin 10.10 and later, and only when the
 -- server has something that finds them, such as the Intro Skipper plugin). Korie's player shows
 -- "Skip Intro" / "Skip Recap" over them, and uses the credits as the cue for "Next Episode".
-local SEGMENT = { Intro = "intro", Recap = "recap", Outro = "credits", Commercial = "ad" }
+local SEGMENT = { Intro = "intro", Recap = "recap", Outro = "credits", Preview = "preview", Commercial = "ad" }
 
 local function segments_of(id)
+  -- All types (the server wants a list parameter repeated, not with commas; SEGMENT above picks the ones used).
   local data = call("GET", "/MediaSegments/" .. id, nil, nil, nil, nil, 6)
   local out = {}
   for _, sg in ipairs(type(data) == "table" and data.Items or {}) do
@@ -584,7 +599,7 @@ end
 -- The episode after this one, across seasons, in the server's own order.
 local function next_episode(it, user)
   if it.Type ~= "Episode" or not it.SeriesId then return nil end
-  local data = api("GET", "/Shows/" .. it.SeriesId .. "/Episodes", { userId = user, startItemId = it.Id, limit = 2 })
+  local data = api("GET", "/Shows/" .. it.SeriesId .. "/Episodes", { userId = user, startItemId = it.Id, limit = 2, fields = "Overview" })
   local items = type(data) == "table" and data.Items or {}
   if items[1] and items[1].Id == it.Id and items[2] then return items[2] end
   return nil
@@ -635,7 +650,11 @@ local function play(item, resume)
     start = resume and (pos / TICKS) or 0,
     headers = { ["Authorization"] = auth_header(a.token) },
     segments = segments_of(item.id),
-    next = following and { title = episode_label(following) } or nil,
+    next = following and {
+      title = episode_label(following), series = following.SeriesName or it.SeriesName,
+      image = image(following.Id, "Primary", following.ImageTags and following.ImageTags.Primary, 640),
+      overview = following.Overview,
+    } or nil,
     autonext = korie.setting("autonext") ~= false,
     ref = { id = item.id, source = src.Id, session = info.PlaySessionId, method = method, profile = profile_id(),
       next = following and following.Id or nil },

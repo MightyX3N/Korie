@@ -88,7 +88,11 @@ final class Updater {
     /** Home calls this when it comes to the front: a quiet check once a day. */
     static void auto(Context c) {
         Context app = c.getApplicationContext();
-        if (!busy.isEmpty() || System.currentTimeMillis() - prefs(app).getLong("checked", 0) < DAY_MS) return;
+        // A new version of Korie (just updated) checks at once, so its add-ons come along with it.
+        long code = installedCode(app);
+        boolean newApp = prefs(app).getLong("ran", 0) != code;
+        if (newApp) prefs(app).edit().putLong("ran", code).apply();
+        if (!busy.isEmpty() || (!newApp && System.currentTimeMillis() - prefs(app).getLong("checked", 0) < DAY_MS)) return;
         check(app, false, null);
     }
 

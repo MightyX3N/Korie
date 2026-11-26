@@ -121,9 +121,12 @@ add-on is the example: finding the server, signing in and making profiles are al
 
 - `segments = { {type="intro", start=5, ["end"]=60}, ... }`: parts in seconds. `intro` and `recap` get a
   "Skip Intro" / "Skip Recap" button while they play; `credits` is the cue for "Next Episode".
-- `next = {title="S1 E3 · Name"}`: there is something after this. "Next Episode" shows from the credits
-  (or the last 30 seconds without credits), and the `next` event asks the add-on to start it.
-- `autonext = true`: when this ends, the next one starts by itself.
+- `next = {title="S1 E3 · Name", series=, image=, overview=}`: there is something after this. When this
+  ends, the Next Up screen shows it, and the `next` event asks the add-on to start it.
+- `autonext = true`: the Next Up screen counts down 7 seconds and then starts it.
 
-The button sits bottom right and never takes the focus: while it shows and the controls do not, OK
-presses it; on a touch screen it is tapped.
+The Skip button sits bottom right and never takes the focus: while it shows and the controls do not,
+OK presses it; on a touch screen it is tapped.
+
+A `detail` answer for a series can carry `focus = {season=, episode=}`: the page opens on that season
+with the focus on that episode.

@@ -33,8 +33,10 @@ final class Playback {
         Map<String, String> headers = new LinkedHashMap<>();
         /** Parts that can be skipped: {type, start, end} in seconds; type is intro, recap or credits. */
         java.util.List<Segment> segments = new java.util.ArrayList<>();
-        /** What comes after this (the next episode): its name for the button, or "" when there is nothing. */
+        /** What comes after this (the next episode): its name, or "" when there is nothing. */
         String next = "";
+        /** For the Next Up screen: the series' name, a picture of the next episode, and its overview. */
+        String nextSeries = "", nextImage = "", nextOverview = "";
         /** Start what comes next by itself when this ends. */
         boolean autoNext;
     }
@@ -63,7 +65,15 @@ final class Playback {
             if (sg.end > sg.start) r.segments.add(sg);
         }
         Object nx = m.get("next");
-        if (nx != null) r.next = nx instanceof Map ? AddonLua.str(AddonLua.map(nx).get("title"), "Next") : AddonLua.str(nx, "");
+        if (nx instanceof Map) {
+            Map<String, Object> nm = AddonLua.map(nx);
+            r.next = AddonLua.str(nm.get("title"), "Next");
+            r.nextSeries = AddonLua.str(nm.get("series"), "");
+            r.nextImage = AddonLua.str(nm.get("image"), "");
+            r.nextOverview = AddonLua.str(nm.get("overview"), "");
+        } else if (nx != null) {
+            r.next = AddonLua.str(nx, "");
+        }
         r.autoNext = AddonLua.bool(m.get("autonext"), false);
         for (Map.Entry<String, Object> h : AddonLua.map(m.get("headers")).entrySet()) r.headers.put(h.getKey(), AddonLua.str(h.getValue(), ""));
         return r;
@@ -93,7 +103,12 @@ final class Playback {
         info.put("state", state);
         info.put("position", positionMs / 1000.0);
         info.put("duration", durationMs <= 0 ? 0.0 : durationMs / 1000.0);
-        e.fire("playback", r.ref, info);
+        if (state.equals("stopped") || state.equals("ended")) {
+            // Once the add-on has told its server, the page under the player asks again (see Addons.onPlaybackDone).
+            e.fireThen("playback", Addons::playbackDone, r.ref, info);
+        } else {
+            e.fire("playback", r.ref, info);
+        }
     }
 
     static String message(PlaybackException e) {

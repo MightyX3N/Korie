@@ -127,6 +127,18 @@ final class AddonEngine implements AddonLua.Host {
         lh.post(() -> fireNow(event, args));
     }
 
+    /** As fire, then runs after on the add-on's thread once every handler is done (or at once if not running). */
+    void fireThen(final String event, final Runnable after, final Object... args) {
+        if (!running || lh == null) {
+            after.run();
+            return;
+        }
+        lh.post(() -> {
+            fireNow(event, args);
+            after.run();
+        });
+    }
+
     private void fireNow(String event, Object... args) {
         List<LuaValue> fns = listeners.get(event);
         if (fns == null || lua == null) return;

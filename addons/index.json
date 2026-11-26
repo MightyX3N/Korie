@@ -4,7 +4,7 @@
     {
       "id": "jellyfin",
       "name": "Jellyfin",
-      "version": "1.3",
+      "version": "1.5",
       "author": "Korie",
       "description": "Films and series from your own Jellyfin server, played in Korie's player. Finds the server on your network or takes its address, signs in with Quick Connect or a password, and keeps one sign-in per Korie profile so everyone has their own Continue Watching.",
       "uses": [

@@ -209,6 +209,9 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle b) {
         super.onCreate(b);
         WatchNext.init(this);  // Korie: is there a TV provider at all?
+        Addons.onPlaybackDone = () -> {
+            if (search != null && resumed) search.libraryChanged();
+        };
         Addons.onChanged = () -> {  // Korie: an add-on started, or its list arrived: the carousel follows
             if (!resumed || isFinishing()) return;
             loadHero();
@@ -382,7 +385,11 @@ public class MainActivity extends Activity {
         applyMap();
         loadHero();
         Updater.auto(this);  // Korie: a quiet check for updates once a day
-        if (search != null) search.libraryChanged();  // Korie: back from the player: Continue Watching may have changed
+        // Korie: back from the player: the page and Continue Watching ask again. Like Jellyfin's own app,
+        // a moment later, so the server has taken the change; and again once the add-on has told it.
+        if (search != null) handler.postDelayed(() -> {
+            if (search != null && resumed) search.libraryChanged();
+        }, 750);
         // Korie: the Movies and Series tiles follow what the add-ons have (it may have changed while Home was not in front).
         if (!librarySig().equals(librarySig) && search == null && pickerLayer == null && menuLayer == null
                 && moveIndex < 0 && !folderMode && launchOverlay == null) reload(currentKey());
@@ -2002,7 +2009,7 @@ public class MainActivity extends Activity {
         heroMeta.setText(String.join("  \u00B7  ", meta));
         heroOverview.setText(it.overview);
         Suggestions.Provider p = it.provider(this);
-        heroBtnText.setText(!it.addon.isEmpty() ? (it.remainingMin > 0 ? "\u25B6  Resume" : "\u25B6  Play")
+        heroBtnText.setText(!it.addon.isEmpty() ? "\u25B6  Open"
                 : p != null && !Suggestions.installed(this, p.pkg) ? "Get" : "\u25B6  Open");
         int icon = p == null ? 0 : getResources().getIdentifier("provider_" + p.jwShort, "drawable", getPackageName());
         heroProvider.setImageResource(icon);
@@ -2348,8 +2355,8 @@ public class MainActivity extends Activity {
     }
 
     void openHeroItem(Suggestions.Item it) {
-        if (!it.addon.isEmpty()) {  // Korie: an add-on's title
-            Addons.openHome(it);
+        if (!it.addon.isEmpty()) {  // Korie: an add-on's title opens its page (a series at the episode you are on)
+            showTitlePage(Addons.homeTitle(it), heroButton);
             return;
         }
         if ("news".equals(it.type)) return;  // news is read on the shelf; there is nothing to open
@@ -4480,6 +4487,14 @@ public class MainActivity extends Activity {
                 }
             }
         }).start();
+    }
+
+    /** Korie: a title's page on its own, over Home (from the carousel); Back from it returns to Home. */
+    void showTitlePage(Search.Title t, View from) {
+        if (t.offers.isEmpty()) return;
+        showLibrary(t.type.equals("tv") ? "tv" : "movie", from);
+        search.pageOnly = true;
+        search.showSheet(t, null);
     }
 
     /** How long Back is held on Home to open Search. */
