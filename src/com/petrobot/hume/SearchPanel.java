@@ -1181,8 +1181,10 @@ final class SearchPanel {
                     if (first == null) first = p;
                 }
                 if (!d.seasons.isEmpty()) {
+                    // The season you are on (the add-on's next-up episode); after watching, the one that was shown.
                     Addons.Season shown = d.seasons.get(0);
-                    for (Addons.Season se : d.seasons) if (refresh && se.id.equals(season)) shown = se;
+                    String want = refresh ? season : d.focusSeason;
+                    for (Addons.Season se : d.seasons) if (se.id.equals(want)) shown = se;
                     View seasonBtn = pill(shown.name + (d.seasons.size() > 1 ? "  \u25BE" : ""), "", "");
                     box.addView(seasonBtn, pillParams());
                     LinearLayout row = episodeRow(box);
@@ -1197,13 +1199,19 @@ final class SearchPanel {
                             acts.add(() -> {
                                 ((TextView) seasonBtn.getTag()).setText(se.name + "  \u25BE");
                                 sheetSeason = se.id;
-                                loadEpisodes(o, se.id, row, s, seasonBtn, -1);
+                                loadEpisodes(o, se.id, row, s, seasonBtn, -1, "");
                             });
                         }
                         a.showMenu(seasonBtn, "Season", names, acts, -1);
                     });
-                    loadEpisodes(o, shown.id, row, s, seasonBtn, refresh && focusKind == 1 ? focusIndex : -1);
+                    // Opening: the focus goes to the episode you are on. A refresh keeps it where it was.
+                    String focusId = !refresh && shown.id.equals(d.focusSeason) ? d.focusEpisode : "";
+                    loadEpisodes(o, shown.id, row, s, seasonBtn, refresh && focusKind == 1 ? focusIndex : -1, focusId);
                     if (first == null) first = seasonBtn;
+                    if (!focusId.isEmpty()) {
+                        first.requestFocus();  // until the episodes are here
+                        first = null;
+                    }
                 }
                 if (refresh && focusKind == 0 && focusIndex >= 0 && focusIndex < box.getChildCount() && box.getChildAt(focusIndex).isFocusable()) {
                     first = box.getChildAt(focusIndex);
@@ -1247,7 +1255,7 @@ final class SearchPanel {
 
     int episodeGen;
 
-    void loadEpisodes(Search.Offer o, String seasonId, LinearLayout row, FrameLayout s, View seasonBtn, int focusAt) {
+    void loadEpisodes(Search.Offer o, String seasonId, LinearLayout row, FrameLayout s, View seasonBtn, int focusAt, String focusId) {
         int g = ++episodeGen;
         row.removeAllViews();
         net.execute(() -> {
@@ -1267,6 +1275,17 @@ final class SearchPanel {
                 seasonBtn.setNextFocusDownId(cards.get(0).getId());
                 for (View c : cards) c.setNextFocusUpId(seasonBtn.getId());
                 if (focusAt >= 0) cards.get(Math.min(focusAt, cards.size() - 1)).requestFocus();  // a refresh: back on the same episode
+                if (!focusId.isEmpty()) {
+                    for (int i = 0; i < eps.size(); i++) {
+                        if (focusId.equals(eps.get(i).id)) {
+                            View c = cards.get(i);
+                            c.requestFocus();
+                            // Scroll it into view once laid out (requestFocus alone can land before the row has its size).
+                            c.post(() -> c.getParent().requestChildFocus(c, c));
+                            break;
+                        }
+                    }
+                }
             });
         });
     }
@@ -1385,7 +1404,14 @@ final class SearchPanel {
         return b;
     }
 
+    /** Korie: this panel was opened only to show one title's page (from the carousel): closing the page closes it. */
+    boolean pageOnly;
+
     void closeSheet() {
+        if (pageOnly) {
+            a.closeSearch();
+            return;
+        }
         FrameLayout s = sheet;
         sheet = null;
         if (s == null) return;

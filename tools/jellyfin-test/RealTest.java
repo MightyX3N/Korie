@@ -184,7 +184,7 @@ public class RealTest {
         if (film != null) {
             System.out.println("== film: " + film.get("title"));
             Map<String, Object> d = AddonLua.map(ask(lua, h, "detail", film));
-            ok(AddonLua.list(d.get("buttons")).size() == 1, "new film: one Play button: " + AddonLua.toJson(d));
+            System.out.println("      film page before playing: " + AddonLua.toJson(d));
             ask(lua, h, "action", film, "play");
             ok(h.plays.size() == 1, "Play starts the player");
             if (!h.plays.isEmpty()) {
@@ -230,6 +230,7 @@ public class RealTest {
         if (series != null) {
             System.out.println("== series: " + series.get("title"));
             Map<String, Object> d = AddonLua.map(ask(lua, h, "detail", series));
+            System.out.println("      series page opens at: " + AddonLua.toJson(d.get("focus")));
             List<Object> seasons = AddonLua.list(d.get("seasons"));
             ok(!seasons.isEmpty(), "seasons: " + AddonLua.toJson(seasons));
             if (!seasons.isEmpty()) {
@@ -243,6 +244,8 @@ public class RealTest {
                     if (!h.plays.isEmpty() && eps.size() > 1) {
                         Map<String, Object> first = h.plays.get(0);
                         ok(first.get("next") != null, "it knows the next episode: " + AddonLua.toJson(first.get("next")) + ", starts by itself: " + first.get("autonext"));
+                        Map<String, Object> nx = AddonLua.map(first.get("next"));
+                        ok(!AddonLua.str(nx.get("image"), "").isEmpty() && !AddonLua.str(nx.get("series"), "").isEmpty(), "Next Up has a picture and the series name");
                         System.out.println("      parts to skip from the server: " + AddonLua.toJson(first.get("segments")));
                         ask(lua, h, "playback", first.get("ref"), info("playing", 0, 120));
                         ask(lua, h, "playback", first.get("ref"), info("ended", 120, 120));

@@ -417,10 +417,18 @@ is the Search screen without its keyboard, so the remote moves through it the sa
 
 ## Player: skip and next episode (Korie)
 
-- **Skip Intro / Skip Recap** shows bottom right for the whole intro or recap, when the add-on knows
-  where it is (Jellyfin: when the server has media segments, e.g. from the Intro Skipper plugin).
-- **Next Episode** shows through the credits, or in the last 30 seconds when the credits are unknown.
-- **The next episode starts by itself** when one ends (Jellyfin: setting "Next episode starts by itself").
-- The button never takes the focus: while it shows and the controls do not, OK presses it.
-- Back from the player: the title page under it updates by itself (Resume, minutes left, watched
-  episodes) and keeps the focus where it was.
+Modelled on Jellyfin's own Android TV app (jellyfin-androidtv):
+
+- **Back** while the controls show only hides them; Back again leaves the player.
+- **Skip**: when playing reaches an intro, recap, credits or preview, a "Skip Intro" (etc.) button shows
+  for 8 seconds, bottom right, hidden while the controls show. OK presses it. Seeking into the middle
+  of one shows nothing. Jellyfin only knows these parts when the server has media segments, which
+  come from a plugin such as Intro Skipper.
+- **Next Up**: when an episode ends (or its credits are skipped), a Next Up screen shows the next
+  episode with Cancel and Watch Now, counting down 7 seconds. Moving to Cancel stops the count. The
+  Jellyfin add-on's setting turns the count off.
+- **Progress** is told to the server every 3 seconds.
+- **Pages update themselves**: back from the player, the page under it asks again once the add-on has
+  told its server, and keeps the focus where it was.
+- **Series open where you are**: the carousel, Continue Watching and Search all open the series page
+  on the season and episode of the server's Next Up (the episode in progress, or the next one).

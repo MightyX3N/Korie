@@ -503,7 +503,7 @@ final class Addons {
     }
 
     static final class Episode {
-        String title = "", thumb = "", overview = "";
+        String id = "", title = "", thumb = "", overview = "";
         float progress = -1f;
         Map<String, Object> item;
     }
@@ -511,6 +511,8 @@ final class Addons {
     static final class Detail {
         final List<Button> buttons = new ArrayList<>();
         final List<Season> seasons = new ArrayList<>();
+        /** Where a series page opens: the season and episode you are on (the add-on's "focus"), or "". */
+        String focusSeason = "", focusEpisode = "";
     }
 
     /** What an add-on offers for a title: its buttons and, for a series, its seasons. Not on the UI thread. */
@@ -534,6 +536,9 @@ final class Addons {
             x.name = AddonLua.str(m.get("name"), "Season " + x.id);
             d.seasons.add(x);
         }
+        Map<String, Object> f = AddonLua.map(r.get("focus"));
+        d.focusSeason = AddonLua.str(f.get("season"), "");
+        d.focusEpisode = AddonLua.str(f.get("episode"), "");
         if (d.buttons.isEmpty() && d.seasons.isEmpty()) d.buttons.add(new Button());
         return d;
     }
@@ -549,6 +554,7 @@ final class Addons {
             ep.thumb = AddonLua.str(m.get("thumb"), "");
             ep.overview = AddonLua.str(m.get("overview"), "");
             ep.progress = (float) AddonLua.num(m.get("progress"), -1);
+            ep.id = AddonLua.str(m.get("id"), "");
             ep.item = m;
             out.add(ep);
         }
@@ -655,6 +661,25 @@ final class Addons {
     }
 
     /** OK on an add-on's carousel title: its first button (Resume or Play). */
+    /** A carousel title as a title page: OK on the carousel opens its page, as Jellyfin's own apps do. */
+    static Search.Title homeTitle(Suggestions.Item it) {
+        Search.Title t = title(it.addonItem);
+        if (t.backdrop.isEmpty()) t.backdrop = it.backdrop;
+        AddonEngine e = engine(it.addon);
+        if (e != null) t.offers.add(offer(e, it.addonItem));
+        return t;
+    }
+
+    /** Home sets this: an add-on has heard that something stopped or ended (its server knows now). */
+    static volatile Runnable onPlaybackDone;
+
+    static void playbackDone() {
+        ui.post(() -> {
+            Runnable r = onPlaybackDone;
+            if (r != null) r.run();
+        });
+    }
+
     static void openHome(Suggestions.Item it) {
         io.execute(() -> {
             Search.Offer o = new Search.Offer();
