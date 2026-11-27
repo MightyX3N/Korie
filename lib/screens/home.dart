@@ -13,6 +13,7 @@ import '../island.dart';
 import '../net.dart';
 import '../ui/ask.dart';
 import '../store.dart';
+import '../browser/browser.dart';
 import '../tv/library.dart';
 import '../tv/tv.dart';
 import '../tv/widgets.dart' show tvIcon;
@@ -165,7 +166,10 @@ class HomeState extends State<Home> with TickerProviderStateMixin {
     try {
       final lib = TvLibrary(AddonHost.instance);
       final tiles = await lib.tiles();
-      final extra = <App>[if (lib.hasContent) App(id: Store.tvId, label: 'Korie TV', system: true)];
+      final extra = <App>[
+        if (lib.hasContent) App(id: Store.tvId, label: 'Korie TV', system: true),
+        App(id: Store.browserId, label: 'Browser', system: true),
+      ];
       for (final t in tiles) {
         if (!_tileArt.containsKey(t.image)) {
           Uint8List? b;
@@ -193,7 +197,7 @@ class HomeState extends State<Home> with TickerProviderStateMixin {
   }
 
   /// Korie's own cards among the apps: no App Info or Uninstall for these.
-  static bool isOwn(String id) => id == Store.settingsId || id == Store.folderId || id == Store.tvId || id.startsWith('addon:');
+  static bool isOwn(String id) => id == Store.settingsId || id == Store.folderId || id == Store.tvId || id == Store.browserId || id.startsWith('addon:');
 
   Future<void> _loadShelf() async {
     final cache = HomeCache.instance;
@@ -302,6 +306,9 @@ class HomeState extends State<Home> with TickerProviderStateMixin {
     if (id == Store.folderId) {
       return const CardLook(label: 'More Apps', icon: Icons.apps_rounded, colors: [Color(0xFF6B70F0), Color(0xFF4A4FD0)]);
     }
+    if (id == Store.browserId) {
+      return const CardLook(label: 'Browser', icon: Icons.explore_outlined, colors: [Color(0xFF4C8DF6), Color(0xFF1D4ED8)], caption: 'Browser');
+    }
     if (id == Store.tvId) {
       return const CardLook(label: 'Korie TV', icon: Icons.live_tv_rounded, colors: [Color(0xFF34386E), Color(0xFF15162E)], caption: 'Korie TV');
     }
@@ -342,6 +349,8 @@ class HomeState extends State<Home> with TickerProviderStateMixin {
       Navigator.of(context).push(_fade(Folder(store: store, apps: apps)));
     } else if (id == Store.tvId) {
       Navigator.of(context).push(_fade(KorieTv(store: store)));
+    } else if (id == Store.browserId) {
+      Navigator.of(context).push(_fade(KorieBrowser(store: store)));
     } else if (id.startsWith('addon:')) {
       final t = _tiles.where((t) => t.appId == id).firstOrNull;
       if (t == null) return;
@@ -837,6 +846,10 @@ class _Capsule extends StatefulWidget {
 class _CapsuleState extends State<_Capsule> {
   Island get island => Island.instance;
 
+  /// The item shown in full (OK on another's small icon picks it); the most important by default.
+  String? _shown;
+  final _main = FocusNode(debugLabel: 'island.main');
+
   @override
   void initState() {
     super.initState();
@@ -846,6 +859,7 @@ class _CapsuleState extends State<_Capsule> {
   @override
   void dispose() {
     island.removeListener(_changed);
+    _main.dispose();
     super.dispose();
   }
 
@@ -856,7 +870,10 @@ class _CapsuleState extends State<_Capsule> {
   @override
   Widget build(BuildContext context) {
     final g = widget.g;
-    final item = island.top;
+    final all = island.items;
+    final item = all.where((i) => i.key == _shown).firstOrNull ?? (all.isEmpty ? null : all.first);
+    // The others as small icons after it (an update while music plays, say).
+    final others = [for (final i in all) if (i.key != item?.key) i].take(3).toList();
     const dark = Color(0xFF111114);
     // Everything inside sits on one line of the same height, with the same room on every side
     // ([pad]), and nothing grows past it when focused: focus is shown by turning white.
@@ -887,7 +904,7 @@ class _CapsuleState extends State<_Capsule> {
       duration: const Duration(milliseconds: 250),
       curve: Curves.easeOut,
       height: inner + 2 * pad,
-      width: item == null ? null : g.dp(290),
+      width: item == null ? null : g.dp(290) + others.length * (inner + g.dp(2)),
       padding: EdgeInsets.fromLTRB(item == null ? g.dp(12) : pad, pad, pad, pad),
       decoration: BoxDecoration(
         color: const Color(0x61141620),
@@ -901,6 +918,7 @@ class _CapsuleState extends State<_Capsule> {
             Expanded(
               child: HoldFocusable(
                 key: ValueKey(item.key),
+                focusNode: _main,
                 onTap: () => item.onOk?.call(),
                 onHold: item.onHold == null ? null : () => item.onHold!.call(),
                 builder: (context, f) => Container(
@@ -938,6 +956,23 @@ class _CapsuleState extends State<_Capsule> {
                         f,
                       ),
                     ),
+            ],
+            for (final o in others) ...[
+              SizedBox(width: g.dp(2)),
+              Focusable(
+                key: ValueKey('small:${o.key}'),
+                onTap: () {
+                  setState(() => _shown = o.key);
+                  WidgetsBinding.instance.addPostFrameCallback((_) => _main.requestFocus());
+                },
+                builder: (context, f) => Container(
+                  width: inner,
+                  height: inner,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(shape: BoxShape.circle, color: f ? Colors.white : const Color(0x1FFFFFFF)),
+                  child: picture(o),
+                ),
+              ),
             ],
             SizedBox(width: g.dp(8)),
           ],

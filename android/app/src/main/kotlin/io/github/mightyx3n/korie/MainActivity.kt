@@ -37,6 +37,46 @@ class MainActivity : FlutterActivity() {
     /** A .korie file opened from a file manager, waiting for Flutter to ask for it. */
     private var pendingFile: String? = null
 
+    // ------------------------------------------------------------------ the browser
+
+    /**
+     * A page open full screen (an add-on's, such as a game stream): every key and the controller go
+     * straight to the page, not through Flutter. Only Back from the remote stays Korie's, so a
+     * controller's B button (which Android otherwise turns into Back) plays the game.
+     */
+    @Volatile private var webDirect = false
+
+    private fun findWebView(v: android.view.View?): android.webkit.WebView? {
+        if (v is android.webkit.WebView && v.isShown) return v
+        if (v is android.view.ViewGroup) for (i in 0 until v.childCount) findWebView(v.getChildAt(i))?.let { return it }
+        return null
+    }
+
+    private fun fromController(e: android.view.InputEvent): Boolean {
+        val s = e.source
+        return (s and android.view.InputDevice.SOURCE_GAMEPAD) == android.view.InputDevice.SOURCE_GAMEPAD ||
+            (s and android.view.InputDevice.SOURCE_JOYSTICK) == android.view.InputDevice.SOURCE_JOYSTICK
+    }
+
+    override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+        if (webDirect && !(event.keyCode == android.view.KeyEvent.KEYCODE_BACK && !fromController(event))) {
+            val wv = findWebView(window.decorView)
+            if (wv != null) {
+                wv.dispatchKeyEvent(event)
+                return true // handled: no Back made from an unused controller button
+            }
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
+    override fun dispatchGenericMotionEvent(event: android.view.MotionEvent): Boolean {
+        if (webDirect && fromController(event)) {
+            val wv = findWebView(window.decorView)
+            if (wv != null) return wv.dispatchGenericMotionEvent(event) || true
+        }
+        return super.dispatchGenericMotionEvent(event)
+    }
+
     /** The TV went to sleep: Who's Watching is asked when it is used again. */
     private val screenOff = object : BroadcastReceiver() {
         override fun onReceive(c: Context, i: Intent) {
@@ -94,6 +134,7 @@ class MainActivity : FlutterActivity() {
                 "media" -> background(result) { media() }
                 "versionCode" -> result.success(versionCode())
                 "wokeUp" -> result.success(wokeUp())
+                "webDirect" -> { webDirect = call.arguments as? Boolean ?: false; if (webDirect) findWebView(window.decorView)?.requestFocus(); result.success(true) }
                 "versionName" -> result.success(packageManager.getPackageInfo(packageName, 0).versionName ?: "")
                 "installProgress" -> result.success(installProgress)
                 "installApk" -> installApk(call.arguments as String, result)
@@ -102,6 +143,7 @@ class MainActivity : FlutterActivity() {
             }
         }
         homeChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "korie/home")
+        flutterEngine.platformViewsController.registry.registerViewFactory("korie/web", KorieWebViewFactory(flutterEngine.dartExecutor.binaryMessenger))
         val f = IntentFilter().apply {
             addAction(Intent.ACTION_PACKAGE_ADDED)
             addAction(Intent.ACTION_PACKAGE_REMOVED)

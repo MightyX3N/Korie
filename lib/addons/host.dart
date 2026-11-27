@@ -94,7 +94,9 @@ class AddonHost extends ChangeNotifier {
         refreshCatalog(id);
       }
     });
+    final sw = Stopwatch()..start();
     await Future.wait([for (final a in installed.values) if (a.enabled) _start(a)]);
+    debugPrint('korie: add-ons started in ${sw.elapsedMilliseconds} ms: ${_running.keys.join(', ')}');
     ready = true;
     notifyListeners();
   }
@@ -338,7 +340,13 @@ class AddonHost extends ChangeNotifier {
       if (!r.ready.isCompleted) r.ready.complete(false);
       fromWorker.close();
     }
-    await r.ready.future;
+    // One add-on whose main.lua does not finish must not hold back the others (and Korie's
+    // island and updates, which start after them): it answers once it is ready.
+    await r.ready.future.timeout(const Duration(seconds: 30), onTimeout: () {
+      _log(r, 'still starting after 30 s');
+      debugPrint('korie: add-on ${a.id} still starting after 30 s');
+      return false;
+    });
   }
 
   Future<void> _stop(String id) async {

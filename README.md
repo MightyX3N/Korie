@@ -15,6 +15,10 @@ head units, phones and desktop come later.
   picture with Play on each page, Continue Watching, rows of posters by genre, and pages for films
   and series with their seasons, episodes and More Like This. Titles that several add-ons have
   show once. Add-ons can also put their own tiles on Home. (Korie's own video player comes next.)
+- **Browser**: a tile on Home with tabs, a new-tab page with search and favourites, and a
+  pointer moved with the arrows (OK clicks; Up at the top of a page reaches the bar). Add-ons can
+  open pages in it as a tab, or full screen with every key and a game controller going to the
+  page (Back on the remote leaves), as the ZeroPlay add-on does. It uses the TV's own web engine.
 - **Add-ons**: small Lua programs from the Korie add-on list (`addons/`), the Download folder or a
   `.korie` file. See [docs/addons.md](docs/addons.md).
 

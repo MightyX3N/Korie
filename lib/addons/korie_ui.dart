@@ -1,6 +1,7 @@
 import 'package:material_ui/material_ui.dart';
 
 import '../android.dart';
+import '../browser/browser.dart';
 import '../store.dart';
 import '../ui/ask.dart';
 import 'host.dart';
@@ -36,6 +37,19 @@ class KorieAddonUi implements AddonUi {
         return const [true];
       case 'ask':
         return [await _ask(addonId, a0 is Map ? a0 : const {})];
+      case 'browse':
+        // A page in Korie's own browser: full screen (only the page; the keys and a controller go
+        // to it, Back on the remote leaves), or as a tab among the viewer's tabs.
+        final t = a0 is Map ? a0 : {'url': a0};
+        final url = '${t['url'] ?? ''}';
+        final nav = navigator.currentState;
+        if (nav == null || !(url.startsWith('http://') || url.startsWith('https://'))) return const [false];
+        if (t['fullscreen'] == true) {
+          nav.push(PageRouteBuilder(pageBuilder: (_, _, _) => FullPage(url: url, title: '${t['title'] ?? ''}'), transitionDuration: Duration.zero));
+        } else {
+          nav.push(PageRouteBuilder(pageBuilder: (_, _, _) => KorieBrowser(store: store, open: url), transitionDuration: Duration.zero));
+        }
+        return const [true];
       case 'open':
         final t = a0 is Map ? a0 : {'url': a0};
         if (t['package'] != null || t['app'] != null) {
