@@ -54,7 +54,7 @@ class MainActivity : FlutterActivity() {
                 "appInfo" -> result.success(start(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + call.arguments))))
                 "uninstall" -> result.success(start(Intent(Intent.ACTION_DELETE, Uri.parse("package:" + call.arguments))))
                 "tvSettings" -> result.success(start(Intent(Settings.ACTION_SETTINGS)))
-                "tvListingsSupported" -> result.success(Build.VERSION.SDK_INT >= 26)
+                "tvListingsSupported" -> result.success(listingsSupported())
                 "tvListingsGranted" -> result.success(granted())
                 "askTvListings" -> askTvListings(result)
                 "shelf" -> background(result) { shelf() }
@@ -228,8 +228,18 @@ class MainActivity : FlutterActivity() {
 
     private fun granted() = Build.VERSION.SDK_INT >= 26 && checkSelfPermission(perm) == PackageManager.PERMISSION_GRANTED
 
+    /**
+     * Continue Watching and apps' rows come from the TV's program guide (its TV provider). Phones,
+     * tablets and car boxes have none, and there the permission does not even exist.
+     */
+    private fun listingsSupported(): Boolean {
+        if (Build.VERSION.SDK_INT < 26) return false
+        val defined = try { packageManager.getPermissionInfo(perm, 0); true } catch (e: Exception) { false }
+        return defined && packageManager.resolveContentProvider("android.media.tv", 0) != null
+    }
+
     private fun askTvListings(result: MethodChannel.Result) {
-        if (Build.VERSION.SDK_INT < 26) { result.success(false); return }
+        if (!listingsSupported()) { result.success(false); return }
         if (granted()) { result.success(true); return }
         permResult = result
         requestPermissions(arrayOf(perm), 7)

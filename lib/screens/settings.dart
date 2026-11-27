@@ -167,26 +167,29 @@ class _SettingsState extends State<Settings> {
         value: store.current.name,
         onTap: () => _push(Profiles(store: store)),
       ),
-      SRow(
-        'Top Shelf',
-        value: _shelfSummary,
-        onTap: () => _push(_TopShelf(store: store)),
-      ),
+      // The apps' part of the carousel needs the TV's program guide; elsewhere only add-ons fill it.
+      if (supported)
+        SRow(
+          'Top Shelf',
+          value: _shelfSummary,
+          onTap: () => _push(_TopShelf(store: store)),
+        ),
       SRow(
         'Add-ons',
         value: _addonSummary,
         onTap: () => _push(const AddonsSettings()),
       ),
-      SRow(
-        'Continue Watching',
-        value: !supported ? 'Needs Android TV 8 or later' : (granted ? 'Allowed' : 'Needs permission'),
-        onTap: supported && !granted
-            ? () async {
-                await Android.askListings();
-                _perm();
-              }
-            : null,
-      ),
+      if (supported)
+        SRow(
+          'Continue Watching',
+          value: granted ? 'Allowed' : 'Needs permission',
+          onTap: granted
+              ? null
+              : () async {
+                  await Android.askListings();
+                  _perm();
+                },
+        ),
       SRow(
         'Home',
         value: store.wallpaper,

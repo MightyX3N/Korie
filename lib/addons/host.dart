@@ -95,8 +95,12 @@ class AddonHost extends ChangeNotifier {
       }
     });
     await Future.wait([for (final a in installed.values) if (a.enabled) _start(a)]);
+    ready = true;
     notifyListeners();
   }
+
+  /// The installed add-ons have all been started (until then they answer nothing).
+  bool ready = false;
 
   // ------------------------------------------------------------------ asking add-ons
 

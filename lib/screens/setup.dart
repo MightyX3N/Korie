@@ -419,7 +419,7 @@ class _SetupState extends State<Setup> {
       final rows = [
         if (supported)
           SetupRow('cw', 'Continue Watching', sub: 'What you are in the middle of, from your apps', value: listings ? null : 'Allow ›', check: listings && store.showContinue),
-        SetupRow('rows', 'From Your Apps', sub: 'Rows your apps publish for the home screen', check: store.showAppRows),
+        if (supported) SetupRow('rows', 'From Your Apps', sub: 'Rows your apps publish for the home screen', check: store.showAppRows),
         if (Android.on) SetupRow('corner', 'Now Playing in the Corner', sub: 'Music, radio and videos playing in other apps', value: corner ? null : 'Allow ›', check: corner),
         const SetupRow('next', 'Continue'),
       ];
