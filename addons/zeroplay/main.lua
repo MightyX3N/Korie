@@ -122,7 +122,6 @@ local function item(lib, g)
     poster = g.image or "",
     backdrop = g.hero or g.image or "",
     overview = "On " .. console_name(lib, g.console) .. ", through ZeroPlay.",
-    genres = "Games",
     game = g.id,
     console = g.console,
   }
