@@ -155,15 +155,31 @@ local function use_server(s)
   korie.store.set("server", s)
   if not old or old.id ~= s.id then  -- another server: its sign-ins don't apply here
     for _, p in ipairs(korie.profiles.list()) do korie.store.remove("account:" .. p.id) end
+    korie.store.remove("users")
   end
   show_state()
 end
 
 -- ---------------------------------------------------------------- signing in
 
+-- Every sign-in by Jellyfin user, so a Korie profile made later for that user is signed in too.
+local function remember_user(acct)
+  local all = korie.store.get("users", {})
+  all[tostring(acct.user)] = acct
+  korie.store.set("users", all)
+end
+
+local function forget_user(id)
+  local all = korie.store.get("users", {})
+  all[tostring(id)] = nil
+  korie.store.set("users", all)
+end
+
 local function signed_in(result)
   if type(result) ~= "table" or not result.AccessToken or not result.User then return false end
-  korie.store.set("account:" .. profile_id(), { token = result.AccessToken, user = result.User.Id, name = result.User.Name })
+  local acct = { token = result.AccessToken, user = result.User.Id, name = result.User.Name }
+  korie.store.set("account:" .. profile_id(), acct)
+  remember_user(acct)  -- Korie 2: profiles made later find it by user
   show_state()
   korie.refresh()
   return true
@@ -276,6 +292,7 @@ function buttons.server()
     if not try_without_password() then korie.refresh() end
   elseif pick == 3 and s then
     korie.store.remove("server")
+    korie.store.remove("users")
     for _, p in ipairs(korie.profiles.list()) do korie.store.remove("account:" .. p.id) end
     show_state()
     korie.refresh()
@@ -297,6 +314,7 @@ function buttons.account()
     password_sign_in()
   elseif pick == 3 and a then
     call("POST", "/Sessions/Logout")
+    forget_user(a.user)
     korie.store.remove("account:" .. profile_id())
     show_state()
     korie.refresh()
@@ -361,7 +379,9 @@ function buttons.profiles()
 end
 
 -- Straight after a sign-in: offer a profile for each of the server's other users.
+local in_setup = false  -- Korie's setup makes the profiles itself
 function offer_profiles()
+  if in_setup then return end
   local users = server_users()
   if not users then return end
   local missing = users_without_profile(users)
@@ -694,6 +714,133 @@ korie.on("playback", function(ref, info)
     api("POST", "/Sessions/Playing/Stopped", nil, body)
     started[ref.session or ref.id] = nil
   end
+end)
+
+-- ---------------------------------------------------------------- Korie 2: setup and profiles
+--
+-- Korie's setup shows these pages, and can make Korie's profiles from the server's users: each
+-- profile is then that Jellyfin user, and Korie asks for the user's password when the profile is
+-- picked (until it is signed in).
+
+local found_servers = {}
+
+local function signin_page(s)
+  return {
+    id = "signin", title = "Sign In to " .. (s and s.name or "Jellyfin"),
+    message = "Jellyfin shows its users after one of them signs in.",
+    rows = {
+      { id = "qc", title = "Quick Connect", sub = "Enter a code in Jellyfin on your phone; no typing here" },
+      { id = "pw", title = "User Name and Password" },
+      { id = "skip", title = "Skip", sub = "Sign in later in Settings → Add-ons → Jellyfin" },
+    },
+  }
+end
+
+korie.on("setup", function()
+  local s = server()
+  if s then
+    for _, p in ipairs(korie.profiles.list()) do
+      if korie.store.get("account:" .. p.id, nil) then return nil end  -- already set up
+    end
+    return signin_page(s)
+  end
+  found_servers = discover()
+  local rows = {}
+  for i, f in ipairs(found_servers) do
+    rows[#rows + 1] = { id = "s" .. i, title = f.name, sub = f.url:gsub("^https?://", "") .. " · found on your network", value = "Connect" }
+  end
+  rows[#rows + 1] = { id = "type", title = "Type an Address…", sub = "Like jellyfin.example.com or 192.168.1.20" }
+  rows[#rows + 1] = { id = "skip", title = "Skip", sub = "Jellyfin can be set up later in Settings" }
+  return {
+    id = "connect", title = "Connect to Jellyfin",
+    message = #found_servers > 0 and "Servers found on your network. Or type an address." or "No server answered on this network. Type its address, or skip.",
+    rows = rows,
+  }
+end)
+
+korie.on("setup.choose", function(page, row)
+  if row == "skip" then return "done" end
+  if page == "connect" then
+    local chosen
+    if row == "type" then
+      local text = korie.ask{ title = "Server Address", message = "The IP address or domain of the server, for example 192.168.1.20 or jellyfin.example.com", input = "text" }
+      if not text or text == "" then return nil end
+      chosen = resolve(text)
+      if not chosen then
+        korie.ask{ title = "Jellyfin", message = "No Jellyfin server answered at " .. text .. ". Check the address, and the port if the server does not use 8096." }
+        return nil
+      end
+    else
+      chosen = found_servers[tonumber(row:sub(2))]
+      if not chosen then return nil end
+    end
+    use_server(chosen)
+    return signin_page(chosen)
+  elseif page == "signin" then
+    in_setup = true
+    if row == "qc" then quick_connect() elseif row == "pw" then password_sign_in() end
+    in_setup = false
+    if account() then return "done" end
+    return nil
+  end
+  return "done"
+end)
+
+-- Any saved sign-in, to ask the server things when this profile has none.
+local function any_account()
+  local a = account()
+  if a then return a end
+  for _, p in ipairs(korie.profiles.list()) do
+    a = korie.store.get("account:" .. p.id, nil)
+    if a then return a end
+  end
+end
+
+-- The users that can become Korie profiles: { {id, name, detail} }.
+korie.on("users", function()
+  local s = server()
+  if not s then return nil end
+  local users
+  local a = any_account()
+  if a then users = call("GET", "/Users", { isDisabled = "false" }, nil, nil, a.token) end
+  if type(users) ~= "table" then users = call("GET", "/Users/Public", nil, nil, nil, false) end
+  if type(users) ~= "table" then return nil end
+  local out = {}
+  for _, u in ipairs(users) do
+    if u.Id and u.Name then
+      out[#out + 1] = { id = u.Id, name = u.Name, detail = s.name .. " · " .. s.url:gsub("^https?://", "") }
+    end
+  end
+  return out
+end)
+
+-- Is this Korie profile signed in as this user? A sign-in of the same user by another profile counts.
+korie.on("signedin", function(profile, user)
+  local mine = korie.store.get("account:" .. profile.id, nil)
+  if mine and mine.user == user.id then return true end
+  -- Signed in before under another profile (in setup, say, before the profiles were made).
+  local a = korie.store.get("users", {})[tostring(user.id)]
+  if a then
+    korie.store.set("account:" .. profile.id, a)
+    return true
+  end
+  return false
+end)
+
+-- The password typed on Korie's password screen.
+korie.on("signin", function(profile, user, password)
+  if not server() then return "Jellyfin has no server set." end
+  local result, why = call("POST", "/Users/AuthenticateByName", nil, { Username = user.name, Pw = password or "" }, nil, false, 15)
+  if type(result) == "table" and result.AccessToken and result.User then
+    local acct = { token = result.AccessToken, user = result.User.Id, name = result.User.Name }
+    korie.store.set("account:" .. profile.id, acct)
+    remember_user(acct)
+    show_state()
+    korie.refresh()
+    return true
+  end
+  if why == "not signed in" or why == "the server answered 401" then return "Wrong password." end
+  return "Could not sign in: " .. tostring(why)
 end)
 
 show_state()
