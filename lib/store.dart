@@ -68,6 +68,10 @@ class Store extends ChangeNotifier {
       _saveProfiles();
     }
     currentId = _p.getString('current') ?? profiles.first.id;
+    // Who's Watching "Off" from Korie 2.3/2.4 went straight into the last profile: now that is
+    // "Start as" that profile.
+    if (_p.getBool('ask.who') == false && !_p.containsKey('start.as')) _p.setString('start.as', currentId);
+    _p.remove('ask.who');
   }
 
   void _saveProfiles() => _p.setString('profiles', jsonEncode(profiles.map((p) => p.toJson()).toList()));
@@ -172,16 +176,41 @@ class Store extends ChangeNotifier {
 
   bool get setupDone => _p.getBool('setup.done') ?? false;
 
-  /// Who's Watching when the TV wakes or starts. Off: straight into the last profile (unless it
-  /// has a PIN, which is always asked).
-  bool get askWho => _p.getBool('ask.who') ?? true;
-  void setAskWho(bool v) {
-    _p.setBool('ask.who', v);
+  /// Who's Watching when the TV wakes or starts: null asks, else the id of the profile Korie
+  /// starts as (its PIN, if it has one, is still asked).
+  String? get startAs {
+    final id = _p.getString('start.as');
+    return id != null && profiles.any((p) => p.id == id) ? id : null;
+  }
+
+  void setStartAs(String? id) {
+    if (id == null) {
+      _p.remove('start.as');
+    } else {
+      _p.setString('start.as', id);
+    }
     notifyListeners();
   }
 
-  /// Should Who's Watching show now that the TV has woken up?
-  bool get pickOnWake => current.pin != null || (askWho && profiles.length > 1);
+  Profile? get startProfile => profiles.where((p) => p.id == startAs).firstOrNull;
+
+  /// Pages left running in the background (the remote's Home on a full-screen page): closed after
+  /// this many minutes unused (0: never), and at most this many kept (the oldest closes first).
+  int get backgroundClose => _p.getInt('bg.close') ?? 15;
+  void setBackgroundClose(int minutes) {
+    _p.setInt('bg.close', minutes);
+    notifyListeners();
+  }
+
+  int get backgroundMax => _p.getInt('bg.max') ?? 2;
+  void setBackgroundMax(int n) {
+    _p.setInt('bg.max', n);
+    notifyListeners();
+  }
+
+  /// Should Who's Watching show now that the TV has woken up? Not when Korie starts as a set
+  /// profile; else with several profiles, or with one that has a PIN (it locks again).
+  bool get pickOnWake => startAs == null && (profiles.length > 1 || current.pin != null);
   void setSetupDone() => _p.setBool('setup.done', true);
 
   /// Where Korie is, for the weather, the map and local radio: {mode: device|city|ip, name, lat, lon}.

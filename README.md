@@ -18,7 +18,9 @@ head units, phones and desktop come later.
 - **Browser**: a tile on Home with tabs, a new-tab page with search and favourites, and a
   pointer moved with the arrows (OK clicks; Up at the top of a page reaches the bar). Add-ons can
   open pages in it as a tab, or full screen with every key and a game controller going to the
-  page (Back on the remote leaves), as the ZeroPlay add-on does. It uses the TV's own web engine.
+  page, as the ZeroPlay add-on does: Back closes it, Home keeps it running in the background
+  (shown in the island; Settings › Background sets how many and for how long). It uses the TV's
+  own web engine.
 - **Add-ons**: small Lua programs from the Korie add-on list (`addons/`), the Download folder or a
   `.korie` file. See [docs/addons.md](docs/addons.md).
 

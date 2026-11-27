@@ -33,7 +33,9 @@ class IslandItem {
   final bool? playing;
   final Future<void> Function()? onOk, onHold, onToggle;
 
-  /// Higher shows first: Korie's own player 30, other apps playing 20, add-ons 10, updates 5.
+  /// Higher shows first: updates 40 (so one is never hidden behind what plays; what plays is
+  /// then a small icon beside it), Korie's own player 30, an add-on playing 25, a page running in
+  /// the background 22, other apps playing 20, add-ons 10, paused media 8.
   final int rank;
 }
 
@@ -220,7 +222,7 @@ class Island extends ChangeNotifier {
           title: updating == null ? 'Update ready' : 'Updating',
           sub: updating ?? [if (app != null) 'Korie ${app.version}', for (final e in newAddons) '${e.name} add-on ${e.version}'].join(' · '),
           icon: Icons.arrow_upward_rounded,
-          rank: 5,
+          rank: 40,
           onOk: installUpdates,
         ),
     ];

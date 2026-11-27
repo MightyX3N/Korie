@@ -37,9 +37,9 @@
     {
       "id": "zeroplay",
       "name": "ZeroPlay",
-      "version": "1.2",
+      "version": "1.3",
       "author": "MightyX3N",
-      "description": "Your Xbox through ZeroPlay: an Xbox tile on Home and an Xbox section in Korie TV with your installed games and their covers, recently played games in the carousel and in Search, and the Xbox's status in the island. Play starts the game and opens ZeroPlay to stream it; Start on Xbox starts it on the console for the TV it is connected to. Finds ZeroPlay on your network and signs in with a ZeroPlay profile.",
+      "description": "Your Xbox through ZeroPlay: an Xbox tile on Home and an Xbox section in Korie TV with your installed games and their covers, recently played games in the carousel and in Search. Play starts the game and opens ZeroPlay full screen to stream it (Home keeps the stream running in the background); Start on Xbox starts it on the console for the TV it is connected to. Finds ZeroPlay on your network and signs in with a ZeroPlay profile.",
       "uses": [
         "internet",
         "apps"

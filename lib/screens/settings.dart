@@ -2,6 +2,7 @@ import 'package:material_ui/material_ui.dart';
 
 import '../addons/host.dart';
 import '../android.dart';
+import '../browser/background.dart';
 import 'addons.dart';
 import '../geo.dart';
 import '../island.dart';
@@ -168,10 +169,19 @@ class _SettingsState extends State<Settings> {
         value: store.current.name,
         onTap: () => _push(Profiles(store: store)),
       ),
-      // With more than one profile: ask who is watching when the TV wakes, or go straight to the
-      // last profile (a profile with a PIN is always asked for it).
-      if (store.profiles.length > 1)
-        SRow("Who's Watching", value: store.askWho ? 'When the TV Wakes' : 'Off', chevron: false, onTap: () => store.setAskWho(!store.askWho)),
+      // With more than one profile, or a profile with a PIN: ask who is watching when the TV
+      // wakes, or start as a chosen profile (its PIN is still asked).
+      if (store.profiles.length > 1 || store.profiles.any((p) => p.pin != null))
+        SRow(
+          "Who's Watching",
+          value: store.startProfile == null ? 'When the TV Wakes' : 'Start as ${store.startProfile!.name}',
+          chevron: false,
+          // OK goes through: When the TV Wakes, Start as each profile, and around again.
+          onTap: () {
+            final ids = [null, for (final p in store.profiles) p.id];
+            store.setStartAs(ids[(ids.indexOf(store.startAs) + 1) % ids.length]);
+          },
+        ),
       // The apps' part of the carousel needs the TV's program guide; elsewhere only add-ons fill it.
       if (supported)
         SRow(
@@ -200,6 +210,7 @@ class _SettingsState extends State<Settings> {
         value: store.wallpaper,
         onTap: () => _push(_Wallpaper(store: store)),
       ),
+      SRow('Background', value: _backgroundSummary(store), onTap: () => _push(_Background(store: store))),
       SRow('About', value: 'Version ${Android.version}', onTap: () => _push(_About(store: store))),
       SRow('TV Settings', onTap: Android.tvSettings, chevron: false),
     ],
@@ -224,6 +235,43 @@ class _TopShelfState extends State<_TopShelf> {
       rows: [
         SRow('Continue Watching', value: s.showContinue ? 'On' : 'Off', chevron: false, onTap: () => setState(() => s.setShowContinue(!s.showContinue))),
         SRow('From Your Apps', value: s.showAppRows ? 'On' : 'Off', chevron: false, onTap: () => setState(() => s.setShowAppRows(!s.showAppRows))),
+      ],
+    );
+  }
+}
+
+String _minutes(int m) => m <= 0 ? 'Never' : (m >= 60 ? '${m ~/ 60} hour' : '$m min');
+
+String _backgroundSummary(Store s) => 'At most ${s.backgroundMax} · ${s.backgroundClose <= 0 ? 'kept' : 'closed after ${_minutes(s.backgroundClose)}'}';
+
+/// Pages left running with the remote's Home button (a ZeroPlay stream, say): how long they are
+/// kept unused, and how many at most. OK goes to the next choice.
+class _Background extends StatefulWidget {
+  const _Background({required this.store});
+  final Store store;
+  @override
+  State<_Background> createState() => _BackgroundState();
+}
+
+class _BackgroundState extends State<_Background> {
+  static const closes = [5, 15, 30, 60, 0];
+  static const maxes = [1, 2, 3];
+
+  @override
+  Widget build(BuildContext context) {
+    final s = widget.store;
+    T next<T>(List<T> l, T v) => l[(l.indexOf(v) + 1) % l.length];
+    return SettingsPage(
+      title: 'Background',
+      subtitle: 'Pages left running with Home',
+      icon: Icons.layers_rounded,
+      rows: [
+        SRow('Close Unused Pages After', value: _minutes(s.backgroundClose), chevron: false, onTap: () => setState(() => s.setBackgroundClose(next(closes, s.backgroundClose)))),
+        SRow('Keep at Most', value: '${s.backgroundMax}', chevron: false, onTap: () {
+            setState(() => s.setBackgroundMax(next(maxes, s.backgroundMax)));
+            BackgroundPages.instance.trim();
+          },
+        ),
       ],
     );
   }
