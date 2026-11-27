@@ -4,7 +4,7 @@
     {
       "id": "jellyfin",
       "name": "Jellyfin",
-      "version": "1.6",
+      "version": "1.7",
       "author": "Korie",
       "description": "Films and series from your own Jellyfin server, played in Korie's player. Finds the server on your network or takes its address, signs in with Quick Connect or a password, and keeps one sign-in per Korie profile so everyone has their own Continue Watching.",
       "uses": [
@@ -26,9 +26,9 @@
     {
       "id": "radio",
       "name": "Radio",
-      "version": "1.0",
+      "version": "1.1",
       "author": "Korie",
-      "description": "Internet radio by country, from the free Radio Browser directory. Find a station in Search and it plays in the background, with the now-playing pill on Home.",
+      "description": "Internet radio by country, from the free Radio Browser directory. Its own Radio tile on Home and section in Korie TV, stations in Search, and they play in the background with the now-playing pill on Home.",
       "uses": [
         "internet"
       ],

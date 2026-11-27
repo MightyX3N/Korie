@@ -228,6 +228,9 @@ class AddonHost extends ChangeNotifier {
     final a = InstalledAddon(p.manifest, dir);
     installed[id] = a;
     _saveState();
+    // A new version may give its items differently: its saved list is fetched again.
+    final saved = _catalogFile(id);
+    if (saved.existsSync()) saved.deleteSync();
     await _start(a);
     notifyListeners();
     return a;

@@ -439,6 +439,9 @@ local function to_item(it)
     id = it.Id, kind = it.Type, type = series and "series" or "movie",
     title = it.Name or "", year = it.ProductionYear and tostring(it.ProductionYear) or "",
     overview = it.Overview or "", genres = genres(it), rating = it.CommunityRating,
+    runtime = it.RunTimeTicks and math.floor(it.RunTimeTicks / TICKS / 60 + 0.5) or nil,
+    official = it.OfficialRating,
+    ends = series and it.EndDate and it.Status ~= "Continuing" and string.sub(it.EndDate, 1, 4) or nil,
     poster = image(it.Id, "Primary", it.ImageTags and it.ImageTags.Primary, 400),
     backdrop = backdrop_of(it, 1920),
     added = it.DateCreated,
@@ -454,7 +457,7 @@ korie.on("catalog", function()
   while true do
     local data, why = api("GET", "/Items", {
       userId = a.user, recursive = "true", includeItemTypes = "Movie,Series", sortBy = "SortName",
-      fields = "Overview,Genres,ProviderIds,DateCreated", enableUserData = "false", imageTypeLimit = 1,
+      fields = "Overview,Genres,ProviderIds,DateCreated,OfficialRating,EndDate,Status", enableUserData = "false", imageTypeLimit = 1,
       enableImageTypes = "Primary,Backdrop", startIndex = start, limit = page,
     })
     if type(data) ~= "table" or type(data.Items) ~= "table" then error("no library: " .. tostring(why)) end
@@ -485,7 +488,7 @@ local function home_item(it)
     local n = (it.ParentIndexNumber and ("S" .. it.ParentIndexNumber .. " ") or "") .. (it.IndexNumber and ("E" .. it.IndexNumber) or "")
     item = {
       id = it.SeriesId, kind = "Series", type = "series", title = it.SeriesName or it.Name or "",
-      overview = (n ~= "" and (n .. " · ") or "") .. (it.Name or ""),
+      -- (no overview: the episode line says which one; Korie TV shows the series' own overview)
       episode = (n ~= "" and (n .. " · ") or "") .. (it.Name or ""),
       poster = image(it.SeriesId, "Primary", it.SeriesPrimaryImageTag, 400),
       focus_episode = it.Id, focus_season = it.SeasonId,

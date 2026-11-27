@@ -8,6 +8,7 @@ import 'package:archive/archive.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:korie/addons/host.dart';
 import 'package:korie/island.dart';
+import 'package:korie/tv/library.dart';
 
 const addonsDir = 'addons'; // this repository's add-ons
 
@@ -109,6 +110,19 @@ void main() {
     ui.played.clear();
     await host.call('radio', 'action', [cat.first, 'play']);
     expect(ui.played.single['audio'], true, reason: host.logOf('radio').join('\n'));
+    // Its own section in Korie TV, and its own tile on Home that opens it.
+    final tv = TvLibrary(host);
+    expect((await tv.sections()).map((x) => '${x.page} ${x.title} ${x.icon}'), contains('radio/radio Radio radio'));
+    final tile = (await tv.tiles()).firstWhere((t) => t.addon == 'radio');
+    expect([tile.appId, tile.title, tile.section, tile.colors.length], ['addon:radio:radio', 'Radio', 'radio/radio', 2]);
+    final page = await tv.page('radio/radio');
+    expect(page.rows.first.title, 'Most Listened');
+    expect(page.rows.first.square, true);
+    expect(page.rows.first.items.first.title, (cat.first as Map)['title']);
+    // Stations stay out of Korie TV's Home (films and series only) but are found in Search.
+    final home = await tv.page('home');
+    expect(home.rows.expand((r) => r.items).where((i) => i.type == 'radio'), isEmpty);
+    expect((await tv.search('${(cat.first as Map)['title']}')).first.type, 'radio');
   });
 
   test('jellyfin: profile switch, settings rows and the server question', () async {
@@ -133,8 +147,21 @@ void main() {
     expect(p?.manifest.id, 'openfilms');
   });
 
-  test('jellyfin 1.6: setup pages, users, passwords (against a fake Jellyfin server)', () async {
+  test('jellyfin 1.7: setup pages, users, passwords (against a fake Jellyfin server)', () async {
     final srv = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    Map<String, Object?> film(String id, String name, String genres, int year, String added, {bool series = false}) => {
+      'Id': id, 'Name': name, 'Type': series ? 'Series' : 'Movie', 'ProductionYear': year, 'Genres': genres.split(','),
+      'DateCreated': added, 'RunTimeTicks': series ? null : 99000000000, 'OfficialRating': '15', 'CommunityRating': 8.1,
+      'ImageTags': {'Primary': 'p'}, 'BackdropImageTags': ['b'], 'ProviderIds': {'Tmdb': id.hashCode.toString()},
+    };
+    final library = [
+      film('m-dune', 'Dune: Part Two', 'Science Fiction,Adventure', 2024, '2026-11-20T10:00:00Z'),
+      film('m-opp', 'Oppenheimer', 'Drama,History', 2023, '2026-11-19T10:00:00Z'),
+      film('m-int', 'Interstellar', 'Science Fiction,Drama', 2014, '2026-11-01T10:00:00Z'),
+      film('m-inc', 'Inception', 'Science Fiction,Action', 2010, '2026-10-01T10:00:00Z'),
+      film('s-bb', 'Breaking Bad', 'Crime,Drama', 2008, '2026-09-01T10:00:00Z', series: true),
+      film('s-st', 'Stranger Things', 'Science Fiction,Drama', 2016, '2026-11-21T10:00:00Z', series: true),
+    ];
     final users = [
       {'Id': 'u-anna', 'Name': 'Anna'},
       {'Id': 'u-mikkel', 'Name': 'Mikkel'},
@@ -159,6 +186,21 @@ void main() {
         out = users;
       } else if (path == '/Users/Public') {
         out = [];
+      } else if (path == '/Items') {
+        out = {'Items': library, 'TotalRecordCount': library.length};
+      } else if (path == '/UserItems/Resume') {
+        out = {
+          'Items': [
+            {'Id': 'e-205', 'Name': 'Breakage', 'Type': 'Episode', 'SeriesId': 's-bb', 'SeriesName': 'Breaking Bad', 'SeasonId': 'season-2',
+              'ParentIndexNumber': 2, 'IndexNumber': 5, 'ParentBackdropItemId': 's-bb', 'ParentBackdropImageTags': ['t'],
+              'RunTimeTicks': 28000000000, 'UserData': {'PlaybackPositionTicks': 9000000000, 'PlayedPercentage': 32}},
+          ],
+        };
+      } else if (path == '/Shows/s-bb/Seasons') {
+        out = {'Items': [{'Id': 'season-1', 'Name': 'Season 1'}, {'Id': 'season-2', 'Name': 'Season 2'}]};
+      } else if (path == '/Shows/s-bb/Episodes') {
+        final n = (rq.uri.queryParameters['seasonId'] ?? 'season-1').split('-').last;
+        out = {'Items': [for (var i = 1; i <= 7; i++) {'Id': 'e-${n}0$i', 'Name': 'Episode $i', 'IndexNumber': i, 'UserData': {'PlayedPercentage': n == '2' && i == 5 ? 32 : 0}}]};
       } else {
         out = [];
       }
@@ -168,7 +210,7 @@ void main() {
       await rq.response.close();
     });
     await host.install(AddonHost.readPackage(pack('$addonsDir/jellyfin'))!);
-    expect(host.installed['jellyfin']!.manifest.version, '1.6');
+    expect(host.installed['jellyfin']!.manifest.version, '1.7');
     final url = 'http://127.0.0.1:${srv.port}';
     final asked = <String>[];
     ui.answer = (op, args) {
@@ -206,6 +248,36 @@ void main() {
     ui.answer = null;
     // set up now: no setup page any more
     expect(await host.call('jellyfin', 'setup'), isNull);
+
+    // Korie TV, built from the catalog and Continue Watching.
+    await host.refreshCatalog('jellyfin');
+    final tv = TvLibrary(host);
+    expect(tv.hasContent, true);
+    final movies = await tv.page('movies');
+    expect(movies.featured.first.title, 'Dune: Part Two', reason: 'the newest film with a backdrop comes first');
+    expect(movies.rows.first.title, 'Recently Added');
+    expect(movies.rows.first.items.map((i) => i.title).take(4), ['Dune: Part Two', 'Oppenheimer', 'Interstellar', 'Inception']);
+    expect(movies.rows.map((r) => r.title), contains('Science Fiction'));
+    final dune = movies.rows.first.items.first;
+    expect(dune.meta, 'Movie · Science Fiction · Adventure · 2024 · 2h 45m');
+    expect(dune.official, '15');
+    final series = await tv.page('series');
+    expect(series.rows.first.items.map((i) => i.title), ['Stranger Things', 'Breaking Bad']);
+    final home = await tv.page('home');
+    expect(home.rows.first.title, 'Continue Watching');
+    final bb = home.rows.first.items.first;
+    expect(bb.title, 'Breaking Bad');
+    expect(bb.genres, ['Crime', 'Drama'], reason: 'filled in from the catalog entry with the same id');
+    expect(bb.episode, startsWith('S2 E5'));
+    expect(bb.progress, closeTo(0.32, 0.001));
+    expect(home.rows.map((r) => r.title), containsAll(['Recently Added Movies', 'Recently Added Series']));
+    final like = await tv.similar(dune);
+    expect(like.map((i) => i.title), containsAll(['Interstellar', 'Inception']), reason: 'they share a genre');
+    expect(like.map((i) => i.title), isNot(contains('Breaking Bad')));
+    expect((await tv.search('opp')).map((i) => i.title), ['Oppenheimer']);
+    // Playing Breaking Bad from Continue Watching resumes S2 E5 (the add-on's "focus").
+    ui.played.clear();
+    await host.call('jellyfin', 'detail', [bb.data]).then((d) => expect((d as Map)['focus'], {'season': 'season-2', 'episode': 'e-205'}));
     await srv.close(force: true);
   });
 

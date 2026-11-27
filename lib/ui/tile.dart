@@ -9,11 +9,15 @@ import 'common.dart';
 
 /// What an app card shows.
 class CardLook {
-  const CardLook({required this.label, this.app, this.icon, this.colors});
+  const CardLook({required this.label, this.app, this.icon, this.colors, this.caption});
   final String label;
   final App? app;
-  final IconData? icon; // Korie's own cards (Settings, More Apps)
+  final IconData? icon; // Korie's own cards (Settings, More Apps, Korie TV)
   final List<Color>? colors;
+
+  /// Written on the card under the icon (Korie TV, an add-on's tile without a picture): the
+  /// dock shows no names under its cards.
+  final String? caption;
 }
 
 /// One app card on Home or in More Apps.
@@ -175,7 +179,16 @@ class _AppCardState extends State<AppCard> with SingleTickerProviderStateMixin {
           ),
         ),
         alignment: Alignment.center,
-        child: Icon(look.icon ?? Icons.apps_rounded, size: g.tileH * 0.5, color: Colors.white),
+        child: look.caption == null
+            ? Icon(look.icon ?? Icons.apps_rounded, size: g.tileH * 0.5, color: Colors.white)
+            : Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(look.icon ?? Icons.apps_rounded, size: g.tileH * 0.36, color: Colors.white),
+                  SizedBox(height: g.tileH * 0.05),
+                  Text(look.caption!, maxLines: 1, overflow: TextOverflow.ellipsis, style: tx(g.tileH * 0.16, w: FontWeight.w800, spacing: -0.2)),
+                ],
+              ),
       );
     }
     final card = AnimatedScale(

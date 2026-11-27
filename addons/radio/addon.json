@@ -1,9 +1,9 @@
 {
   "id": "radio",
   "name": "Radio",
-  "version": "1.0",
+  "version": "1.1",
   "author": "Korie",
-  "description": "Internet radio by country, from the free Radio Browser directory. Find a station in Search and it plays in the background, with the now-playing pill on Home.",
+  "description": "Internet radio by country, from the free Radio Browser directory. Its own Radio tile on Home and section in Korie TV, stations in Search, and they play in the background with the now-playing pill on Home.",
   "uses": [
     "internet"
   ],

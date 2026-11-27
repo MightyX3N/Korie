@@ -53,7 +53,12 @@ class KorieAddonUi implements AddonUi {
         return const [true];
       case 'play':
         final p = play;
-        if (p == null) return const [null, 'Korie has no player yet'];
+        if (p == null) {
+          // Until Korie's own player is there, say so instead of doing nothing.
+          final o = navigator.currentState?.overlay;
+          if (o != null) showToast(o, 'Korie can\'t play videos yet: its player is coming in a later update');
+          return const [null, 'Korie has no player yet'];
+        }
         return p(addonId, a0 is Map ? a0.cast<String, Object?>() : const {});
       case 'stop':
         return await stop?.call() ?? const [true];
