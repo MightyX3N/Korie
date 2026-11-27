@@ -779,8 +779,6 @@ class FullPage extends StatefulWidget {
 
 class _FullPageState extends State<FullPage> {
   final web = WebPage();
-  bool hint = true;
-  Timer? _t;
   late final String key = widget.resume ?? 'page${DateTime.now().microsecondsSinceEpoch}';
   bool _keep = false;
 
@@ -795,68 +793,32 @@ class _FullPageState extends State<FullPage> {
     super.initState();
     BackgroundPages.instance.keepOnHome = _keepRunning;
     web.onCrashed = (reloaded) => pageCrashed(context, reloaded);
-    // Once the page is on screen it gets every key and the controller (see MainActivity).
-    Future<void>.delayed(const Duration(milliseconds: 800), () async {
-      await web.focus();
+    // The page is shown by Android itself over Korie (see KorieWebView.kt); once it is there it
+    // gets every key and the controller (see MainActivity), and Back still comes to Korie.
+    () async {
+      await web.openFull(
+        widget.url,
+        resume: widget.resume,
+        hint: '${widget.title.isEmpty ? '' : '${widget.title}  ·  '}Back closes it  ·  Home keeps it running',
+      );
       await Android.webDirect(true);
-    });
-    _t = Timer(const Duration(seconds: 5), () {
-      if (mounted) setState(() => hint = false);
-    });
+    }();
   }
 
   @override
   void dispose() {
-    _t?.cancel();
     Android.webDirect(false);
     final bg = BackgroundPages.instance;
     if (bg.keepOnHome == _keepRunning) bg.keepOnHome = null;
     if (_keep) {
       bg.add(BackgroundPage(key: key, url: web.url.isEmpty ? widget.url : web.url, title: widget.title.isEmpty ? hostOf(widget.url) : widget.title, page: web.title));
     }
+    web.closeFull();
     web.dispose();
     super.dispose();
   }
 
+  // Under the page: black, never seen while the page is up.
   @override
-  Widget build(BuildContext context) => Material(
-    color: Colors.black,
-    child: LayoutBuilder(
-      builder: (context, c) {
-        final g = TvGeo(c.maxWidth, c.maxHeight);
-        return Stack(
-          children: [
-            Positioned.fill(
-              child: WebPageView(page: web, url: widget.url, resume: widget.resume),
-            ),
-            Positioned(
-              left: 0,
-              right: 0,
-              top: g.dp(22),
-              child: IgnorePointer(
-                child: AnimatedOpacity(
-                  opacity: hint ? 1 : 0,
-                  duration: const Duration(milliseconds: 500),
-                  child: Center(
-                    child: Container(
-                      padding: EdgeInsets.symmetric(horizontal: g.dp(16), vertical: g.dp(8)),
-                      decoration: BoxDecoration(
-                        color: const Color(0xCC14141A),
-                        borderRadius: BorderRadius.circular(g.dp(20)),
-                        border: Border.all(color: const Color(0x29FFFFFF)),
-                      ),
-                      child: Text(
-                        '${widget.title.isEmpty ? '' : '${widget.title}  ·  '}Back closes it  ·  Home keeps it running',
-                        style: tx(g.dp(14), w: FontWeight.w600),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        );
-      },
-    ),
-  );
+  Widget build(BuildContext context) => const ColoredBox(color: Colors.black);
 }

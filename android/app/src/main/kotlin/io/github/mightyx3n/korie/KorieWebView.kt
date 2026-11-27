@@ -29,14 +29,36 @@ import io.flutter.plugin.platform.PlatformViewFactory
  * view goes, with a key); a new view made with "resume" = that key takes the same page back, as
  * it is, without loading it again. "korie/web" "close" with the key ends a page in the background.
  */
-class KorieWebViewFactory(private val messenger: BinaryMessenger) : PlatformViewFactory(StandardMessageCodec.INSTANCE) {
+class KorieWebViewFactory(private val activity: android.app.Activity, private val messenger: BinaryMessenger) : PlatformViewFactory(StandardMessageCodec.INSTANCE) {
     init {
         MethodChannel(messenger, "korie/web").setMethodCallHandler { call, result ->
             when (call.method) {
                 "close" -> { KorieWebView.parked.remove(call.arguments as String)?.destroy(); result.success(true) }
+                // A full-screen page: a plain web view laid over Korie, as a browser shows it
+                // (no copy of every frame through Flutter, which a game stream cannot afford).
+                // Its channel is "korie/web/full", like any other page's.
+                "fullOpen" -> {
+                    closeFull()
+                    val a = call.arguments as? Map<*, *> ?: emptyMap<String, Any?>()
+                    val v = KorieWebView(activity, MethodChannel(messenger, "korie/web/full"), a)
+                    activity.findViewById<android.view.ViewGroup>(android.R.id.content)
+                        .addView(v.view, android.view.ViewGroup.LayoutParams(-1, -1))
+                    KorieWebView.full = v
+                    v.web().requestFocus()
+                    (a["hint"] as? String)?.let { if (it.isNotEmpty()) android.widget.Toast.makeText(activity, it, android.widget.Toast.LENGTH_LONG).show() }
+                    result.success(true)
+                }
+                "fullClose" -> { closeFull(); result.success(true) }
                 else -> result.notImplemented()
             }
         }
+    }
+
+    private fun closeFull() {
+        val v = KorieWebView.full ?: return
+        KorieWebView.full = null
+        (v.view.parent as? android.view.ViewGroup)?.removeView(v.view)
+        v.dispose()
     }
 
     override fun create(context: Context, viewId: Int, args: Any?): PlatformView {
@@ -55,6 +77,9 @@ class KorieWebView(private val context: Context, private val channel: MethodChan
     companion object {
         /** Pages running in the background, by key. */
         val parked = HashMap<String, WebView>()
+
+        /** The full-screen page on screen now, if any (keys and the controller go to it). */
+        var full: KorieWebView? = null
     }
 
     init {
@@ -147,6 +172,8 @@ class KorieWebView(private val context: Context, private val channel: MethodChan
     }
 
     override fun getView(): View = frame
+
+    fun web(): WebView = web
 
     override fun dispose() {
         channel.setMethodCallHandler(null)

@@ -20,8 +20,20 @@ class WebPage extends ChangeNotifier {
   /// left closed.
   void Function(bool reloaded)? onCrashed;
 
-  void _attach(int id) {
-    _ch = MethodChannel('korie/web/$id')..setMethodCallHandler(_event);
+  void _attach(int id) => _attachTo('korie/web/$id');
+
+  /// Opens this page full screen: a plain Android web view laid over Korie, as a browser shows
+  /// it (Flutter does not draw it, so nothing of Korie can be on top of it). [resume]: a page
+  /// from the background, as it was.
+  Future<void> openFull(String url, {String? resume, String hint = ''}) async {
+    _attachTo('korie/web/full');
+    await const MethodChannel('korie/web').invokeMethod('fullOpen', {'url': url, 'resume': ?resume, 'hint': hint});
+  }
+
+  Future<void> closeFull() async => const MethodChannel('korie/web').invokeMethod('fullClose');
+
+  void _attachTo(String name) {
+    _ch = MethodChannel(name)..setMethodCallHandler(_event);
     if (_pending.isNotEmpty) {
       _ch!.invokeMethod('load', _pending);
       _pending = '';
