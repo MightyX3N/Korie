@@ -47,6 +47,7 @@ class MainActivity : FlutterActivity() {
     @Volatile private var webDirect = false
 
     private fun findWebView(v: android.view.View?): android.webkit.WebView? {
+        KorieWebView.full?.let { return it.web() }
         if (v is android.webkit.WebView && v.isShown) return v
         if (v is android.view.ViewGroup) for (i in 0 until v.childCount) findWebView(v.getChildAt(i))?.let { return it }
         return null
@@ -143,7 +144,7 @@ class MainActivity : FlutterActivity() {
             }
         }
         homeChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "korie/home")
-        flutterEngine.platformViewsController.registry.registerViewFactory("korie/web", KorieWebViewFactory(flutterEngine.dartExecutor.binaryMessenger))
+        flutterEngine.platformViewsController.registry.registerViewFactory("korie/web", KorieWebViewFactory(this, flutterEngine.dartExecutor.binaryMessenger))
         val f = IntentFilter().apply {
             addAction(Intent.ACTION_PACKAGE_ADDED)
             addAction(Intent.ACTION_PACKAGE_REMOVED)
