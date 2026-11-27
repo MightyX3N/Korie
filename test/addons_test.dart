@@ -147,7 +147,7 @@ void main() {
     expect(p?.manifest.id, 'openfilms');
   });
 
-  test('jellyfin 1.7: setup pages, users, passwords (against a fake Jellyfin server)', () async {
+  test('jellyfin 1.8: setup pages, users, passwords (against a fake Jellyfin server)', () async {
     final srv = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     Map<String, Object?> film(String id, String name, String genres, int year, String added, {bool series = false}) => {
       'Id': id, 'Name': name, 'Type': series ? 'Series' : 'Movie', 'ProductionYear': year, 'Genres': genres.split(','),
@@ -165,7 +165,9 @@ void main() {
     final users = [
       {'Id': 'u-anna', 'Name': 'Anna'},
       {'Id': 'u-mikkel', 'Name': 'Mikkel'},
+      {'Id': 'u-kid', 'Name': 'Kid'}, // no password
     ];
+    final tries = <String>[];
     srv.listen((rq) async {
       final body = await utf8.decoder.bind(rq).join();
       final path = rq.uri.path;
@@ -176,7 +178,8 @@ void main() {
       } else if (path == '/Users/AuthenticateByName') {
         final j = jsonDecode(body) as Map;
         final u = users.where((u) => u['Name'] == j['Username']).firstOrNull;
-        if (u != null && j['Pw'] == 'secret ${u['Name']}!') {
+        tries.add('${j['Username']}:${j['Pw']}');
+        if (u != null && (u['Name'] == 'Kid' ? j['Pw'] == '' : j['Pw'] == 'secret ${u['Name']}!')) {
           out = {'AccessToken': 'tok-${u['Id']}', 'User': u};
         } else {
           status = 401;
@@ -210,7 +213,7 @@ void main() {
       await rq.response.close();
     });
     await host.install(AddonHost.readPackage(pack('$addonsDir/jellyfin'))!);
-    expect(host.installed['jellyfin']!.manifest.version, '1.7');
+    expect(host.installed['jellyfin']!.manifest.version, '1.8');
     final url = 'http://127.0.0.1:${srv.port}';
     final asked = <String>[];
     ui.answer = (op, args) {
@@ -233,11 +236,16 @@ void main() {
     ui.answer = null;
     expect(done, 'done', reason: 'asked $asked; log ${host.logOf('jellyfin')}');
     final list = await host.call('jellyfin', 'users') as List;
-    expect([for (final u in list) (u as Map)['name']], ['Anna', 'Mikkel']);
+    expect([for (final u in list) (u as Map)['name']], ['Anna', 'Mikkel', 'Kid']);
     expect((list.first as Map)['detail'], startsWith('Home Server · 127.0.0.1'));
     // Korie profiles made from the users; Mikkel signs in with his password (any characters).
     final mikkel = {'id': 'p2', 'name': 'Mikkel'};
+    tries.clear();
     expect(await host.call('jellyfin', 'signedin', [mikkel, list[1]]), false);
+    expect(await host.call('jellyfin', 'signedin', [mikkel, list[1]]), false);
+    expect(tries, ['Mikkel:'], reason: 'an empty password is tried once, never again after it failed');
+    // A user without a password is signed in with no password screen.
+    expect(await host.call('jellyfin', 'signedin', [{'id': 'p3', 'name': 'Kid'}, list[2]]), true);
     expect(await host.call('jellyfin', 'signin', [mikkel, list[1], 'wrong']), 'Wrong password.');
     expect(await host.call('jellyfin', 'signin', [mikkel, list[1], 'secret Mikkel!']), true);
     expect(await host.call('jellyfin', 'signedin', [mikkel, list[1]]), true);

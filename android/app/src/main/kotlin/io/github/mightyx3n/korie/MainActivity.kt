@@ -37,6 +37,25 @@ class MainActivity : FlutterActivity() {
     /** A .korie file opened from a file manager, waiting for Flutter to ask for it. */
     private var pendingFile: String? = null
 
+    /** The TV went to sleep: Who's Watching is asked when it is used again. */
+    private val screenOff = object : BroadcastReceiver() {
+        override fun onReceive(c: Context, i: Intent) {
+            getSharedPreferences("korie.wake", MODE_PRIVATE).edit().putBoolean("slept", true).apply()
+        }
+    }
+
+    /**
+     * Has the TV slept or restarted since this was last asked? Pressing Home, or Android closing
+     * Korie in the background and starting it again, does not count. Clears the answer.
+     */
+    private fun wokeUp(): Boolean {
+        val p = getSharedPreferences("korie.wake", MODE_PRIVATE)
+        val boots = try { Settings.Global.getInt(contentResolver, Settings.Global.BOOT_COUNT) } catch (e: Exception) { -1 }
+        val woke = p.getBoolean("slept", false) || p.getInt("boots", -2) != boots
+        p.edit().putBoolean("slept", false).putInt("boots", boots).apply()
+        return woke
+    }
+
     private val packagesChanged = object : BroadcastReceiver() {
         override fun onReceive(c: Context, i: Intent) {
             channel?.invokeMethod("appsChanged", null)
@@ -74,6 +93,9 @@ class MainActivity : FlutterActivity() {
                 "deviceLocation" -> result.success(deviceLocation())
                 "media" -> background(result) { media() }
                 "versionCode" -> result.success(versionCode())
+                "wokeUp" -> result.success(wokeUp())
+                "versionName" -> result.success(packageManager.getPackageInfo(packageName, 0).versionName ?: "")
+                "installProgress" -> result.success(installProgress)
                 "installApk" -> installApk(call.arguments as String, result)
                 "mediaAction" -> result.success(mediaAction(call.argument<String>("pkg") ?: "", call.argument<String>("action") ?: ""))
                 else -> result.notImplemented()
@@ -87,6 +109,7 @@ class MainActivity : FlutterActivity() {
             addDataScheme("package")
         }
         registerReceiver(packagesChanged, f)
+        registerReceiver(screenOff, IntentFilter(Intent.ACTION_SCREEN_OFF))
     }
 
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
@@ -149,6 +172,7 @@ class MainActivity : FlutterActivity() {
     override fun onDestroy() {
         stopMedia()
         try { unregisterReceiver(packagesChanged) } catch (_: Exception) {}
+        try { unregisterReceiver(screenOff) } catch (_: Exception) {}
         super.onDestroy()
     }
 
@@ -269,6 +293,9 @@ class MainActivity : FlutterActivity() {
      * Answers "ok", "allow" (the viewer must first allow Korie to install apps; that screen is
      * open) or an error message.
      */
+    /** How far the update's download is: 0 to 100, or -1 when the size is not known. */
+    @Volatile private var installProgress = 0
+
     private fun installApk(url: String, result: MethodChannel.Result) {
         if (Build.VERSION.SDK_INT >= 26 && !packageManager.canRequestPackageInstalls()) {
             start(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:$packageName")))
@@ -288,9 +315,19 @@ class MainActivity : FlutterActivity() {
                         conn = URL(URL(url), next).openConnection() as HttpURLConnection
                     }
                     if (conn.responseCode != 200) throw java.io.IOException("the download answered " + conn.responseCode)
+                    val total = conn.contentLengthLong
+                    installProgress = if (total > 0) 0 else -1
                     conn.inputStream.use { input ->
-                        session.openWrite("korie.apk", 0, conn.contentLengthLong.coerceAtLeast(-1)).use { out ->
-                            input.copyTo(out, 1 shl 16)
+                        session.openWrite("korie.apk", 0, total.coerceAtLeast(-1)).use { out ->
+                            val buf = ByteArray(1 shl 16)
+                            var done = 0L
+                            while (true) {
+                                val n = input.read(buf)
+                                if (n < 0) break
+                                out.write(buf, 0, n)
+                                done += n
+                                if (total > 0) installProgress = (done * 100 / total).toInt()
+                            }
                             session.fsync(out)
                         }
                     }

@@ -157,6 +157,17 @@ class Store extends ChangeNotifier {
   // ------------------------------------------------------------- setup and place
 
   bool get setupDone => _p.getBool('setup.done') ?? false;
+
+  /// Who's Watching when the TV wakes or starts. Off: straight into the last profile (unless it
+  /// has a PIN, which is always asked).
+  bool get askWho => _p.getBool('ask.who') ?? true;
+  void setAskWho(bool v) {
+    _p.setBool('ask.who', v);
+    notifyListeners();
+  }
+
+  /// Should Who's Watching show now that the TV has woken up?
+  bool get pickOnWake => current.pin != null || (askWho && profiles.length > 1);
   void setSetupDone() => _p.setBool('setup.done', true);
 
   /// Where Korie is, for the weather, the map and local radio: {mode: device|city|ip, name, lat, lon}.

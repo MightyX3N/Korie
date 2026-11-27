@@ -94,9 +94,15 @@ class HomeState extends State<Home> with TickerProviderStateMixin {
     });
     _loadExtras();
     life = AppLifecycleListener(
-      onResume: () {
+      onResume: () async {
         _loadApps();
         _loadShelf();
+        // The TV woke up with Korie open: Who's Watching, as when it starts.
+        if (await Android.wokeUp() && store.pickOnWake && mounted) {
+          final nav = Navigator.of(context);
+          nav.popUntil((r) => r.isFirst);
+          nav.push(_fade(Profiles(store: store, atStart: true, overHome: true)));
+        }
       },
     );
   }
@@ -852,35 +858,40 @@ class _CapsuleState extends State<_Capsule> {
     final g = widget.g;
     final item = island.top;
     const dark = Color(0xFF111114);
+    // Everything inside sits on one line of the same height, with the same room on every side
+    // ([pad]), and nothing grows past it when focused: focus is shown by turning white.
+    final pad = g.dp(4);
+    final inner = g.dp(24);
     Widget round(IconData icon, bool f) => Container(
-      width: g.dp(20),
-      height: g.dp(20),
+      width: inner,
+      height: inner,
       decoration: BoxDecoration(shape: BoxShape.circle, color: f ? Colors.white : Colors.transparent),
       child: Icon(icon, size: g.dp(15), color: f ? dark : Colors.white),
     );
+    final pic = g.dp(18);
     Widget picture(IslandItem it) {
       final r = BorderRadius.circular(g.dp(5));
-      if (it.art != null) return ClipRRect(borderRadius: r, child: Image.memory(it.art!, width: g.dp(20), height: g.dp(20), fit: BoxFit.cover, gaplessPlayback: true));
+      if (it.art != null) return ClipRRect(borderRadius: r, child: Image.memory(it.art!, width: pic, height: pic, fit: BoxFit.cover, gaplessPlayback: true));
       if (it.image != null && it.image!.startsWith('http')) {
-        return ClipRRect(borderRadius: r, child: Image.network(it.image!, width: g.dp(20), height: g.dp(20), fit: BoxFit.cover, errorBuilder: (_, _, _) => SizedBox(width: g.dp(20))));
+        return ClipRRect(borderRadius: r, child: Image.network(it.image!, width: pic, height: pic, fit: BoxFit.cover, errorBuilder: (_, _, _) => SizedBox(width: pic)));
       }
       return Container(
-        width: g.dp(20),
-        height: g.dp(20),
+        width: pic,
+        height: pic,
         decoration: const BoxDecoration(shape: BoxShape.circle, color: Color(0xFF2E6FE0)),
-        child: Icon(it.icon ?? Icons.music_note_rounded, size: g.dp(13), color: Colors.white),
+        child: Icon(it.icon ?? Icons.music_note_rounded, size: g.dp(12), color: Colors.white),
       );
     }
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 250),
       curve: Curves.easeOut,
-      height: g.dp(26),
-      width: item == null ? null : g.dp(270),
-      padding: EdgeInsets.only(left: item == null ? g.dp(14) : g.dp(4), right: g.dp(3)),
+      height: inner + 2 * pad,
+      width: item == null ? null : g.dp(290),
+      padding: EdgeInsets.fromLTRB(item == null ? g.dp(12) : pad, pad, pad, pad),
       decoration: BoxDecoration(
         color: const Color(0x61141620),
-        borderRadius: BorderRadius.circular(g.dp(13)),
+        borderRadius: BorderRadius.circular((inner + 2 * pad) / 2),
         border: Border.all(color: const Color(0x47FFFFFF)),
       ),
       child: Row(
@@ -893,9 +904,9 @@ class _CapsuleState extends State<_Capsule> {
                 onTap: () => item.onOk?.call(),
                 onHold: item.onHold == null ? null : () => item.onHold!.call(),
                 builder: (context, f) => Container(
-                  height: g.dp(22),
-                  padding: EdgeInsets.only(left: g.dp(2), right: g.dp(6)),
-                  decoration: BoxDecoration(color: f ? Colors.white : Colors.transparent, borderRadius: BorderRadius.circular(g.dp(11))),
+                  height: inner,
+                  padding: EdgeInsets.only(left: (inner - pic) / 2, right: g.dp(8)),
+                  decoration: BoxDecoration(color: f ? Colors.white : Colors.transparent, borderRadius: BorderRadius.circular(inner / 2)),
                   child: Row(
                     children: [
                       picture(item),
@@ -905,9 +916,9 @@ class _CapsuleState extends State<_Capsule> {
                           mainAxisAlignment: MainAxisAlignment.center,
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(item.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: tx(g.dp(10.5), w: FontWeight.w700, color: f ? dark : Colors.white, height: 1.1)),
+                            Text(item.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: tx(g.dp(10), w: FontWeight.w700, color: f ? dark : Colors.white, height: 1.1)),
                             if (item.sub.isNotEmpty)
-                              Text(item.sub, maxLines: 1, overflow: TextOverflow.ellipsis, style: tx(g.dp(9), opacity: 0.7, color: f ? dark : Colors.white, height: 1.1)),
+                              Text(item.sub, maxLines: 1, overflow: TextOverflow.ellipsis, style: tx(g.dp(8.5), opacity: 0.7, color: f ? dark : Colors.white, height: 1.1)),
                           ],
                         ),
                       ),
@@ -916,9 +927,10 @@ class _CapsuleState extends State<_Capsule> {
                 ),
               ),
             ),
-            if (item.playing != null)
+            if (item.playing != null) ...[
+              SizedBox(width: g.dp(2)),
               item.onToggle == null
-                  ? Padding(padding: EdgeInsets.symmetric(horizontal: g.dp(3)), child: Icon(item.playing! ? Icons.equalizer_rounded : Icons.pause_rounded, size: g.dp(15)))
+                  ? SizedBox(width: inner, child: Icon(item.playing! ? Icons.equalizer_rounded : Icons.pause_rounded, size: g.dp(15)))
                   : Focusable(
                       onTap: () => item.onToggle!.call(),
                       builder: (context, f) => round(
@@ -926,27 +938,21 @@ class _CapsuleState extends State<_Capsule> {
                         f,
                       ),
                     ),
-            SizedBox(width: g.dp(6)),
+            ],
+            SizedBox(width: g.dp(8)),
           ],
           Clock(style: tx(g.dp(13))),
-          SizedBox(width: g.dp(8)),
-          Focusable(
-            onTap: widget.onSettings,
-            builder: (context, f) => AnimatedScale(scale: f ? 1.25 : 1, duration: const Duration(milliseconds: 150), child: round(Icons.settings_rounded, f)),
-          ),
           SizedBox(width: g.dp(6)),
+          Focusable(onTap: widget.onSettings, builder: (context, f) => round(Icons.settings_rounded, f)),
+          SizedBox(width: g.dp(2)),
           Focusable(
             onTap: widget.onProfile,
-            builder: (context, f) => AnimatedScale(
-              scale: f ? 1.25 : 1,
-              duration: const Duration(milliseconds: 150),
-              child: Container(
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(color: f ? Colors.white : Colors.transparent, width: g.dp(1.5)),
-                ),
-                child: Avatar(profile: widget.store.current, size: g.dp(20)),
-              ),
+            builder: (context, f) => Container(
+              width: inner,
+              height: inner,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(shape: BoxShape.circle, color: f ? Colors.white : Colors.transparent),
+              child: Avatar(profile: widget.store.current, size: g.dp(f ? 19 : 22)),
             ),
           ),
         ],

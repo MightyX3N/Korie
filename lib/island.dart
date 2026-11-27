@@ -146,61 +146,118 @@ class Island extends ChangeNotifier {
   /// KORIE_UPDATE_URL is only for testing against a local server.
   static const updateUrl = String.fromEnvironment('KORIE_UPDATE_URL', defaultValue: 'https://raw.githubusercontent.com/MightyX3N/Korie/main/update.json');
 
+  /// What can be updated, as the last check found it: a newer Korie and installed add-ons.
+  ({String version, String apk})? newApp;
+  List<IndexEntry> newAddons = const [];
+  bool get hasUpdate => newApp != null || newAddons.isNotEmpty;
+
+  /// While updating: what is happening ("Downloading Korie 2.3 · 34%"), else null.
+  String? updating;
+
+  /// When the last check was made, and whether it could reach the update list.
+  DateTime? checkedAt;
+  bool checkFailed = false;
+
   /// A newer Korie (update.json in the repository) and newer versions of installed add-ons.
   Future<void> checkUpdates() async {
+    if (updating != null) return;
     final host = AddonHost.instance;
     ({String version, String apk})? app;
+    var failed = false;
     try {
       final j = jsonDecode(utf8.decode(await host.download(updateUrl))) as Map;
       final code = (j['code'] as num?)?.toInt() ?? 0;
       if (code > await Android.versionCode() && j['apk'] is String) app = (version: '${j['version']}', apk: j['apk'] as String);
-    } catch (_) {}
+    } catch (_) {
+      failed = true;
+    }
     List<IndexEntry> index;
     try {
       index = await host.fetchIndex();
     } catch (_) {
       index = const [];
+      failed = true;
     }
-    final newer = [
+    newApp = app;
+    newAddons = [
       for (final e in index)
         if (host.installed[e.id] case final a? when compareVersions(e.version, a.manifest.version) > 0) e,
     ];
+    checkedAt = DateTime.now();
+    checkFailed = failed;
+    _showUpdate();
+  }
+
+  void _showUpdate() {
+    final app = newApp;
     _sources['updates'] = [
-      if (newer.isNotEmpty || app != null)
+      if (hasUpdate || updating != null)
         IslandItem(
           key: 'updates',
-          title: 'Update ready',
-          sub: [if (app != null) 'Korie ${app.version}', for (final e in newer) '${e.name} add-on ${e.version}'].join(' · '),
+          title: updating == null ? 'Update ready' : 'Updating',
+          sub: updating ?? [if (app != null) 'Korie ${app.version}', for (final e in newAddons) '${e.name} add-on ${e.version}'].join(' · '),
           icon: Icons.arrow_upward_rounded,
           rank: 5,
-          onOk: () async {
-            for (final e in newer) {
-              final a = host.installed[e.id];
-              try {
-                final p = AddonHost.readPackage(await host.download(e.url));
-                // New permissions need the install question; the same ones update quietly.
-                if (p != null && a != null && p.manifest.uses.toSet().difference(a.manifest.uses.toSet()).isEmpty) {
-                  await host.install(p);
-                } else if (p != null) {
-                  _askUpdate?.call(p);
-                }
-              } catch (_) {}
-            }
-            // Korie itself last: installing it closes Korie.
-            if (app != null) {
-              var r = await Android.installApk(app.apk);
-              if (r == 'allow') {
-                // Android's screen to allow it is open; carry on when the viewer comes back.
-                await Android.untilBack();
-                r = await Android.installApk(app!.apk);
-              }
-              if (r != 'ok') _say?.call(r == 'allow' ? 'Allow Korie to install apps, then choose Update ready again' : 'The update could not be installed: $r');
-            }
-            await checkUpdates();
-          },
+          onOk: installUpdates,
         ),
     ];
     notifyListeners();
+  }
+
+  void _status(String? s) {
+    updating = s;
+    _showUpdate();
+  }
+
+  /// Installs what [checkUpdates] found: the add-ons first, then Korie itself (which closes Korie).
+  /// The island shows how far it is, so a slow download does not look like nothing happening.
+  Future<void> installUpdates() async {
+    if (updating != null) return;
+    final host = AddonHost.instance;
+    try {
+      for (final e in newAddons) {
+        final a = host.installed[e.id];
+        _status('${e.name} add-on ${e.version}');
+        try {
+          final p = AddonHost.readPackage(await host.download(e.url));
+          // New permissions need the install question; the same ones update quietly.
+          if (p != null && a != null && p.manifest.uses.toSet().difference(a.manifest.uses.toSet()).isEmpty) {
+            await host.install(p);
+          } else if (p != null) {
+            _askUpdate?.call(p);
+          }
+        } catch (_) {}
+      }
+      final app = newApp;
+      if (app != null) {
+        Future<String> install() async {
+          _status('Downloading Korie ${app.version}');
+          final ticker = Timer.periodic(const Duration(milliseconds: 700), (_) async {
+            final p = await Android.installProgress();
+            if (updating != null && updating!.startsWith('Downloading')) {
+              _status(p >= 100 ? 'Installing Korie ${app.version}' : (p >= 0 ? 'Downloading Korie ${app.version} · $p%' : 'Downloading Korie ${app.version}'));
+            }
+          });
+          try {
+            return await Android.installApk(app.apk);
+          } finally {
+            ticker.cancel();
+          }
+        }
+
+        var r = await install();
+        if (r == 'allow') {
+          // Android's screen to allow it is open; carry on when the viewer comes back.
+          _status('Allow Korie to install apps');
+          await Android.untilBack();
+          r = await install();
+        }
+        if (r != 'ok') _say?.call(r == 'allow' ? 'Allow Korie to install apps, then choose Update ready again' : 'The update could not be installed: $r');
+      }
+    } finally {
+      updating = null;
+    }
+    await checkUpdates();
   }
 
   void Function(String)? _say;
