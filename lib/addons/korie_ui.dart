@@ -45,7 +45,7 @@ class KorieAddonUi implements AddonUi {
         final nav = navigator.currentState;
         if (nav == null || !(url.startsWith('http://') || url.startsWith('https://'))) return const [false];
         if (t['fullscreen'] == true) {
-          nav.push(PageRouteBuilder(pageBuilder: (_, _, _) => FullPage(url: url, title: '${t['title'] ?? ''}'), transitionDuration: Duration.zero));
+          FullPage.open(nav, url: url, title: '${t['title'] ?? ''}');
         } else {
           nav.push(PageRouteBuilder(pageBuilder: (_, _, _) => KorieBrowser(store: store, open: url), transitionDuration: Duration.zero));
         }

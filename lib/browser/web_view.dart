@@ -67,6 +67,9 @@ class WebPage extends ChangeNotifier {
   Future<void> forward() async => _ch?.invokeMethod('forward');
   Future<void> reload() async => _ch?.invokeMethod('reload');
   Future<void> focus() async => _ch?.invokeMethod('focus');
+
+  /// Keeps this page running in the background under [key] when its view goes.
+  Future<void> park(String key) async => _ch?.invokeMethod('park', key);
   /// A small JPEG of what the page shows now, for the tab list.
   Future<Uint8List?> picture() async => _ch?.invokeMethod<Uint8List>('picture');
   Future<int> scrollY() async => (await _ch?.invokeMethod<int>('scrollY')) ?? 0;
@@ -74,9 +77,12 @@ class WebPage extends ChangeNotifier {
 
 /// The page on screen. [url] is opened when the view is made.
 class WebPageView extends StatelessWidget {
-  const WebPageView({super.key, required this.page, this.url = ''});
+  const WebPageView({super.key, required this.page, this.url = '', this.resume});
   final WebPage page;
   final String url;
+
+  /// The key of a page in the background to show again as it is (instead of loading [url]).
+  final String? resume;
 
   @override
   Widget build(BuildContext context) => PlatformViewLink(
@@ -92,7 +98,7 @@ class WebPageView extends StatelessWidget {
         id: params.id,
         viewType: 'korie/web',
         layoutDirection: TextDirection.ltr,
-        creationParams: {'url': url},
+        creationParams: {'url': url, 'resume': ?resume},
         creationParamsCodec: const StandardMessageCodec(),
         onFocus: () => params.onFocusChanged(true),
       );

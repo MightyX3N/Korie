@@ -4,8 +4,8 @@
 -- An Xbox tile on Home opens an Xbox section in Korie TV with the games installed on the
 -- console (covers and wide pictures from ZeroPlay). Recently played games are in the carousel
 -- and every game is in Search. Play starts the game and opens ZeroPlay to stream it; Start on
--- Xbox starts it on the console itself, for the TV the Xbox is connected to. The island shows
--- what the Xbox is doing.
+-- Xbox starts it on the console itself, for the TV the Xbox is connected to. A stream left
+-- with the remote's Home button runs on in the background; Korie shows it in the island.
 --
 -- ZeroPlay is shared by everyone on the device; the sign-in (a ZeroPlay profile) is kept per
 -- Korie profile, so each person only sees the games their ZeroPlay profile may play.
@@ -92,13 +92,11 @@ end
 -- ---------------------------------------------------------------- the library
 
 local last -- the latest /api/library answer
-local live_at = 0 -- when ZeroPlay last answered (os.time), for the island
 
 local function library(timeout)
   local data, why = call("GET", "/api/library", nil, timeout)
   if data then
     last = data
-    live_at = os.time()
     korie.store.set("library:" .. profile_id(), data)
   end
   return data, why
@@ -142,7 +140,6 @@ korie.on("catalog", function()
   local lib, why = library()
   if not lib then error("no game list from ZeroPlay: " .. tostring(why)) end
   korie.update("tv")
-  korie.update("island")
   return games(lib)
 end)
 
@@ -216,16 +213,17 @@ end)
 
 -- Opens ZeroPlay full screen, signed in as this profile (the sign-in travels after the #,
 -- which never leaves the device), on the stream when `console` is given.
-local function open_zeroplay(console)
+local function open_zeroplay(console, game)
   local s = server()
   if not s then return end
   local url = s.url .. "/"
   if console then url = url .. "?play=1&console=" .. console end
   local a = account()
   if a then url = url .. "#session=" .. a.token end
-  -- In Korie's own browser, full screen: the controller plays, Back on the remote leaves.
+  -- In Korie's own browser, full screen: the controller plays, Back on the remote closes it and
+  -- Home keeps it running (Korie shows it in the island, named after the game).
   -- (Korie before 2.4 has no browser: then the device's own browser.)
-  if korie.browse and korie.browse{ url = url, fullscreen = true, title = "ZeroPlay" } then return end
+  if korie.browse and korie.browse{ url = url, fullscreen = true, title = game or "ZeroPlay" } then return end
   if not korie.open{ url = url } then
     korie.ask{ title = "ZeroPlay", message = "No browser opened " .. s.url .. ". Install a browser on this device, or open that address on another one." }
   end
@@ -246,48 +244,8 @@ korie.on("action", function(it, button)
   if button == "xbox" then
     if launch(it, false) then korie.toast("Starting " .. it.title .. " on the Xbox") end
   else
-    if launch(it, true) then open_zeroplay(it.console) end
+    if launch(it, true) then open_zeroplay(it.console, it.title) end
   end
-end)
-
--- The name of what is playing. ZeroPlay may pass on the Xbox's own title message as it came
--- ({"focused":true,"state":...}); then the name is read out of it, if it has one.
-local function title_of(s)
-  local t = s.title
-  if type(t) == "table" then t = t.name or t.titleName or t.displayName or t.title end
-  if type(t) == "string" and string.sub(t, 1, 1) == "{" then
-    local ok, j = pcall(korie.json.decode, t)
-    t = ok and type(j) == "table" and (j.name or j.titleName or j.displayName or j.title) or nil
-  end
-  if type(t) ~= "string" or t == "" then return nil end
-  return t
-end
-
--- The island: what the Xbox is doing, only from a fresh answer. Saved answers are for the game
--- lists; when ZeroPlay has not answered for a while (it is off, or this device left home),
--- the island shows nothing rather than an old state.
-korie.on("island", function()
-  if os.time() - live_at > 45 then library(4) end
-  if os.time() - live_at > 90 then return nil end
-  local lib = last
-  if not lib then return nil end
-  local s = lib.stream or {}
-  if s.state == "live" or s.state == "starting" then
-    return {
-      title = title_of(s) or s.consoleName or "Xbox",
-      sub = s.state == "live" and ("Streaming from " .. (s.consoleName or "the Xbox")) or "Starting the stream",
-    }
-  end
-  for _, c in ipairs(lib.consoles or {}) do
-    if c.power == "On" then return { title = c.name, sub = "Xbox is on" } end
-  end
-  return nil
-end)
-
-korie.on("island.ok", function()
-  local lib = known()
-  local s = lib and lib.stream or {}
-  open_zeroplay(s.console)
 end)
 
 -- ---------------------------------------------------------------- settings
@@ -406,11 +364,11 @@ korie.on("profile", function()
   korie.update("tiles")
 end)
 
--- Keep the island and the Xbox section current while Korie runs.
-korie.timer(60, function()
+-- Keep the Xbox section current while Korie runs: one small request every 10 minutes (the
+-- list is also fetched whenever Korie asks for the catalog).
+korie.timer(600, function()
   if server() then
-    library()
-    korie.update("island") -- also when ZeroPlay did not answer: the island then empties
+    if library() then korie.update("tv") end
   end
 end, true)
 

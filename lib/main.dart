@@ -7,6 +7,8 @@ import 'package:material_ui/material_ui.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'addons/host.dart';
+import 'browser/background.dart';
+import 'browser/browser.dart';
 import 'addons/korie_ui.dart';
 import 'android.dart';
 import 'home_cache.dart';
@@ -50,6 +52,21 @@ Future<void> main() async {
   const MethodChannel('korie/home').setMethodCallHandler((call) async {
     if (call.method == 'home') Home.homeKey.currentState?.homePressed();
   });
+  // Full-screen pages left with Home run on in the background; the island opens them again.
+  BackgroundPages.instance
+    ..store = store
+    ..navigator = korieNavigator
+    ..reopen = (p) {
+      final nav = korieNavigator.currentState;
+      if (nav != null) FullPage.open(nav, url: p.url, title: p.title, resume: p.key);
+    };
+  // After sleeping or a restart: straight into the profile Who's Watching starts as (its PIN
+  // is asked on Home), or Who's Watching itself.
+  final start = store.startProfile;
+  if (woke && start != null) {
+    store.choose(start);
+    Home.unlockAtStart = true;
+  }
   runApp(Korie(store: store, pick: woke && store.pickOnWake));
   debugPrint('korie: running');
   await startAddons(store);
@@ -102,6 +119,8 @@ Future<void> startAddons(Store store) async {
     ..start();
 }
 
+final _okKeys = {LogicalKeyboardKey.select, LogicalKeyboardKey.enter, LogicalKeyboardKey.numpadEnter, LogicalKeyboardKey.gameButtonA};
+
 class Korie extends StatelessWidget {
   const Korie({super.key, required this.store, this.pick = false});
   final Store store;
@@ -111,6 +130,15 @@ class Korie extends StatelessWidget {
     navigatorKey: korieNavigator,
     title: 'Korie',
     debugShowCheckedModeBanner: false,
+    // Holding OK on the remote sends the press again and again; Flutter's buttons would act on
+    // every one of them. One press is one action: the repeats stop here (a hold that opens
+    // options is seen by its own button first, so that still works).
+    builder: (context, child) => Focus(
+      canRequestFocus: false,
+      skipTraversal: true,
+      onKeyEvent: (node, e) => e is KeyRepeatEvent && _okKeys.contains(e.logicalKey) ? KeyEventResult.handled : KeyEventResult.ignored,
+      child: child!,
+    ),
     theme: ThemeData(
       brightness: Brightness.dark,
       fontFamily: 'Inter',

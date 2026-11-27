@@ -361,7 +361,7 @@ void main() {
     expect(store['who'], 'Anna');
     expect(store['hits'], greaterThan(3));
   });
-  test('zeroplay: set up by address, the island shows the game, Play opens the page full screen', () async {
+  test('zeroplay: set up by address, nothing in the island, Play opens the page full screen', () async {
     // A small ZeroPlay: no sign-in needed at home, one Xbox streaming a game.
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     var launched = 0;
@@ -402,15 +402,14 @@ void main() {
       final games = await host.call('zeroplay', 'catalog') as List;
       expect((games.single as Map)['title'], 'Forza Horizon 5');
 
-      final island = Island.instance;
-      island.start();
-      await island.refreshAddons();
-      expect(island.items.map((i) => i.title), contains('Forza Horizon 5'), reason: 'the name is read out of the raw title');
+      // The Xbox being on is not shown: Korie shows a stream itself when it runs in the background.
+      expect(host.handles('zeroplay'), isNot(contains('island')));
 
       await host.call('zeroplay', 'action', [games.single, 'play']);
       expect(launched, 1);
       expect(browsed.single['fullscreen'], true);
       expect(browsed.single['url'], startsWith('$url/?play=1&console=x1'));
+      expect(browsed.single['title'], 'Forza Horizon 5');
     } finally {
       ui.answer = null;
       await server.close(force: true);

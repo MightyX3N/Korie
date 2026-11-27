@@ -24,8 +24,21 @@ import io.flutter.plugin.platform.PlatformViewFactory
  * A page whose renderer crashes (out of memory on a small TV, say) is opened again instead of
  * taking all of Korie down, which is what WebView does when no one handles it; if it crashes
  * again within a minute it is left closed.
+ *
+ * A page left with the remote's Home button keeps running in the background ("park" before the
+ * view goes, with a key); a new view made with "resume" = that key takes the same page back, as
+ * it is, without loading it again. "korie/web" "close" with the key ends a page in the background.
  */
 class KorieWebViewFactory(private val messenger: BinaryMessenger) : PlatformViewFactory(StandardMessageCodec.INSTANCE) {
+    init {
+        MethodChannel(messenger, "korie/web").setMethodCallHandler { call, result ->
+            when (call.method) {
+                "close" -> { KorieWebView.parked.remove(call.arguments as String)?.destroy(); result.success(true) }
+                else -> result.notImplemented()
+            }
+        }
+    }
+
     override fun create(context: Context, viewId: Int, args: Any?): PlatformView {
         val a = args as? Map<*, *> ?: emptyMap<String, Any?>()
         return KorieWebView(context, MethodChannel(messenger, "korie/web/$viewId"), a)
@@ -36,11 +49,17 @@ class KorieWebViewFactory(private val messenger: BinaryMessenger) : PlatformView
 class KorieWebView(private val context: Context, private val channel: MethodChannel, args: Map<*, *>) : PlatformView {
     private val frame = android.widget.FrameLayout(context)
     private var lastCrash = 0L
-    private var web: WebView = make()
+    private var parkAs: String? = null
+    private var web: WebView = (args["resume"] as? String)?.let { parked.remove(it) }?.also { configure(it) } ?: make()
+
+    companion object {
+        /** Pages running in the background, by key. */
+        val parked = HashMap<String, WebView>()
+    }
 
     init {
         frame.addView(web, android.widget.FrameLayout.LayoutParams(-1, -1))
-        (args["url"] as? String)?.let { if (it.isNotEmpty()) web.loadUrl(it) }
+        if (args["resume"] == null || web.url == null) (args["url"] as? String)?.let { if (it.isNotEmpty()) web.loadUrl(it) }
         channel.setMethodCallHandler { call, result ->
             when (call.method) {
                 "load" -> { web.loadUrl(call.arguments as String); result.success(true) }
@@ -51,12 +70,16 @@ class KorieWebView(private val context: Context, private val channel: MethodChan
                 "scrollY" -> result.success(web.scrollY)
                 "focus" -> { web.requestFocus(); result.success(true) }
                 "picture" -> picture(result)
+                "park" -> { parkAs = call.arguments as String; result.success(true) }
                 else -> result.notImplemented()
             }
         }
     }
 
-    private fun make(): WebView = WebView(context).apply {
+    private fun make(): WebView = WebView(context).also { configure(it) }
+
+    /** Settings and the clients that report to this view's channel (again for a resumed page). */
+    private fun configure(w: WebView) = w.apply {
         isFocusable = true
         isFocusableInTouchMode = true
         settings.javaScriptEnabled = true
@@ -127,6 +150,13 @@ class KorieWebView(private val context: Context, private val channel: MethodChan
 
     override fun dispose() {
         channel.setMethodCallHandler(null)
+        val key = parkAs
+        if (key != null) {
+            frame.removeView(web)
+            parked.remove(key)?.destroy()
+            parked[key] = web
+            return
+        }
         web.stopLoading()
         web.destroy()
     }

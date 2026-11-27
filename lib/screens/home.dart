@@ -13,6 +13,7 @@ import '../island.dart';
 import '../net.dart';
 import '../ui/ask.dart';
 import '../store.dart';
+import '../browser/background.dart';
 import '../browser/browser.dart';
 import '../tv/library.dart';
 import '../tv/tv.dart';
@@ -22,6 +23,7 @@ import '../ui/menu.dart';
 import '../ui/tile.dart';
 import 'folder.dart';
 import 'profiles.dart';
+import 'signin.dart';
 import 'settings.dart';
 
 /// Home: the carousel at the top, the dock (the first row of apps) on glass, every other app
@@ -30,6 +32,9 @@ class Home extends StatefulWidget {
   const Home({super.key, required this.store});
   final Store store;
   static final homeKey = GlobalKey<HomeState>();
+
+  /// Korie started as the Who's Watching profile: ask its PIN (if any) once Home is there.
+  static bool unlockAtStart = false;
   @override
   State<Home> createState() => HomeState();
 }
@@ -94,15 +99,25 @@ class HomeState extends State<Home> with TickerProviderStateMixin {
       if (u.what == 'tiles' || u.what == 'tv') _loadExtras();
     });
     _loadExtras();
+    if (Home.unlockAtStart) {
+      Home.unlockAtStart = false;
+      WidgetsBinding.instance.addPostFrameCallback((_) => startAs(store.current));
+    }
     life = AppLifecycleListener(
       onResume: () async {
         _loadApps();
         _loadShelf();
-        // The TV woke up with Korie open: Who's Watching, as when it starts.
-        if (await Android.wokeUp() && store.pickOnWake && mounted) {
-          final nav = Navigator.of(context);
-          nav.popUntil((r) => r.isFirst);
-          nav.push(_fade(Profiles(store: store, atStart: true, overHome: true)));
+        // The TV woke up with Korie open: Who's Watching, or the profile Korie starts as.
+        if (await Android.wokeUp() && mounted) {
+          final start = store.startProfile;
+          if (start != null) {
+            Navigator.of(context).popUntil((r) => r.isFirst);
+            startAs(start);
+          } else if (store.pickOnWake) {
+            final nav = Navigator.of(context);
+            nav.popUntil((r) => r.isFirst);
+            nav.push(_fade(Profiles(store: store, atStart: true, overHome: true)));
+          }
         }
       },
     );
@@ -425,7 +440,18 @@ class HomeState extends State<Home> with TickerProviderStateMixin {
   }
 
   /// The Home button while Korie is open: close what is open and go to the first dock app.
+  /// Into the profile Who's Watching starts as: its PIN (and add-on passwords) if it has them;
+  /// without them, Who's Watching to pick someone else.
+  Future<void> startAs(Profile p) async {
+    if (p.id != store.current.id) store.choose(p);
+    if (p.pin == null && p.links.isEmpty) return;
+    if (await unlockProfile(context, store, p) || !mounted) return;
+    Navigator.of(context).push(_fade(Profiles(store: store, atStart: true, overHome: true)));
+  }
+
   void homePressed() {
+    // A full-screen page keeps running in the background instead of closing.
+    BackgroundPages.instance.homePressed();
     Navigator.of(context).popUntil((r) => r.isFirst);
     setState(() => movingId = null);
     back();
@@ -900,11 +926,13 @@ class _CapsuleState extends State<_Capsule> {
       );
     }
 
-    return AnimatedContainer(
+    // As wide as what it shows (a short title, a short island); long text is cut off at a limit.
+    return AnimatedSize(
       duration: const Duration(milliseconds: 250),
       curve: Curves.easeOut,
+      alignment: Alignment.centerRight,
+      child: Container(
       height: inner + 2 * pad,
-      width: item == null ? null : g.dp(290) + others.length * (inner + g.dp(2)),
       padding: EdgeInsets.fromLTRB(item == null ? g.dp(12) : pad, pad, pad, pad),
       decoration: BoxDecoration(
         color: const Color(0x61141620),
@@ -915,7 +943,8 @@ class _CapsuleState extends State<_Capsule> {
         mainAxisSize: MainAxisSize.min,
         children: [
           if (item != null) ...[
-            Expanded(
+            ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: g.dp(240)),
               child: HoldFocusable(
                 key: ValueKey(item.key),
                 focusNode: _main,
@@ -926,10 +955,11 @@ class _CapsuleState extends State<_Capsule> {
                   padding: EdgeInsets.only(left: (inner - pic) / 2, right: g.dp(8)),
                   decoration: BoxDecoration(color: f ? Colors.white : Colors.transparent, borderRadius: BorderRadius.circular(inner / 2)),
                   child: Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
                       picture(item),
                       SizedBox(width: g.dp(7)),
-                      Expanded(
+                      Flexible(
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -991,6 +1021,7 @@ class _CapsuleState extends State<_Capsule> {
             ),
           ),
         ],
+      ),
       ),
     );
   }

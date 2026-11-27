@@ -12,6 +12,7 @@ import '../store.dart';
 import '../tv/widgets.dart';
 import '../ui/ask.dart';
 import '../ui/common.dart';
+import 'background.dart';
 import 'web_view.dart';
 
 /// What was typed in the address box: an address (https:// added when missing) or a search.
@@ -763,8 +764,15 @@ class _Arrow extends CustomPainter {
 /// An add-on's page full screen: just the page. Every key and a controller go to the page itself
 /// (a game stream plays with them); only Back on the remote leaves.
 class FullPage extends StatefulWidget {
-  const FullPage({super.key, required this.url, this.title = ''});
+  const FullPage({super.key, required this.url, this.title = '', this.resume});
   final String url, title;
+
+  /// A page in the background (its key) shown again as it is.
+  final String? resume;
+
+  /// Opens a page full screen, or one from the background again.
+  static void open(NavigatorState nav, {required String url, String title = '', String? resume}) =>
+      nav.push(PageRouteBuilder(pageBuilder: (_, _, _) => FullPage(url: url, title: title, resume: resume), transitionDuration: Duration.zero));
   @override
   State<FullPage> createState() => _FullPageState();
 }
@@ -773,10 +781,19 @@ class _FullPageState extends State<FullPage> {
   final web = WebPage();
   bool hint = true;
   Timer? _t;
+  late final String key = widget.resume ?? 'page${DateTime.now().microsecondsSinceEpoch}';
+  bool _keep = false;
+
+  /// The remote's Home button: the page keeps running in the background (see [BackgroundPages]).
+  void _keepRunning() {
+    _keep = true;
+    web.park(key);
+  }
 
   @override
   void initState() {
     super.initState();
+    BackgroundPages.instance.keepOnHome = _keepRunning;
     web.onCrashed = (reloaded) => pageCrashed(context, reloaded);
     // Once the page is on screen it gets every key and the controller (see MainActivity).
     Future<void>.delayed(const Duration(milliseconds: 800), () async {
@@ -792,6 +809,11 @@ class _FullPageState extends State<FullPage> {
   void dispose() {
     _t?.cancel();
     Android.webDirect(false);
+    final bg = BackgroundPages.instance;
+    if (bg.keepOnHome == _keepRunning) bg.keepOnHome = null;
+    if (_keep) {
+      bg.add(BackgroundPage(key: key, url: web.url.isEmpty ? widget.url : web.url, title: widget.title.isEmpty ? hostOf(widget.url) : widget.title, page: web.title));
+    }
     web.dispose();
     super.dispose();
   }
@@ -805,7 +827,7 @@ class _FullPageState extends State<FullPage> {
         return Stack(
           children: [
             Positioned.fill(
-              child: WebPageView(page: web, url: widget.url),
+              child: WebPageView(page: web, url: widget.url, resume: widget.resume),
             ),
             Positioned(
               left: 0,
@@ -824,7 +846,7 @@ class _FullPageState extends State<FullPage> {
                         border: Border.all(color: const Color(0x29FFFFFF)),
                       ),
                       child: Text(
-                        '${widget.title.isEmpty ? '' : '${widget.title}  ·  '}Back on the remote leaves',
+                        '${widget.title.isEmpty ? '' : '${widget.title}  ·  '}Back closes it  ·  Home keeps it running',
                         style: tx(g.dp(14), w: FontWeight.w600),
                       ),
                     ),
