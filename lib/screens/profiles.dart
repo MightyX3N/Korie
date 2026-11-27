@@ -13,9 +13,14 @@ import 'home.dart';
 /// picture on Home. Green check on the current profile; hold OK on one for Rename, Change Colour,
 /// Delete.
 class Profiles extends StatefulWidget {
-  const Profiles({super.key, required this.store, this.atStart = false});
+  const Profiles({super.key, required this.store, this.atStart = false, this.overHome = false});
   final Store store;
+
+  /// Korie is starting: a profile must be picked, then Home opens.
   final bool atStart;
+
+  /// The TV woke while Korie was open: as at start, but Home is already underneath.
+  final bool overHome;
   @override
   State<Profiles> createState() => _ProfilesState();
 }
@@ -44,7 +49,7 @@ class _ProfilesState extends State<Profiles> {
       if (!await unlockProfile(context, store, p) || !mounted) return;
     }
     store.choose(p);
-    if (widget.atStart) {
+    if (widget.atStart && !widget.overHome) {
       Navigator.of(context).pushReplacement(fadeRoute(Home(key: Home.homeKey, store: store)));
     } else {
       Navigator.of(context).pop();

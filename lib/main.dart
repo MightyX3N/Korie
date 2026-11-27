@@ -25,11 +25,23 @@ Future<void> main() async {
     yield LicenseEntryWithLineBreaks(['Inter'], await rootBundle.loadString('assets/fonts/Inter-OFL.txt'));
   });
   final store = await Store.open();
+  debugPrint('korie: store');
+  // Who's Watching only when the TV has slept or restarted, not when Android starts Korie again
+  // after closing it in the background (pressing Home then showed it at random).
+  var woke = false;
+  try {
+    woke = store.setupDone && await Android.wokeUp();
+    Android.version = await Android.versionName();
+  } catch (e) {
+    debugPrint('korie: $e');
+  }
+  debugPrint('korie: woke $woke');
   // Home's apps and carousel: last time's at once, fresh ones loading from now on, so they are
   // there by the time a profile is picked.
   final support = await getApplicationSupportDirectory();
   final cache = HomeCache.instance;
   await cache.open(support);
+  debugPrint('korie: cache ${cache.apps.length} apps');
   if (store.setupDone) {
     cache.refreshApps();
     cache.refreshDevice();
@@ -38,7 +50,8 @@ Future<void> main() async {
   const MethodChannel('korie/home').setMethodCallHandler((call) async {
     if (call.method == 'home') Home.homeKey.currentState?.homePressed();
   });
-  runApp(Korie(store: store));
+  runApp(Korie(store: store, pick: woke && store.pickOnWake));
+  debugPrint('korie: running');
   await startAddons(store);
 }
 
@@ -62,7 +75,7 @@ Future<void> startAddons(Store store) async {
       'android': Platform.isAndroid,
       'model': Platform.operatingSystem,
       'language': Platform.localeName.split(RegExp('[_.-]')).first,
-      'korie': '2.0',
+      'korie': Android.version,
     },
   );
   // The add-ons' carousel items for the profile that was used last (most often the one picked).
@@ -90,8 +103,9 @@ Future<void> startAddons(Store store) async {
 }
 
 class Korie extends StatelessWidget {
-  const Korie({super.key, required this.store});
+  const Korie({super.key, required this.store, this.pick = false});
   final Store store;
+  final bool pick;
   @override
   Widget build(BuildContext context) => MaterialApp(
     navigatorKey: korieNavigator,
@@ -104,7 +118,7 @@ class Korie extends StatelessWidget {
     ),
     home: !store.setupDone
         ? Setup(store: store)
-        : store.profiles.length > 1 || store.current.pin != null
+        : pick
         ? Profiles(store: store, atStart: true)
         : Home(key: Home.homeKey, store: store),
   );

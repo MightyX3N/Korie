@@ -139,6 +139,16 @@ class Android {
   static Future<void> mediaAction(String pkg, String action) async => on ? await _ch.invokeMethod('mediaAction', {'pkg': pkg, 'action': action}) : null;
 
   static Future<int> versionCode() async => on ? (await _ch.invokeMethod<int>('versionCode') ?? 0) : 0;
+  /// Whether the TV has slept or restarted since this was last asked (then Who's Watching shows).
+  static Future<bool> wokeUp() async => on && (await _ch.invokeMethod<bool>('wokeUp') ?? false);
+
+  static Future<String> versionName() async => on ? (await _ch.invokeMethod<String>('versionName') ?? '') : '';
+
+  /// How far the update being installed has downloaded: 0 to 100, or -1 when not known.
+  static Future<int> installProgress() async => on ? (await _ch.invokeMethod<int>('installProgress') ?? 0) : 0;
+
+  /// Korie's own version ("2.2"), read once at start.
+  static String version = '';
 
   /// Downloads and installs a new Korie: 'ok', 'allow' (allow installing first) or an error.
   static Future<String> installApk(String url) async => on ? (await _ch.invokeMethod<String>('installApk', url) ?? 'failed') : 'not Android';

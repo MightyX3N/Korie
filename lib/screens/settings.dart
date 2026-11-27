@@ -4,6 +4,7 @@ import '../addons/host.dart';
 import '../android.dart';
 import 'addons.dart';
 import '../geo.dart';
+import '../island.dart';
 import '../store.dart';
 import '../ui/common.dart';
 import 'home.dart';
@@ -167,6 +168,10 @@ class _SettingsState extends State<Settings> {
         value: store.current.name,
         onTap: () => _push(Profiles(store: store)),
       ),
+      // With more than one profile: ask who is watching when the TV wakes, or go straight to the
+      // last profile (a profile with a PIN is always asked for it).
+      if (store.profiles.length > 1)
+        SRow("Who's Watching", value: store.askWho ? 'When the TV Wakes' : 'Off', chevron: false, onTap: () => store.setAskWho(!store.askWho)),
       // The apps' part of the carousel needs the TV's program guide; elsewhere only add-ons fill it.
       if (supported)
         SRow(
@@ -195,7 +200,7 @@ class _SettingsState extends State<Settings> {
         value: store.wallpaper,
         onTap: () => _push(_Wallpaper(store: store)),
       ),
-      SRow('About', value: 'Version 2.0', onTap: () => _push(_About(store: store))),
+      SRow('About', value: 'Version ${Android.version}', onTap: () => _push(_About(store: store))),
       SRow('TV Settings', onTap: Android.tvSettings, chevron: false),
     ],
   );
@@ -244,21 +249,72 @@ class _WallpaperState extends State<_Wallpaper> {
   }
 }
 
-class _About extends StatelessWidget {
+class _About extends StatefulWidget {
   const _About({required this.store});
   final Store store;
   @override
+  State<_About> createState() => _AboutState();
+}
+
+class _AboutState extends State<_About> {
+  Island get island => Island.instance;
+  bool checking = false;
+
+  @override
+  void initState() {
+    super.initState();
+    island.addListener(_changed);
+  }
+
+  @override
+  void dispose() {
+    island.removeListener(_changed);
+    super.dispose();
+  }
+
+  void _changed() {
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _check() async {
+    // (the row keeps its action while busy, so it keeps the focus; presses then do nothing)
+    if (checking || island.updating != null) return;
+    if (island.hasUpdate) {
+      await island.installUpdates();
+      return;
+    }
+    setState(() => checking = true);
+    await island.checkUpdates();
+    if (mounted) setState(() => checking = false);
+  }
+
+  /// What the Check for Updates row says.
+  String get _updateText {
+    if (island.updating != null) return island.updating!;
+    if (checking) return 'Checking…';
+    if (island.hasUpdate) {
+      final app = island.newApp;
+      final n = island.newAddons.length;
+      final what = [if (app != null) 'Korie ${app.version}', if (n > 0) n == 1 ? '1 add-on' : '$n add-ons'].join(' and ');
+      return '$what ready · Update';
+    }
+    if (island.checkedAt == null) return '';
+    return island.checkFailed ? 'Could not check: is the TV online?' : 'Up to date';
+  }
+
+  @override
   Widget build(BuildContext context) => SettingsPage(
     title: 'About',
-    subtitle: 'Korie 2.0',
+    subtitle: 'Korie ${Android.version}',
     icon: Icons.info_outline_rounded,
     rows: [
-      const SRow('Version', value: '2.0', chevron: false),
+      SRow('Version', value: Android.version, chevron: false),
+      SRow('Check for Updates', value: _updateText, chevron: false, onTap: _check),
       const SRow('Licence', value: 'Public domain (Unlicense)', chevron: false),
-      SRow('Set Up Korie Again', onTap: () => Navigator.of(context).push(fadeRoute(Setup(store: store, again: true)))),
+      SRow('Set Up Korie Again', onTap: () => Navigator.of(context).push(fadeRoute(Setup(store: widget.store, again: true)))),
       SRow(
         'Open-source licences',
-        onTap: () => showLicensePage(context: context, applicationName: 'Korie', applicationVersion: '2.0'),
+        onTap: () => showLicensePage(context: context, applicationName: 'Korie', applicationVersion: Android.version),
       ),
     ],
   );

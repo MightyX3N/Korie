@@ -827,6 +827,23 @@ korie.on("signedin", function(profile, user)
     korie.store.set("account:" .. profile.id, a)
     return true
   end
+  -- A user without a password signs in by itself, with no password screen. The server does not
+  -- say who has one, so an empty password is tried once per user and server; when it fails, that
+  -- is remembered, so the user is never counted more than one wrong try towards a lock-out.
+  local s = server()
+  if not s then return false end
+  local mark = "nopw-failed:" .. tostring(s.id) .. ":" .. tostring(user.id)
+  if korie.store.get(mark, false) then return false end
+  local result = call("POST", "/Users/AuthenticateByName", nil, { Username = user.name, Pw = "" }, nil, false, 8)
+  if type(result) == "table" and result.AccessToken and result.User then
+    local acct = { token = result.AccessToken, user = result.User.Id, name = result.User.Name }
+    korie.store.set("account:" .. profile.id, acct)
+    remember_user(acct)
+    show_state()
+    korie.refresh()
+    return true
+  end
+  korie.store.set(mark, true)
   return false
 end)
 
