@@ -361,6 +361,63 @@ void main() {
     expect(store['who'], 'Anna');
     expect(store['hits'], greaterThan(3));
   });
+  test('zeroplay: set up by address, the island shows the game, Play opens the page full screen', () async {
+    // A small ZeroPlay: no sign-in needed at home, one Xbox streaming a game.
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    var launched = 0;
+    server.listen((r) async {
+      final body = switch (r.uri.path) {
+        '/api/access' => {'verdict': 'ok'},
+        '/api/library' => {
+            'consoles': [{'id': 'x1', 'name': 'Living Room', 'power': 'On'}],
+            'games': [{'id': 'g1', 'name': 'Forza Horizon 5', 'console': 'x1', 'image': '', 'hero': ''}],
+            'stream': {'state': 'live', 'console': 'x1', 'consoleName': 'Living Room', 'title': '{"focused":true,"name":"Forza Horizon 5"}'},
+          },
+        '/api/launch' => () {
+            launched++;
+            return {'ok': true};
+          }(),
+        _ => null,
+      };
+      if (body == null) r.response.statusCode = 404;
+      r.response.headers.contentType = ContentType.json;
+      r.response.write(jsonEncode(body ?? {}));
+      await r.response.close();
+    });
+    final url = 'http://127.0.0.1:${server.port}';
+    await host.install(AddonHost.readPackage(pack('$addonsDir/zeroplay'))!);
+    expect(host.errorOf('zeroplay'), isNull, reason: host.logOf('zeroplay').join('\n'));
+    final browsed = <Map>[];
+    ui.answer = (op, args) => switch (op) {
+          'ask' when (args[0] as Map)['choices'] != null => [2], // Type the address
+          'ask' when (args[0] as Map)['input'] == 'text' => [url],
+          'browse' => () {
+              browsed.add(args[0] as Map);
+              return [true];
+            }(),
+          _ => null,
+        };
+    try {
+      await host.call('zeroplay', 'button', ['server']);
+      final games = await host.call('zeroplay', 'catalog') as List;
+      expect((games.single as Map)['title'], 'Forza Horizon 5');
+
+      final island = Island.instance;
+      island.start();
+      await island.refreshAddons();
+      expect(island.items.map((i) => i.title), contains('Forza Horizon 5'), reason: 'the name is read out of the raw title');
+
+      await host.call('zeroplay', 'action', [games.single, 'play']);
+      expect(launched, 1);
+      expect(browsed.single['fullscreen'], true);
+      expect(browsed.single['url'], startsWith('$url/?play=1&console=x1'));
+    } finally {
+      ui.answer = null;
+      await server.close(force: true);
+      await host.uninstall('zeroplay');
+      await Island.instance.refreshAddons();
+    }
+  });
 }
 
 class _DelayedUi implements AddonUi {

@@ -41,6 +41,7 @@ class Store extends ChangeNotifier {
   static const settingsId = 'korie.settings';
   static const folderId = 'korie.folder';
   static const tvId = 'korie.tv';
+  static const browserId = 'korie.browser';
 
   static Future<Store> open() async {
     final s = Store._(await SharedPreferences.getInstance());
@@ -155,6 +156,19 @@ class Store extends ChangeNotifier {
   }
 
   // ------------------------------------------------------------- setup and place
+
+  /// Data of this profile's own (the browser's tabs and favourites), as JSON.
+  Object? profileData(String key) {
+    final raw = _p.getString(_k(key));
+    if (raw == null) return null;
+    try {
+      return jsonDecode(raw);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  void setProfileData(String key, Object? value) => _p.setString(_k(key), jsonEncode(value));
 
   bool get setupDone => _p.getBool('setup.done') ?? false;
 

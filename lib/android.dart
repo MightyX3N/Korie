@@ -139,6 +139,10 @@ class Android {
   static Future<void> mediaAction(String pkg, String action) async => on ? await _ch.invokeMethod('mediaAction', {'pkg': pkg, 'action': action}) : null;
 
   static Future<int> versionCode() async => on ? (await _ch.invokeMethod<int>('versionCode') ?? 0) : 0;
+
+  /// A full-screen page gets every key and the controller itself (only the remote's Back stays Korie's).
+  static Future<void> webDirect(bool on_) async => on ? await _ch.invokeMethod('webDirect', on_) : null;
+
   /// Whether the TV has slept or restarted since this was last asked (then Who's Watching shows).
   static Future<bool> wokeUp() async => on && (await _ch.invokeMethod<bool>('wokeUp') ?? false);
 

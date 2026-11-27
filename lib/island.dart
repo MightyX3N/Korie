@@ -48,6 +48,21 @@ class Island extends ChangeNotifier {
   StreamSubscription? _addonUpdates;
   bool _started = false;
 
+  /// Everything there is to show, the most important first.
+  List<IslandItem> get items {
+    final all = [for (final l in _sources.values) ...l];
+    all.sort((a, b) {
+      final r = b.rank.compareTo(a.rank);
+      if (r != 0) return r;
+      return (b.playing == true ? 1 : 0).compareTo(a.playing == true ? 1 : 0);
+    });
+    return all;
+  }
+
+  /// When each app's media was last seen playing: paused media leaves the island after a while.
+  final Map<String, DateTime> _lastPlaying = {};
+  static const pausedFor = Duration(minutes: 10);
+
   /// What to show now, or null for just the time, settings and profile.
   IslandItem? get top {
     IslandItem? best;
@@ -95,8 +110,15 @@ class Island extends ChangeNotifier {
 
   Future<void> refreshMedia() async {
     final list = await Android.media();
+    final now = DateTime.now();
+    for (final m in list ?? const <Map<String, Object?>>[]) {
+      // Media seen for the first time counts as just played, so a paused song stays a while.
+      if (m['playing'] == true || !_lastPlaying.containsKey('${m['pkg']}')) _lastPlaying['${m['pkg']}'] = now;
+    }
     _sources['media'] = [
       for (final m in list ?? const <Map<String, Object?>>[])
+        // Paused for a long time: the app has most likely been left; don't keep showing it.
+        if (m['playing'] == true || now.difference(_lastPlaying['${m['pkg']}']!) < pausedFor)
         IslandItem(
           key: 'media:${m['pkg']}',
           title: '${m['title']}',
@@ -185,6 +207,7 @@ class Island extends ChangeNotifier {
     ];
     checkedAt = DateTime.now();
     checkFailed = failed;
+    debugPrint('korie: update check: app ${app?.version ?? 'none'}, add-ons ${newAddons.length}${failed ? ' (not all reached)' : ''}');
     _showUpdate();
   }
 

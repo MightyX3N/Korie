@@ -84,6 +84,7 @@ korie = {
   play = function(t) return req("play", t) end,
   stop = function() return req("stop") end,
   open = function(t) return req("open", t) end,
+  browse = function(t) if type(t) == "string" then t = { url = t } end return req("browse", t) end,
   apps = {
     list = function() return req("apps.list") end,
     open = function(pkg) return req("apps.open", pkg) end,
