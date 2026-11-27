@@ -9,6 +9,7 @@ import 'package:path_provider/path_provider.dart';
 import 'addons/host.dart';
 import 'addons/korie_ui.dart';
 import 'android.dart';
+import 'home_cache.dart';
 import 'island.dart';
 import 'screens/addons.dart';
 import 'screens/home.dart';
@@ -24,6 +25,15 @@ Future<void> main() async {
     yield LicenseEntryWithLineBreaks(['Inter'], await rootBundle.loadString('assets/fonts/Inter-OFL.txt'));
   });
   final store = await Store.open();
+  // Home's apps and carousel: last time's at once, fresh ones loading from now on, so they are
+  // there by the time a profile is picked.
+  final support = await getApplicationSupportDirectory();
+  final cache = HomeCache.instance;
+  await cache.open(support);
+  if (store.setupDone) {
+    cache.refreshApps();
+    cache.refreshDevice();
+  }
   // The Home button while Korie is already open: back to the first app in the dock.
   const MethodChannel('korie/home').setMethodCallHandler((call) async {
     if (call.method == 'home') Home.homeKey.currentState?.homePressed();
@@ -55,6 +65,8 @@ Future<void> startAddons(Store store) async {
       'korie': '2.0',
     },
   );
+  // The add-ons' carousel items for the profile that was used last (most often the one picked).
+  if (store.setupDone) HomeCache.instance.refreshAddons(store.current.id);
   // A .korie file opened from a file manager.
   Future<void> openedFile() async {
     final uri = await Android.pendingFile();

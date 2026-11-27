@@ -7,6 +7,7 @@ import 'package:material_ui/material_ui.dart';
 
 import '../android.dart';
 import '../geo.dart';
+import '../home_cache.dart';
 import '../addons/host.dart';
 import '../island.dart';
 import '../net.dart';
@@ -75,6 +76,14 @@ class HomeState extends State<Home> with TickerProviderStateMixin {
     super.initState();
     store.addListener(_changed);
     Android.onAppsChanged(_loadApps);
+    // What was loaded at start (or last time) is on screen at once; fresh lists follow.
+    final cache = HomeCache.instance;
+    _android = cache.apps;
+    _extra = cache.extra;
+    apps = [..._android, ..._extra];
+    _show(cache.deviceGranted, cache.device, cache.addons[store.current.id] ?? const []);
+    if (apps.isNotEmpty) _focusFirstApp();
+    _ready = true;
     _loadApps();
     _loadShelf();
     shelfTimer = Timer.periodic(const Duration(minutes: 2), (_) => _loadShelf());
@@ -114,36 +123,34 @@ class HomeState extends State<Home> with TickerProviderStateMixin {
 
   bool _firstFocus = true;
 
+  /// Past initState: changes go through setState from here on.
+  bool _ready = false;
+
   Future<void> _loadApps() async {
-    var a = <App>[];
-    // A busy TV can be slow to answer right after start: try again a few times before giving up.
-    for (var attempt = 0; attempt < 6; attempt++) {
-      try {
-        a = await Android.apps();
-      } catch (_) {
-        a = [];
-      }
-      if (a.isNotEmpty || !Android.on) break;
-      await Future<void>.delayed(const Duration(seconds: 2));
-    }
+    final a = await HomeCache.instance.refreshApps();
     if (!mounted) return;
     if (a.isEmpty && _android.isNotEmpty) return; // keep what we had rather than an empty dock
     _android = a;
     setState(() => apps = [...a, ..._extra]);
-    // Start on the first app in the dock once the apps are there.
-    if (_firstFocus) {
-      _firstFocus = false;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        final ids = shown;
-        if (ids.isNotEmpty && mounted) nodeFor(ids.first).requestFocus();
-      });
-    }
+    _focusFirstApp();
+  }
+
+  /// Start on the first app in the dock once the apps are there.
+  void _focusFirstApp() {
+    if (!_firstFocus) return;
+    _firstFocus = false;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final ids = shown;
+      if (ids.isNotEmpty && mounted) nodeFor(ids.first).requestFocus();
+    });
   }
 
   bool _extrasBusy = false, _extrasAgain = false;
 
   /// Korie TV's card (when an add-on gives anything to watch) and add-ons' own tiles.
   Future<void> _loadExtras() async {
+    // Until the add-ons have started, the cards kept from last time stay as they are.
+    if (!AddonHost.instance.ready) return;
     if (_extrasBusy) {
       _extrasAgain = true;
       return;
@@ -168,6 +175,7 @@ class HomeState extends State<Home> with TickerProviderStateMixin {
       _tiles = tiles;
       if (same) return;
       _extra = extra;
+      HomeCache.instance.setExtra(extra);
       setState(() => apps = [..._android, ...extra]);
     } finally {
       _extrasBusy = false;
@@ -182,54 +190,41 @@ class HomeState extends State<Home> with TickerProviderStateMixin {
   static bool isOwn(String id) => id == Store.settingsId || id == Store.folderId || id == Store.tvId || id.startsWith('addon:');
 
   Future<void> _loadShelf() async {
-    final r = await Android.shelf();
-    final removed = store.removed;
-    final fromApps = r.items.where((i) => !removed.contains(i.key)).where((i) => i.isContinue ? store.showContinue : store.showAppRows).toList();
-    final fromAddons = (await _addonItems()).where((i) => !removed.contains(i.key));
-    // Continue Watching from apps first, then the add-ons' items, then the apps' own rows.
-    final items = [...fromApps.where((i) => i.isContinue), ...fromAddons, ...fromApps.where((i) => !i.isContinue)];
-    for (final i in items) {
-      if (!tiny.containsKey(i.key)) tiny[i.key] = await tinyImage(i.art);
-    }
-    if (!mounted) return;
-    setState(() {
-      shelfGranted = r.granted;
-      shelf = items;
-      if (heroIndex >= shelf.length) heroIndex = 0;
+    final cache = HomeCache.instance;
+    final profile = store.current.id;
+    // The apps' part and the add-ons' part come in their own time; each shows as soon as it is there.
+    final device = cache.refreshDevice().then((r) {
+      if (mounted) _show(r.granted, r.items, cache.addons[profile] ?? const []);
     });
+    final addons = cache.refreshAddons(profile).then((a) {
+      if (mounted) _show(cache.deviceGranted, cache.device, a);
+    });
+    await Future.wait([device, addons]);
   }
 
-  /// Add-ons answer "home" with up to 8 items, each with a backdrop.
-  Future<List<ShelfItem>> _addonItems() async {
-    final host = AddonHost.instance;
-    final out = <ShelfItem>[];
-    for (final e in (await host.callAll('home')).entries) {
-      if (e.value is! List) continue;
-      final name = host.installed[e.key]?.manifest.name ?? e.key;
-      for (final raw in (e.value as List).take(8)) {
-        if (raw is! Map || raw['title'] == null) continue;
-        final it = raw.cast<String, Object?>();
-        final backdrop = '${it['backdrop'] ?? it['poster'] ?? ''}';
-        final art = backdrop.startsWith('http') ? await fetchBytes(backdrop) : null;
-        final remaining = (it['remaining'] as num?)?.toInt() ?? -1;
-        out.add(ShelfItem({
-          'kind': 'addon',
-          'key': 'addon:${e.key}:${it['id'] ?? it['title']}',
-          'app': name,
-          'title': '${it['title']}',
-          'episode': '${it['episode'] ?? it['subtitle'] ?? ''}',
-          // An episode's overview is often just its name again; then the info line says it already.
-          'overview': it['overview'] == null || it['overview'] == it['episode'] ? '' : '${it['overview']}',
-          'tag': it['year'] == null ? '' : '${it['year']}',
-          'left': remaining,
-          'progress': (it['progress'] as num?)?.toDouble() ?? -1,
-          'art': art,
-          'addon': e.key,
-          'data': it,
-        }));
-      }
+  /// The carousel from the apps' items and the add-ons' items: Continue Watching from apps
+  /// first, then the add-ons' items, then the apps' own rows.
+  void _show(bool granted, List<ShelfItem> device, List<ShelfItem> fromAddons) {
+    final removed = store.removed;
+    final fromApps = device.where((i) => !removed.contains(i.key)).where((i) => i.isContinue ? store.showContinue : store.showAppRows).toList();
+    final items = [...fromApps.where((i) => i.isContinue), ...fromAddons.where((i) => !removed.contains(i.key)), ...fromApps.where((i) => !i.isContinue)];
+    void apply() {
+      shelfGranted = granted;
+      shelf = items;
+      if (heroIndex >= shelf.length) heroIndex = 0;
     }
-    return out;
+
+    _ready ? setState(apply) : apply();
+    // The blurred picture behind the dock, made in the background for items that have none yet.
+    () async {
+      var any = false;
+      for (final i in items) {
+        if (tiny.containsKey(i.key)) continue;
+        tiny[i.key] = await tinyImage(i.art);
+        any = true;
+      }
+      if (any && mounted) setState(() {});
+    }();
   }
 
   /// OK on a carousel item: an app's item opens in its app. An add-on's item plays at once: a film
