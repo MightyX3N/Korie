@@ -10,6 +10,11 @@ head units, phones and desktop come later.
   such as Jellyfin's, linked by name), a look, permissions, location, Korie as Home.
 - **Top-right island**: time, Settings and the profile; what plays in other apps, add-ons' news
   and updates.
+- **Korie TV**: one tile on Home for everything add-ons give to watch, like Apple's TV app: a
+  sidebar (Search, Home, Movies, Series and sections add-ons add, such as Radio), a featured
+  picture with Play on each page, Continue Watching, rows of posters by genre, and pages for films
+  and series with their seasons, episodes and More Like This. Titles that several add-ons have
+  show once. Add-ons can also put their own tiles on Home. (Korie's own video player comes next.)
 - **Add-ons**: small Lua programs from the Korie add-on list (`addons/`), the Download folder or a
   `.korie` file. See [docs/addons.md](docs/addons.md).
 

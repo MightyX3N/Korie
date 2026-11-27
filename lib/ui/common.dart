@@ -216,11 +216,13 @@ class _FocusableState extends State<Focusable> {
 /// Like [Focusable], plus holding OK (or the Menu key) for options, as Hume's profiles and
 /// carousel do. OK acts when it is released, so a hold never also opens the item.
 class HoldFocusable extends StatefulWidget {
-  const HoldFocusable({super.key, required this.onTap, required this.onHold, required this.builder, this.autofocus = false});
+  const HoldFocusable({super.key, required this.onTap, required this.onHold, required this.builder, this.autofocus = false, this.focusNode, this.onFocus});
   final VoidCallback onTap;
   final VoidCallback? onHold;
   final Widget Function(BuildContext, bool focused) builder;
   final bool autofocus;
+  final FocusNode? focusNode;
+  final ValueChanged<bool>? onFocus;
   @override
   State<HoldFocusable> createState() => _HoldFocusableState();
 }
@@ -253,8 +255,12 @@ class _HoldFocusableState extends State<HoldFocusable> {
   @override
   Widget build(BuildContext context) => Focus(
     autofocus: widget.autofocus,
+    focusNode: widget.focusNode,
     onKeyEvent: _key,
-    onFocusChange: (v) => setState(() => f = v),
+    onFocusChange: (v) {
+      setState(() => f = v);
+      widget.onFocus?.call(v);
+    },
     child: GestureDetector(onTap: widget.onTap, onLongPress: widget.onHold, onSecondaryTap: widget.onHold, child: widget.builder(context, f)),
   );
 }

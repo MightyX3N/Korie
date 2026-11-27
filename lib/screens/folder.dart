@@ -6,6 +6,7 @@ import '../store.dart';
 import '../ui/common.dart';
 import '../ui/menu.dart';
 import '../ui/tile.dart';
+import 'home.dart';
 
 /// More Apps: the hidden apps, in the same grid as Home. Back returns.
 class Folder extends StatefulWidget {
@@ -37,6 +38,15 @@ class _FolderState extends State<Folder> {
       Navigator.of(context).maybePop();
     } else {
       setState(() {});
+    }
+  }
+
+  void _open(String id) {
+    final home = Home.homeKey.currentState;
+    if (home != null) {
+      home.open(id);
+    } else {
+      Android.launch(id);
     }
   }
 
@@ -84,7 +94,7 @@ class _FolderState extends State<Folder> {
                         left: g.colLeft(i % g.cols),
                         top: top0 + (i ~/ g.cols) * rowH,
                         child: AppCard(
-                          look: CardLook(label: a.label, app: a),
+                          look: Home.homeKey.currentState?.lookFor(a.id) ?? CardLook(label: a.label, app: a),
                           geo: g,
                           autofocus: i == 0,
                           showLabel: true,
@@ -97,16 +107,16 @@ class _FolderState extends State<Folder> {
                             final target = row == 0 ? 0.0 : (top0 + (row - 1) * rowH - (g.labelH + g.gap / 2 - g.dp(2))).clamp(0.0, double.infinity);
                             if (target != scroll) setState(() => scroll = target);
                           },
-                          onOpen: () => Android.launch(a.id),
+                          onOpen: () => _open(a.id),
                           onHold: () => showOptions(
                             context,
                             geo: g,
                             anchor: Rect.fromLTWH(g.colLeft(i % g.cols), top0 + (i ~/ g.cols) * rowH - scroll, g.tileW, g.tileH),
                             title: a.label,
                             items: [
-                              MenuItem('Open', () => Android.launch(a.id)),
+                              MenuItem('Open', () => _open(a.id)),
                               MenuItem('Show on Home Screen', () => widget.store.setHidden(a.id, false)),
-                              MenuItem('App Info', () => Android.appInfo(a.id)),
+                              if (!HomeState.isOwn(a.id)) MenuItem('App Info', () => Android.appInfo(a.id)),
                               if (!a.system) MenuItem('Uninstall', () => Android.uninstall(a.id)),
                             ],
                           ),

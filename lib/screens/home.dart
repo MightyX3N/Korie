@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:flutter/services.dart';
@@ -11,6 +12,9 @@ import '../island.dart';
 import '../net.dart';
 import '../ui/ask.dart';
 import '../store.dart';
+import '../tv/library.dart';
+import '../tv/tv.dart';
+import '../tv/widgets.dart' show tvIcon;
 import '../ui/common.dart';
 import '../ui/menu.dart';
 import '../ui/tile.dart';
@@ -31,6 +35,11 @@ class Home extends StatefulWidget {
 class HomeState extends State<Home> with TickerProviderStateMixin {
   Store get store => widget.store;
   List<App> apps = [];
+
+  /// The apps Android has, and Korie's own cards that sit among them: Korie TV and add-ons' tiles.
+  List<App> _android = [], _extra = [];
+  List<TvTile> _tiles = [];
+  final Map<String, Uint8List?> _tileArt = {};
   final Map<String, FocusNode> nodes = {};
   final carouselNode = FocusNode(debugLabel: 'carousel');
 
@@ -54,6 +63,7 @@ class HomeState extends State<Home> with TickerProviderStateMixin {
 
   /// An add-on that answers "home" was added, removed or (re)started.
   void _addonsChanged() {
+    _loadExtras();
     final h = AddonHost.instance.handlersOf('home').map((a) => a.id).join(',');
     if (h == _homeAddons) return;
     _homeAddons = h;
@@ -71,7 +81,9 @@ class HomeState extends State<Home> with TickerProviderStateMixin {
     AddonHost.instance.addListener(_addonsChanged);
     _addonUpdates = AddonHost.instance.updates.stream.listen((u) {
       if (u.what == 'home') _loadShelf();
+      if (u.what == 'tiles' || u.what == 'tv') _loadExtras();
     });
+    _loadExtras();
     life = AppLifecycleListener(
       onResume: () {
         _loadApps();
@@ -115,8 +127,9 @@ class HomeState extends State<Home> with TickerProviderStateMixin {
       await Future<void>.delayed(const Duration(seconds: 2));
     }
     if (!mounted) return;
-    if (a.isEmpty && apps.isNotEmpty) return; // keep what we had rather than an empty dock
-    setState(() => apps = a);
+    if (a.isEmpty && _android.isNotEmpty) return; // keep what we had rather than an empty dock
+    _android = a;
+    setState(() => apps = [...a, ..._extra]);
     // Start on the first app in the dock once the apps are there.
     if (_firstFocus) {
       _firstFocus = false;
@@ -126,6 +139,47 @@ class HomeState extends State<Home> with TickerProviderStateMixin {
       });
     }
   }
+
+  bool _extrasBusy = false, _extrasAgain = false;
+
+  /// Korie TV's card (when an add-on gives anything to watch) and add-ons' own tiles.
+  Future<void> _loadExtras() async {
+    if (_extrasBusy) {
+      _extrasAgain = true;
+      return;
+    }
+    _extrasBusy = true;
+    try {
+      final lib = TvLibrary(AddonHost.instance);
+      final tiles = await lib.tiles();
+      final extra = <App>[if (lib.hasContent) App(id: Store.tvId, label: 'Korie TV', system: true)];
+      for (final t in tiles) {
+        if (!_tileArt.containsKey(t.image)) {
+          Uint8List? b;
+          try {
+            b = t.image.startsWith('http') ? await fetchBytes(t.image) : (t.image.isEmpty ? null : await File(t.image).readAsBytes());
+          } catch (_) {}
+          _tileArt[t.image] = b;
+        }
+        extra.add(App(id: t.appId, label: t.title, banner: _tileArt[t.image], system: true));
+      }
+      if (!mounted) return;
+      final same = extra.length == _extra.length && [for (var i = 0; i < extra.length; i++) extra[i].id == _extra[i].id && extra[i].label == _extra[i].label && extra[i].banner == _extra[i].banner].every((x) => x);
+      _tiles = tiles;
+      if (same) return;
+      _extra = extra;
+      setState(() => apps = [..._android, ...extra]);
+    } finally {
+      _extrasBusy = false;
+      if (_extrasAgain) {
+        _extrasAgain = false;
+        _loadExtras();
+      }
+    }
+  }
+
+  /// Korie's own cards among the apps: no App Info or Uninstall for these.
+  static bool isOwn(String id) => id == Store.settingsId || id == Store.folderId || id == Store.tvId || id.startsWith('addon:');
 
   Future<void> _loadShelf() async {
     final r = await Android.shelf();
@@ -247,7 +301,20 @@ class HomeState extends State<Home> with TickerProviderStateMixin {
     if (id == Store.folderId) {
       return const CardLook(label: 'More Apps', icon: Icons.apps_rounded, colors: [Color(0xFF6B70F0), Color(0xFF4A4FD0)]);
     }
+    if (id == Store.tvId) {
+      return const CardLook(label: 'Korie TV', icon: Icons.live_tv_rounded, colors: [Color(0xFF34386E), Color(0xFF15162E)], caption: 'Korie TV');
+    }
     final a = apps.firstWhere((x) => x.id == id);
+    if (id.startsWith('addon:') && a.banner == null) {
+      final t = _tiles.where((t) => t.appId == id).firstOrNull;
+      final c = t?.colors ?? const [];
+      return CardLook(
+        label: a.label,
+        icon: tvIcon(t?.icon ?? 'list'),
+        colors: c.length >= 2 ? [Color(c[0]), Color(c[1])] : (c.length == 1 ? [Color(c[0]), Color(c[0])] : null),
+        caption: a.label,
+      );
+    }
     return CardLook(label: a.label, app: a);
   }
 
@@ -272,6 +339,16 @@ class HomeState extends State<Home> with TickerProviderStateMixin {
       Navigator.of(context).push(_fade(Settings(store: store)));
     } else if (id == Store.folderId) {
       Navigator.of(context).push(_fade(Folder(store: store, apps: apps)));
+    } else if (id == Store.tvId) {
+      Navigator.of(context).push(_fade(KorieTv(store: store)));
+    } else if (id.startsWith('addon:')) {
+      final t = _tiles.where((t) => t.appId == id).firstOrNull;
+      if (t == null) return;
+      if (t.section != null) {
+        Navigator.of(context).push(_fade(KorieTv(store: store, page: t.section!)));
+      } else {
+        AddonHost.instance.call(t.addon, 'tile', [t.id]);
+      }
     } else {
       Android.launch(id);
     }
@@ -280,7 +357,7 @@ class HomeState extends State<Home> with TickerProviderStateMixin {
   Future<void> options(String id, Geo g, int index) async {
     final look = lookFor(id);
     final own = id == Store.settingsId || id == Store.folderId;
-    final app = own ? null : apps.firstWhere((a) => a.id == id);
+    final app = isOwn(id) ? null : apps.firstWhere((a) => a.id == id);
     final rect = _cardRect(index, g);
     await showOptions(
       context,
@@ -291,7 +368,7 @@ class HomeState extends State<Home> with TickerProviderStateMixin {
         MenuItem('Open', () => open(id)),
         if (id != Store.folderId) MenuItem('Move', () => setState(() => movingId = id)),
         if (!own) MenuItem('Hide', () => store.setHidden(id, true)),
-        if (!own) MenuItem('App Info', () => Android.appInfo(id)),
+        if (!isOwn(id)) MenuItem('App Info', () => Android.appInfo(id)),
         if (app != null && !app.system) MenuItem('Uninstall', () => Android.uninstall(id)),
         MenuItem('Reset Layout', store.resetLayout),
       ],

@@ -131,6 +131,37 @@ it and shows the answers in its own look.
 
 The `uses` list can also hold `location`, `profiles` and `media`; the install question explains each.
 
+## Korie TV
+
+Korie TV is one tile on Home that opens a place for everything add-ons give to watch, like Apple's
+TV app: a sidebar (Search, Home, Movies, Series, then sections add-ons add), a featured picture at
+the top of each page and rows below it. A simple add-on fills it without doing anything new:
+
+- its `catalog` gives Movies and Series (Recently Added, one row per genre) and the featured
+  pictures (the newest titles with a `backdrop`); items of other types (`"radio"`…) stay out of
+  those pages and are found in Search;
+- its `home` answer is Korie TV's Continue Watching row (OK plays straight away, holding OK
+  opens the title's page);
+- a title's page shows the `detail` buttons, seasons and `episodes`, and More Like This
+  (titles sharing genres, or the add-on's `similar` answer).
+
+These item fields are shown when they are there: `runtime` (minutes), `official` (age rating,
+"15"), `ends` (the year a series ended), `rating`, `genres` (text with commas, or a list).
+
+To add more:
+
+| Name | Arguments | Return |
+|---|---|---|
+| `tv` | page | Extra for a page: `{ featured = {items}, rows = { {title=, items={...}, style=} } }`. `page` is `"home"`, `"movies"`, `"series"` or the id of one of the add-on's own sections. `style` is `"poster"` (tall, the default), `"wide"` or `"square"` (logos, with the name under them; OK plays at once). |
+| `tv.sections` | | The add-on's own sections in the sidebar, under "From your add-ons": `{ {id, title, icon} }`. `icon` is one of `live`, `radio`, `music`, `film`, `tv`, `star`, `sport`, `kids`, `news`, `podcast`, `book`, `game`, `list`. Korie asks `tv` with the section's id for what it shows. |
+| `tiles` | | The add-on's own tiles on Home: `{ {id, title, image, icon, colors = {"#E0533D", "#8E2418"}, section} }`. A tile with `section` opens Korie TV at that section; otherwise OK on it calls `tile` with its id. `image` (a web address or a file in the add-on's folder) fills the whole tile; without one it shows the icon and title on the colours. Tiles can be moved and hidden like apps. |
+| `tile` | id | OK on a tile without a `section`. |
+| `similar` | item | Items for the title page's More Like This. |
+
+`korie.update("tv")` makes an open Korie TV page ask again; `korie.update("tiles")` refreshes the tiles.
+The Radio add-on is the example: a Radio section (Most Listened, then a row per kind of music) and a
+Radio tile that opens it.
+
 ## Settings of type `action`
 
 `{ "key": "account", "title": "Signed in as", "type": "action" }` is a row that does something

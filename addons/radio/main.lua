@@ -33,7 +33,54 @@ korie.on("catalog", function()
       }
     end
   end
+  -- Kept for Korie TV's Radio section, which is built from the same list.
+  korie.store.set("stations", out)
+  korie.update("tv")
   return out
+end)
+
+-- Korie TV: a Radio section in the sidebar, and a Radio tile on Home that opens it.
+korie.on("tv.sections", function()
+  return { { id = "radio", title = "Radio", icon = "radio" } }
+end)
+
+korie.on("tiles", function()
+  return { { id = "radio", title = "Radio", icon = "radio", colors = { "#E0533D", "#8E2418" }, section = "radio" } }
+end)
+
+local function nice(tag)
+  return (string.gsub(tag, "^%l", string.upper))
+end
+
+-- The section: the most listened stations, then a row for each of the biggest kinds of music.
+korie.on("tv", function(page)
+  if page ~= "radio" then return nil end
+  local stations = korie.store.get("stations", {})
+  local rows = {}
+  local top = {}
+  for i = 1, math.min(20, #stations) do top[i] = stations[i] end
+  if #top > 0 then rows[1] = { title = "Most Listened", style = "square", items = top } end
+  local count, order = {}, {}
+  for _, s in ipairs(stations) do
+    for raw in string.gmatch(string.lower(s.genres or ""), "[^,]+") do
+      -- (Lua 5.5: a loop's own variable cannot be changed, so the trimmed tag gets its own name)
+      local tag = trim(raw)
+      if tag ~= "" then
+        if not count[tag] then count[tag] = {}; order[#order + 1] = tag end
+        table.insert(count[tag], s)
+      end
+    end
+  end
+  table.sort(order, function(a, b) return #count[a] > #count[b] end)
+  for i = 1, math.min(8, #order) do
+    local tag = order[i]
+    if #count[tag] >= 4 then
+      local items = {}
+      for j = 1, math.min(20, #count[tag]) do items[j] = count[tag][j] end
+      rows[#rows + 1] = { title = nice(tag), style = "square", items = items }
+    end
+  end
+  return { rows = rows }
 end)
 
 korie.on("detail", function(station)

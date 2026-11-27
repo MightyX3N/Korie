@@ -40,6 +40,7 @@ class Store extends ChangeNotifier {
   static const maxProfiles = 8;
   static const settingsId = 'korie.settings';
   static const folderId = 'korie.folder';
+  static const tvId = 'korie.tv';
 
   static Future<Store> open() async {
     final s = Store._(await SharedPreferences.getInstance());
@@ -196,11 +197,14 @@ class Store extends ChangeNotifier {
     final ids = apps.map((a) => a.id).toSet();
     final saved = (_p.getStringList(_k('order')) ?? const []).where(ids.contains).toList();
     final rest = apps.where((a) => !saved.contains(a.id)).toList()..sort((a, b) => a.label.toLowerCase().compareTo(b.label.toLowerCase()));
-    return [...saved, ...rest.map((a) => a.id)];
+    // Korie TV starts as the first app in the dock; the user can move it anywhere after that.
+    final tv = rest.any((a) => a.id == tvId) && !_p.containsKey(_k('order.tv')) ? [tvId] : const <String>[];
+    return [...tv, ...saved, ...rest.map((a) => a.id).where((id) => !tv.contains(id))];
   }
 
   void saveOrder(List<String> ids) {
     _p.setStringList(_k('order'), ids);
+    if (ids.contains(tvId)) _p.setBool(_k('order.tv'), true);
     notifyListeners();
   }
 
