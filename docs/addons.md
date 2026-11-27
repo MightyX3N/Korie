@@ -99,13 +99,37 @@ Answers must come within 8 seconds (`catalog`: 60).
 | `korie.addon` | `{id, name, version, dir}` |
 | `korie.json.decode(text)` / `korie.json.encode(value)` | JSON. |
 
-Each add-on runs on its own thread with the Lua standard library (no `io`, `os.execute` or
-`debug`), and can only `require` files from its own folder.
+Each add-on runs in its own isolate with real Lua 5.5 and its safe standard library (no `io`,
+`os.execute` or `debug`), and can only `require` files from its own folder. Lua that runs for 6
+seconds without waiting for anything is stopped and the add-on started again. Time the viewer
+spends answering a `korie.ask` does not count against an answer's time limit.
 
 ## Testing
 
-`bash tools/addon-test/run.sh` runs the add-ons' Lua on the computer with a fake Korie and checks
-what they answer.
+`flutter test test/addons_test.dart` runs this folder's add-ons on Korie's real add-on host (real
+Lua, real internet, a fake Jellyfin server) and checks what they answer.
+
+## Korie 2: more places to add to
+
+Every place an add-on can add to is a name for `korie.on`; Korie asks every add-on that answers
+it and shows the answers in its own look.
+
+| Name | Arguments | Return |
+|---|---|---|
+| `setup` | | A page for Korie's setup, or nothing when there is nothing to set up: `{id, title, message, rows = { {id, title, sub, value, check} }}`. |
+| `setup.choose` | page id, row id | The next page, `"done"`, or nothing to show the same page again. Ask what you need with `korie.ask` meanwhile. |
+| `users` | | People who can be Korie profiles: `{ {id, name, detail} }` (a Jellyfin server's users). Setup offers them in Who Uses Korie, and Link Profiles puts people with the same name together across add-ons. |
+| `signedin` | profile, user | Whether that Korie profile is signed in as that user. When not, picking the profile shows Korie's password screen. |
+| `signin` | profile, user, password | `true`, or the reason as text ("Wrong password."). The password is any text. |
+| `island` | | What to show in the top-right island: `{title, sub, image, playing}`. `playing` true or false gives it a play/pause button. |
+| `island.ok` / `island.hold` / `island.toggle` | | OK on it, holding OK on it, its play/pause button. |
+
+| Function | Does |
+|---|---|
+| `korie.update(what)` | Something the add-on shows changed: `"island"` or `"home"` makes Korie ask again now. |
+| `korie.profiles.add(name)` | As before; a profile can also be linked to an add-on's user in setup or by holding OK on it in Who's Watching. |
+
+The `uses` list can also hold `location`, `profiles` and `media`; the install question explains each.
 
 ## Settings of type `action`
 
