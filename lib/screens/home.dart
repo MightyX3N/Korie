@@ -109,6 +109,7 @@ class HomeState extends State<Home> with TickerProviderStateMixin {
         _loadShelf();
         // The TV woke up with Korie open: Who's Watching, or the profile Korie starts as.
         if (await Android.wokeUp() && mounted) {
+          Island.instance.woke();
           final start = store.startProfile;
           if (start != null) {
             Navigator.of(context).popUntil((r) => r.isFirst);
