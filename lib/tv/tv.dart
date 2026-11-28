@@ -8,7 +8,10 @@ import '../ui/ask.dart';
 import '../ui/common.dart';
 import 'library.dart';
 import 'title.dart';
+import '../player/playlists.dart';
 import 'widgets.dart';
+
+part 'playlists.dart';
 
 /// Korie TV: one place for everything add-ons give to watch, like Apple's TV app. The capsule
 /// top left names the section; Left from the content (or OK on the capsule, or Back) opens the
@@ -40,7 +43,7 @@ class _KorieTvState extends State<KorieTv> {
     final f = FocusManager.instance.primaryFocus;
     final st = f?.context?.findAncestorStateOfType<State>();
     if (f == null || f.context == null || st == null) return;
-    if (f.context!.findAncestorStateOfType<_PageViewState>() != null || f.context!.findAncestorStateOfType<_PageViewStateSearch>() != null) _was = f;
+    if (f.context!.findAncestorStateOfType<_PageViewState>() != null || f.context!.findAncestorStateOfType<_PageViewStateSearch>() != null || f.context!.findAncestorStateOfType<_PlaylistsViewState>() != null) _was = f;
   }
   final capsule = FocusNode(debugLabel: 'tv.capsule');
   final Map<String, FocusNode> sideNodes = {};
@@ -53,6 +56,7 @@ class _KorieTvState extends State<KorieTv> {
     const _Entry('home', 'Home', 'home'),
     const _Entry('movies', 'Movies', 'movies'),
     const _Entry('series', 'Series', 'series'),
+    const _Entry('playlists', 'Playlists', 'playlist'),
     for (final s in sections) _Entry(s.page, s.title, s.icon),
   ];
 
@@ -139,6 +143,8 @@ class _KorieTvState extends State<KorieTv> {
                       excluding: sidebar,
                       child: page == 'search'
                           ? _SearchView(key: pageKey, g: g, library: library, entry: current)
+                          : page == 'playlists'
+                          ? _PlaylistsView(key: pageKey, g: g)
                           : _PageView(key: pageKey, g: g, library: library, entry: current),
                     ),
                   ),
@@ -196,8 +202,8 @@ class _KorieTvState extends State<KorieTv> {
 
   Widget _sidebar(TvGeo g) {
     final profile = widget.store.current;
-    final own = entries.take(4).toList();
-    final more = entries.skip(4).toList();
+    final own = entries.take(5).toList();
+    final more = entries.skip(5).toList();
     Widget row(_Entry e) => Focusable(
       focusNode: sideNode(e.page),
       onTap: () => go(e.page),
@@ -359,6 +365,8 @@ class _PageViewState extends State<_PageView> implements _Reloadable {
   @override
   void focusFirst({bool onlyIfLost = false}) {
     if (!mounted) return;
+    // Under the player (or any page above Korie TV): its focus is not ours to take.
+    if (!(ModalRoute.of(context)?.isCurrent ?? true)) return;
     final tv = context.findAncestorStateOfType<_KorieTvState>();
     final f = FocusManager.instance.primaryFocus;
     if (onlyIfLost && f != null && f.context != null && f.context!.findAncestorStateOfType<_PageViewState>() == this) return;

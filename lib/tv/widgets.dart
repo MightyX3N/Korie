@@ -54,6 +54,7 @@ IconData tvIcon(String name) => switch (name) {
   'podcast' => Icons.podcasts_rounded,
   'book' => Icons.menu_book_rounded,
   'game' => Icons.sports_esports_outlined,
+  'playlist' => Icons.playlist_play_rounded,
   _ => Icons.list_rounded,
 };
 

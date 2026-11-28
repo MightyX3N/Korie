@@ -1,6 +1,8 @@
 import 'package:material_ui/material_ui.dart';
 
 import '../addons/host.dart';
+import '../player/player.dart';
+import '../player/playlists.dart';
 import '../ui/ask.dart';
 import '../ui/common.dart';
 import 'library.dart';
@@ -29,6 +31,25 @@ class TvActions {
 
   static Future<List<Map>> episodes(TvSource s, Object? season) async => _maps(await host.call(s.addon, 'episodes', [s.data, season]));
 
+  /// A film, or an episode of [series], as something to play and put in a playlist.
+  static PlayEntry entry(TvSource s, Map it, {TvItem? series, String season = ''}) {
+    final isEpisode = series != null && it != s.data;
+    final name = '${it['title'] ?? ''}';
+    return PlayEntry(
+      addon: s.addon,
+      data: it.cast<String, Object?>(),
+      title: isEpisode ? series.title : (name.isEmpty ? (series?.title ?? '') : name),
+      sub: isEpisode ? '${episodeNumber(season, name)}${name.contains('. ') ? ' · ${name.substring(name.indexOf('. ') + 2)}' : ''}' : '',
+      image: '${it['thumb'] ?? it['backdrop'] ?? it['poster'] ?? series?.wide ?? ''}',
+    );
+  }
+
+  /// Asks the add-on to play [it] (it answers with korie.play); Korie notes what was chosen.
+  static Future<void> act(TvSource s, Map it, String button, {TvItem? series, String season = ''}) async {
+    KoriePlayer.instance.choose(entry(s, it, series: series, season: season));
+    await host.call(s.addon, 'action', [it, button]);
+  }
+
   static Future<void> play(TvItem item) async {
     final s = item.sources.first;
     final d = await detail(s);
@@ -40,11 +61,11 @@ class TvActions {
       if (eps.isEmpty) return;
       final ei = eps.indexWhere((x) => x['id'] == focus['episode']);
       final ep = eps[ei < 0 ? 0 : ei];
-      await host.call(s.addon, 'action', [ep, _started(ep) ? 'resume' : 'play']);
+      await act(s, ep, _started(ep) ? 'resume' : 'play', series: item, season: '${seasons[si < 0 ? 0 : si]['name'] ?? ''}');
       return;
     }
     final buttons = _maps(d['buttons']);
-    await host.call(s.addon, 'action', [s.data, buttons.isEmpty ? 'play' : '${buttons.first['id'] ?? 'play'}']);
+    await act(s, s.data, buttons.isEmpty ? 'play' : '${buttons.first['id'] ?? 'play'}', series: item);
   }
 
   static bool _started(Map ep) {
@@ -133,7 +154,8 @@ class _TvTitleState extends State<TvTitle> {
     }
     setState(() => loaded = true);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && FocusManager.instance.primaryFocus?.context?.findAncestorStateOfType<_TvTitleState>() != this) first.requestFocus();
+      if (!mounted || !(ModalRoute.of(context)?.isCurrent ?? true)) return; // the player may be above
+      if (FocusManager.instance.primaryFocus?.context?.findAncestorStateOfType<_TvTitleState>() != this) first.requestFocus();
     });
   }
 
@@ -146,7 +168,11 @@ class _TvTitleState extends State<TvTitle> {
     });
   }
 
-  void _act(Map it, String button) => TvActions.host.call(src.addon, 'action', [it, button]);
+  void _act(Map it, String button) =>
+      TvActions.act(src, it, button, series: item, season: seasons.isEmpty ? '' : '${seasons[season]['name'] ?? ''}');
+
+  void _addToPlaylist(Map it) =>
+      addToPlaylist(context, TvActions.entry(src, it, series: item, season: seasons.isEmpty ? '' : '${seasons[season]['name'] ?? ''}'));
 
   void _info() => askChoice(context, title: item.title, message: item.overview, choices: const ['Close']);
 
@@ -188,6 +214,7 @@ class _TvTitleState extends State<TvTitle> {
           focusNode: i == 0 ? first : null,
           onTap: () => _act(src.data, '${b['id'] ?? 'play'}'),
         ),
+      TvPill(g: g, label: 'Add to Playlist', icon: Icons.playlist_add_rounded, onTap: () => _addToPlaylist(src.data)),
       if (item.overview.isNotEmpty) TvRound(g: g, icon: Icons.info_outline_rounded, onTap: _info),
     ];
   }
@@ -341,7 +368,8 @@ class _TvTitleState extends State<TvTitle> {
             final label = m == null ? 'EPISODE ${i + 1}' : 'EPISODE ${m.group(1)}';
             return HoldFocusable(
               onTap: () => _act(e, 'play'),
-              onHold: null,
+              // Holding OK on an episode: Add to Playlist.
+              onHold: () => _addToPlaylist(e),
               onFocus: (v) {
                 if (v) _in('episodes');
                 onFocus(v);

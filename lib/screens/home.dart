@@ -510,7 +510,8 @@ class HomeState extends State<Home> with TickerProviderStateMixin {
         MenuItem('Remove', () => store.removeItem(it.key)),
       ],
     );
-    if (mounted) WidgetsBinding.instance.addPostFrameCallback((_) => carouselNode.requestFocus());
+    // Back on the carousel, unless what was chosen opened over it (the player).
+    if (mounted) WidgetsBinding.instance.addPostFrameCallback((_) => (ModalRoute.of(context)?.isCurrent ?? true) ? carouselNode.requestFocus() : null);
   }
 
   // ------------------------------------------------------------- build

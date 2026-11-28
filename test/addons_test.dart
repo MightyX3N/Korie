@@ -147,7 +147,7 @@ void main() {
     expect(p?.manifest.id, 'openfilms');
   });
 
-  test('jellyfin 1.8: setup pages, users, passwords (against a fake Jellyfin server)', () async {
+  test('jellyfin 1.9: setup pages, users, passwords, playing (against a fake Jellyfin server)', () async {
     final srv = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     Map<String, Object?> film(String id, String name, String genres, int year, String added, {bool series = false}) => {
       'Id': id, 'Name': name, 'Type': series ? 'Series' : 'Movie', 'ProductionYear': year, 'Genres': genres.split(','),
@@ -199,8 +199,21 @@ void main() {
               'RunTimeTicks': 28000000000, 'UserData': {'PlaybackPositionTicks': 9000000000, 'PlayedPercentage': 32}},
           ],
         };
+      } else if (path == '/Items/e-205') {
+        out = {'Id': 'e-205', 'Name': 'Breakage', 'Type': 'Episode', 'SeriesId': 's-bb', 'SeriesName': 'Breaking Bad', 'ParentIndexNumber': 2, 'IndexNumber': 5,
+          'UserData': {'PlaybackPositionTicks': 9000000000}};
+      } else if (path == '/Items/e-205/PlaybackInfo') {
+        out = {'PlaySessionId': 'ps-1', 'MediaSources': [{'Id': 'ms-1', 'SupportsDirectPlay': true, 'MediaStreams': [
+          {'Type': 'Video', 'Index': 0}, {'Type': 'Audio', 'Index': 1, 'Language': 'eng'},
+          {'Type': 'Subtitle', 'Index': 3, 'Language': 'eng', 'DisplayTitle': 'English', 'IsTextSubtitleStream': true},
+          {'Type': 'Subtitle', 'Index': 4, 'Language': 'dan', 'DisplayTitle': 'Danish (PGS)', 'IsTextSubtitleStream': false},
+        ]}]};
+      } else if (path == '/MediaSegments/e-205') {
+        out = {'Items': [{'Type': 'Intro', 'StartTicks': 20000000, 'EndTicks': 70000000}]};
       } else if (path == '/Shows/s-bb/Seasons') {
         out = {'Items': [{'Id': 'season-1', 'Name': 'Season 1'}, {'Id': 'season-2', 'Name': 'Season 2'}]};
+      } else if (path == '/Shows/s-bb/Episodes' && rq.uri.queryParameters['startItemId'] == 'e-205') {
+        out = {'Items': [{'Id': 'e-205', 'Name': 'Breakage'}, {'Id': 'e-206', 'Name': 'Peekaboo', 'SeriesName': 'Breaking Bad', 'ParentIndexNumber': 2, 'IndexNumber': 6}]};
       } else if (path == '/Shows/s-bb/Episodes') {
         final n = (rq.uri.queryParameters['seasonId'] ?? 'season-1').split('-').last;
         out = {'Items': [for (var i = 1; i <= 7; i++) {'Id': 'e-${n}0$i', 'Name': 'Episode $i', 'IndexNumber': i, 'UserData': {'PlayedPercentage': n == '2' && i == 5 ? 32 : 0}}]};
@@ -213,7 +226,7 @@ void main() {
       await rq.response.close();
     });
     await host.install(AddonHost.readPackage(pack('$addonsDir/jellyfin'))!);
-    expect(host.installed['jellyfin']!.manifest.version, '1.8');
+    expect(host.installed['jellyfin']!.manifest.version, '1.9');
     final url = 'http://127.0.0.1:${srv.port}';
     final asked = <String>[];
     ui.answer = (op, args) {
@@ -286,6 +299,20 @@ void main() {
     // Playing Breaking Bad from Continue Watching resumes S2 E5 (the add-on's "focus").
     ui.played.clear();
     await host.call('jellyfin', 'detail', [bb.data]).then((d) => expect((d as Map)['focus'], {'season': 'season-2', 'episode': 'e-205'}));
+    // Resuming the episode reaches Korie's player: where it was left, text subtitles (not the
+    // picture ones), the intro to skip and the next episode.
+    await host.call('jellyfin', 'action', [{'id': 'e-205', 'kind': 'Episode'}, 'resume'], const Duration(seconds: 20));
+    expect(ui.played, hasLength(1), reason: host.logOf('jellyfin').join('\n'));
+    final r = ui.played.single;
+    expect(r['url'], contains('/Videos/e-205/stream'));
+    expect(r['start'], 900);
+    expect(r['title'], 'Breaking Bad');
+    final subs = r['subtitles'] as List;
+    expect(subs, hasLength(1));
+    expect((subs.single as Map)['url'], contains('/Videos/e-205/ms-1/Subtitles/3/0/Stream.vtt'));
+    expect((subs.single as Map)['label'], 'English');
+    expect((r['segments'] as List).single, {'type': 'intro', 'start': 2, 'end': 7});
+    expect((r['next'] as Map)['title'], isNotEmpty);
     await srv.close(force: true);
   });
 

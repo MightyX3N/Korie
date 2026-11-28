@@ -137,8 +137,10 @@ void main() {
     await settle(t);
     expect(focused(), 'tv.side.movies');
 
-    // The add-on's own section: square logos.
+    // Playlists, then the add-on's own section: square logos.
     await key(t, LogicalKeyboardKey.arrowDown);
+    await key(t, LogicalKeyboardKey.arrowDown);
+    expect(focused(), 'tv.side.playlists');
     await key(t, LogicalKeyboardKey.arrowDown);
     expect(focused(), 'tv.side.demo/live');
     await key(t, LogicalKeyboardKey.select);
@@ -188,7 +190,7 @@ void main() {
     expect(await t.runAsync(() => host.call('demo', 'last')), 'e23:resume');
   });
 
-  testWidgets('Play without a player says so', (t) async {
+  testWidgets('Play before the player is set up answers the add-on', (t) async {
     SharedPreferences.setMockInitialValues({});
     final store = await t.runAsync(Store.open);
     final nav = GlobalKey<NavigatorState>();
@@ -197,9 +199,16 @@ void main() {
     final r = await ui.request('demo', 'play', [
       {'url': 'http://x/y.mkv'},
     ]);
-    expect(r, [null, 'Korie has no player yet']);
-    await t.pump();
-    expect(find.textContaining("can't play videos yet"), findsOneWidget);
-    await t.pump(const Duration(seconds: 4));
+    expect(r, [null, 'Korie has no player here']);
+    // Set up (as Korie does at start), it goes to the player.
+    Map<String, Object?>? got;
+    ui.play = (id, req) async {
+      got = req;
+      return const [true];
+    };
+    expect(await ui.request('demo', 'play', [
+      {'url': 'http://x/y.mkv'},
+    ]), [true]);
+    expect(got?['url'], 'http://x/y.mkv');
   });
 }
