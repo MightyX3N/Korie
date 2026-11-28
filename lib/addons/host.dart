@@ -68,6 +68,9 @@ class AddonHost extends ChangeNotifier {
   Map<String, Object?> device = const {};
   late Directory root, dataRoot;
   final installed = <String, InstalledAddon>{};
+
+  /// Add-ons that were Korie's and are gone: removed from the TV when Korie starts.
+  static const retired = {'jellyfin'};
   final _running = <String, _Running>{};
   var _nextCall = 1;
   Timer? _watchdog, _catalogTimer;
@@ -82,6 +85,12 @@ class AddonHost extends ChangeNotifier {
     dataRoot = Directory('${base.path}/addon-data')..createSync(recursive: true);
     final state = _readJson(File('${root.path}/state.json'));
     installed.clear();
+    // Add-ons Korie no longer offers are removed with their data: Jellyfin moved to the Korie TV app.
+    for (final id in retired) {
+      final d = Directory('${root.path}/$id'), data = Directory('${dataRoot.path}/$id');
+      if (d.existsSync()) d.deleteSync(recursive: true);
+      if (data.existsSync()) data.deleteSync(recursive: true);
+    }
     for (final d in root.listSync().whereType<Directory>()) {
       final m = AddonManifest.read(d);
       if (m == null || d.path.split(Platform.pathSeparator).last != m.id) continue;

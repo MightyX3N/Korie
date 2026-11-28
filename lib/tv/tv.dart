@@ -34,7 +34,11 @@ class _KorieTvState extends State<KorieTv> {
   late String page = widget.page;
   List<TvSection> sections = [];
   bool sidebar = false;
-  final strip = FocusNode(debugLabel: 'tv.strip', skipTraversal: false);
+  late final _traversal = TvTraversal(
+    onLeftEdge: () {
+      if (!sidebar) openSidebar();
+    },
+  );
   final back = FocusNode(debugLabel: 'tv.back');
 
   /// Where the focus was on the page, to go back to when the sidebar closes.
@@ -82,7 +86,6 @@ class _KorieTvState extends State<KorieTv> {
     AddonHost.instance.removeListener(_hostChanged);
     FocusManager.instance.removeListener(_track);
     _updates?.cancel();
-    strip.dispose();
     back.dispose();
     capsule.dispose();
     for (final n in sideNodes.values) {
@@ -135,7 +138,7 @@ class _KorieTvState extends State<KorieTv> {
           builder: (context, c) {
             final g = TvGeo(c.maxWidth, c.maxHeight);
             return FocusTraversalGroup(
-              policy: tvTraversal,
+              policy: _traversal, // Left at the start of a row opens the sidebar
               child: Stack(
                 children: [
                   Positioned.fill(
@@ -146,21 +149,6 @@ class _KorieTvState extends State<KorieTv> {
                           : page == 'playlists'
                           ? _PlaylistsView(key: pageKey, g: g)
                           : _PageView(key: pageKey, g: g, library: library, entry: current),
-                    ),
-                  ),
-                  // Left from anything at the left edge lands here, which opens the sidebar.
-                  Positioned(
-                    left: 0,
-                    top: 0,
-                    bottom: 0,
-                    width: g.dp(10),
-                    child: Focus(
-                      focusNode: strip,
-                      canRequestFocus: !sidebar,
-                      onFocusChange: (v) {
-                        if (v) openSidebar();
-                      },
-                      child: const SizedBox.expand(),
                     ),
                   ),
                   Positioned(
@@ -507,7 +495,7 @@ class _PageViewState extends State<_PageView> implements _Reloadable {
               Text(
                 widget.entry.page.contains('/')
                     ? '${widget.entry.title} has nothing to show yet. Is the TV online? Its settings are in Korie Settings → Add-ons.'
-                    : 'Add-ons fill Korie TV: sign in to Jellyfin, or get more add-ons in Korie Settings → Add-ons. Press Left for the sidebar.',
+                    : 'Add-ons fill this page: get them in Korie Settings → Add-ons. Press Left for the sidebar.',
                 textAlign: TextAlign.center,
                 style: tx(g.dp(16), w: FontWeight.w400, opacity: 0.75, height: 1.4),
               ),

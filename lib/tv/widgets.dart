@@ -668,7 +668,9 @@ class TvColumnState extends State<TvColumn> {
               child: KeyedSubtree(
                 key: _keys[i],
                 child: AnimatedOpacity(
-                  opacity: (moved && i < at) || (i < _whole.length && !_whole[i] && i != at) ? 0 : 1,
+                  // Rows that have moved up past the focused one go (they would slide under the
+                  // capsule); rows below always show, also when only part of one fits.
+                  opacity: moved && i < at ? 0 : 1,
                   duration: const Duration(milliseconds: 220),
                   child: c,
                 ),
@@ -683,6 +685,42 @@ class TvColumnState extends State<TvColumn> {
 
 /// Moving the focus never scrolls by itself: Korie TV's rows and pages move the way it wants
 /// (whole cards, the focused row under the capsule) instead of just enough to show the item.
-final tvTraversal = ReadingOrderTraversalPolicy(
-  requestFocusCallback: (node, {alignment, alignmentPolicy, curve, duration}) => node.requestFocus(),
-);
+///
+/// Left and Right stay in the row: they go to the nearest card beside this one (one that shares
+/// its height on screen), and at the end of a row they do nothing, instead of jumping to a card
+/// in another row. [onLeftEdge] is told when Left has nowhere to go (Korie TV opens its sidebar).
+class TvTraversal extends ReadingOrderTraversalPolicy {
+  TvTraversal({this.onLeftEdge}) : super(requestFocusCallback: (node, {alignment, alignmentPolicy, curve, duration}) => node.requestFocus());
+  final VoidCallback? onLeftEdge;
+
+  @override
+  bool inDirection(FocusNode currentNode, TraversalDirection direction) {
+    if (direction == TraversalDirection.up || direction == TraversalDirection.down) return super.inDirection(currentNode, direction);
+    final scope = currentNode.nearestScope;
+    if (scope == null) return false;
+    final here = currentNode.rect;
+    final right = direction == TraversalDirection.right;
+    FocusNode? best;
+    var bestGap = double.infinity;
+    for (final n in scope.traversalDescendants) {
+      if (n == currentNode || !n.canRequestFocus || n.skipTraversal || n.context == null) continue;
+      final r = n.rect;
+      // Beside this one: overlapping its height, and wholly on that side of its middle.
+      if (r.bottom <= here.top + 1 || r.top >= here.bottom - 1) continue;
+      final gap = right ? r.left - here.center.dx : here.center.dx - r.right;
+      if (gap < 0) continue;
+      if (gap < bestGap) {
+        bestGap = gap;
+        best = n;
+      }
+    }
+    if (best == null) {
+      if (!right) onLeftEdge?.call();
+      return false;
+    }
+    requestFocusCallback(best);
+    return true;
+  }
+}
+
+final tvTraversal = TvTraversal();

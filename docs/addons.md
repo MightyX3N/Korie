@@ -108,7 +108,7 @@ spends answering a `korie.ask` does not count against an answer's time limit.
 ## Testing
 
 `flutter test test/addons_test.dart` runs this folder's add-ons on Korie's real add-on host (real
-Lua, real internet, a fake Jellyfin server) and checks what they answer.
+Lua, real internet) and checks what they answer.
 
 ## Korie 2: more places to add to
 

@@ -118,8 +118,29 @@ void main() {
     expect(focused(), 'tv.first');
     expect(find.text('Drama'), findsWidgets, reason: 'a row per genre');
 
-    // Down to Recently Added, OK on the first poster: the film's page with the add-on's buttons.
+    // Down to Recently Added. Right to the end of the row and past it: the focus stays in the row
+    // (it never jumps to another row), and Left from the first card opens the sidebar.
     await key(t, LogicalKeyboardKey.arrowDown);
+    final rowFirst = focused();
+    final rowTop = t.getRect(find.byWidget(FocusManager.instance.primaryFocus!.context!.widget)).top;
+    String? last;
+    for (var i = 0; i < 30; i++) {
+      await key(t, LogicalKeyboardKey.arrowRight);
+      final top = t.getRect(find.byWidget(FocusManager.instance.primaryFocus!.context!.widget)).top;
+      expect((top - rowTop).abs(), lessThan(20), reason: 'Right stays in the row');
+      last = focused();
+    }
+    await key(t, LogicalKeyboardKey.arrowRight);
+    expect(focused(), last, reason: 'at the end of the row Right does nothing');
+    for (var i = 0; i < 31; i++) {
+      await key(t, LogicalKeyboardKey.arrowLeft);
+      if (focused() == rowFirst) break;
+    }
+    expect(focused(), rowFirst);
+    await key(t, LogicalKeyboardKey.arrowLeft);
+    expect(focused(), 'tv.side.movies', reason: 'Left at the start of a row opens the sidebar');
+    await key(t, LogicalKeyboardKey.arrowRight);
+    expect(focused(), rowFirst, reason: 'Right closes it, back on the same card');
     await key(t, LogicalKeyboardKey.select);
     await settle(t, 1500);
     expect(find.byType(TvTitle), findsOneWidget);

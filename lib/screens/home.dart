@@ -172,7 +172,7 @@ class HomeState extends State<Home> with TickerProviderStateMixin {
 
   bool _extrasBusy = false, _extrasAgain = false;
 
-  /// Korie TV's card (when an add-on gives anything to watch) and add-ons' own tiles.
+  /// The Browser card and add-ons' own tiles. (Films and series are the Korie TV app's now.)
   Future<void> _loadExtras() async {
     // Until the add-ons have started, the cards kept from last time stay as they are.
     if (!AddonHost.instance.ready) return;
@@ -185,7 +185,6 @@ class HomeState extends State<Home> with TickerProviderStateMixin {
       final lib = TvLibrary(AddonHost.instance);
       final tiles = await lib.tiles();
       final extra = <App>[
-        if (lib.hasContent) App(id: Store.tvId, label: 'Korie TV', system: true),
         App(id: Store.browserId, label: 'Browser', system: true),
       ];
       for (final t in tiles) {
