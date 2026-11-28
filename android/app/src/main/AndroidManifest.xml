@@ -18,6 +18,9 @@
         android:icon="@mipmap/ic_launcher"
         android:banner="@drawable/banner"
         android:usesCleartextTraffic="true">
+        <!-- Skia, not Impeller. Impeller ignores the crop that TV video decoders send with their
+             (padded) frames, so films show small with green around them; Skia applies it. -->
+        <meta-data android:name="io.flutter.embedding.android.EnableImpeller" android:value="false" />
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -78,6 +81,9 @@
             android:value="2" />
     </application>
     <queries>
+        <!-- The TV's own provider (Continue Watching, apps' rows). Since Android 11 another app's
+             provider is hidden unless named here; Google TV shows it anyway, the Shield does not. -->
+        <provider android:authorities="android.media.tv" />
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>

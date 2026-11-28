@@ -121,7 +121,7 @@ class Settings extends StatefulWidget {
 
 class _SettingsState extends State<Settings> {
   Store get store => widget.store;
-  bool supported = false, granted = false;
+  bool supported = false, granted = false, corner = false;
 
   @override
   void initState() {
@@ -143,6 +143,7 @@ class _SettingsState extends State<Settings> {
   Future<void> _perm() async {
     supported = await Android.listingsSupported();
     granted = await Android.listingsGranted();
+    corner = await Android.notifAccess();
     _refresh();
   }
 
@@ -202,6 +203,17 @@ class _SettingsState extends State<Settings> {
               ? null
               : () async {
                   await Android.askListings();
+                  _perm();
+                },
+        ),
+      if (Android.on)
+        SRow(
+          'Now Playing in the Corner',
+          value: corner ? 'Allowed' : 'Needs permission',
+          onTap: corner
+              ? null
+              : () async {
+                  await askNowPlayingAccess(context);
                   _perm();
                 },
         ),

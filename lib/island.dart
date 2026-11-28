@@ -351,7 +351,28 @@ class Island extends ChangeNotifier {
   }
 
   void Function(String)? _say;
-  set say(void Function(String) f) => _say = f;
+  set say(void Function(String) f) {
+    _say = f;
+    Android.listen('installFailed', _installFailed);
+  }
+
+  /// Android did not install Korie's update after all (it reports later than the download).
+  Future<void> _installFailed() async {
+    final f = await Android.installFailure();
+    if (f == null) return;
+    _say?.call(installFailureText(f['status'] as int? ?? 1, '${f['message'] ?? ''}'));
+  }
+
+  /// What to tell the person, by Android's installer status.
+  static String installFailureText(int status, String message) => switch (status) {
+    // STATUS_FAILURE_BLOCKED: Play Protect (or a device policy) stopped it.
+    2 =>
+      "Play Protect stopped Korie's update. In the Play Store, open Play Protect's settings and turn off scanning apps, choose Update ready in Korie again, then turn scanning back on.",
+    3 => 'The update was cancelled', // STATUS_FAILURE_ABORTED
+    6 => 'Not enough space for the update', // STATUS_FAILURE_STORAGE
+    4 => 'The update download was broken; it will be tried again', // STATUS_FAILURE_INVALID
+    _ => 'The update could not be installed${message.isEmpty ? '' : ': $message'}',
+  };
 
   /// Set by the app: shows the install question for an update that asks for more.
   void Function(AddonPackage)? _askUpdate;
