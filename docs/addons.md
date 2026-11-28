@@ -87,7 +87,7 @@ Answers must come within 8 seconds (`catalog`: 60).
 | `korie.store.get(key, default)` / `.set(key, value)` / `.remove(key)` | Saved values (tables are fine), private to the add-on. |
 | `korie.setting(key)` / `korie.set_setting(key, value)` | The add-on's settings (see Settings below). |
 | `korie.refresh()` | Fetch the `catalog` again now, for example after a setting changed what it should hold. |
-| `korie.play{url=, title=, start=, audio=, mime=, headers=, ref=}` | Plays in Korie's own player. Video opens the player screen (`start` in seconds). `audio = true` plays sound in the background and shows the now-playing pill on Home. `ref` is any value; it comes back with every `playback` report. |
+| `korie.play{url=, title=, subtitle=, image=, start=, audio=, mime=, headers=, ref=}` | Plays in Korie's own player. Video opens the player full screen (`start` in seconds; OK pauses, Left/Right jump 10 seconds, Down shows the buttons, Back stops). `audio = true` plays sound in the background: the island shows it (`image` beside the title), OK on it opens Now Playing, holding OK stops. `ref` is any value; it comes back with every `playback` report. |
 | `korie.stop()` | Stops background sound. |
 | `korie.open{...}` / `korie.apps.list()` / `korie.apps.open(pkg)` | Opens a link or an app. |
 | `korie.browse{url=, fullscreen=, title=}` | Opens a web page in Korie's own browser. `fullscreen = true`: only the page, with every key and a game controller going to the page itself (a game stream plays with them); Back on the remote closes it, Home keeps it running in the background, where Korie shows it in the island (OK opens it again, holding OK closes it; Settings › Background limits how many and for how long); `title` shows in the hint at the top for a few seconds. Otherwise the page opens as a new tab in the Browser, among the viewer's tabs. Returns `true`; Korie before 2.4 has no `korie.browse`, so check for it (`if korie.browse then ... end`). |
@@ -180,6 +180,12 @@ add-on is the example: finding the server, signing in and making profiles are al
 - `next = {title="S1 E3 · Name", series=, image=, overview=}`: there is something after this. When this
   ends, the Next Up screen shows it, and the `next` event asks the add-on to start it.
 - `autonext = true`: the Next Up screen counts down 7 seconds and then starts it.
+- `subtitles = { {label="English", lang="eng", url=, default=true}, ... }`: subtitle files (WebVTT or
+  SubRip) the player fetches with the same `headers`; the Subtitles button lists them. Audio tracks in
+  the file are listed by the Audio button by themselves.
+
+Korie's own playlists (per profile, in Korie TV) play an add-on's films and episodes through its
+`action` with `"play"`, one after another: nothing more is needed from the add-on.
 
 The Skip button sits bottom right and never takes the focus: while it shows and the controls do not,
 OK presses it; on a touch screen it is tapped.

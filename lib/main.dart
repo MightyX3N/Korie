@@ -13,6 +13,8 @@ import 'addons/korie_ui.dart';
 import 'android.dart';
 import 'home_cache.dart';
 import 'island.dart';
+import 'player/player.dart';
+import 'player/playlists.dart';
 import 'screens/addons.dart';
 import 'screens/home.dart';
 import 'screens/profiles.dart';
@@ -77,7 +79,12 @@ final korieNavigator = GlobalKey<NavigatorState>();
 
 Future<void> startAddons(Store store) async {
   final host = AddonHost.instance;
-  host.ui = KorieAddonUi(store, korieNavigator);
+  // Korie's own player: korie.play from add-ons (video full screen, sound in the background).
+  KoriePlayer.instance.navigator = korieNavigator;
+  Playlists.instance.store = store;
+  host.ui = KorieAddonUi(store, korieNavigator)
+    ..play = KoriePlayer.instance.play
+    ..stop = KoriePlayer.instance.stop;
   var lastProfile = store.current.id;
   store.addListener(() {
     if (store.current.id == lastProfile) return;

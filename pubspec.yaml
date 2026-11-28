@@ -1,7 +1,7 @@
 name: korie
 description: "Korie: a launcher for TV, car, phone and desktop."
 publish_to: 'none'
-version: 2.8.0+28
+version: 2.9.0+29
 
 environment:
   sdk: ^3.14.0
@@ -10,10 +10,12 @@ dependencies:
   archive: ^4.7.1
   flutter:
     sdk: flutter
+  just_audio: ^0.10.6
   lua_dart: ^1.0.0
   material_ui: ^1.1.0
   path_provider: ^2.1.6
   shared_preferences: ^2.5.6
+  video_player: ^2.14.1
 
 dev_dependencies:
   flutter_test:

@@ -660,6 +660,18 @@ local function play(item, resume)
     korie.toast("Jellyfin: the server offers no way to play this here")
     return
   end
+  -- Subtitles Jellyfin can give as text (from the file or beside it), as WebVTT for the player.
+  local subs = {}
+  for _, st in ipairs(src.MediaStreams or {}) do
+    if st.Type == "Subtitle" and st.IsTextSubtitleStream ~= false and st.Index then
+      subs[#subs + 1] = {
+        label = st.DisplayTitle or st.Title or st.Language or ("Subtitles " .. (#subs + 1)),
+        lang = st.Language,
+        url = server().url .. "/Videos/" .. item.id .. "/" .. src.Id .. "/Subtitles/" .. math.floor(st.Index) .. "/0/Stream.vtt" .. query{ api_key = a.token },
+        default = st.IsDefault == true or st.IsForced == true or nil,
+      }
+    end
+  end
   local pos = it.UserData and it.UserData.PlaybackPositionTicks or 0
   local title, subtitle = it.Name or item.title, nil
   local following
@@ -673,6 +685,7 @@ local function play(item, resume)
     start = resume and (pos / TICKS) or 0,
     headers = { ["Authorization"] = auth_header(a.token) },
     segments = segments_of(item.id),
+    subtitles = #subs > 0 and subs or nil,
     next = following and {
       title = episode_label(following), series = following.SeriesName or it.SeriesName,
       image = image(following.Id, "Primary", following.ImageTags and following.ImageTags.Primary, 640),
