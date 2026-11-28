@@ -25,13 +25,27 @@ class PlayRequest {
   double get start => (raw['start'] as num?)?.toDouble() ?? 0;
   bool get autonext => raw['autonext'] == true;
   Map<String, Object?>? get next => raw['next'] is Map ? (raw['next'] as Map).cast<String, Object?>() : null;
-  Map<String, String> get headers => {
-    for (final e in ((raw['headers'] as Map?) ?? const {}).entries) '${e.key}': '${e.value}',
-  };
-  List<Map> get segments => [for (final s in (raw['segments'] as List? ?? const [])) if (s is Map) s];
+  Map<String, String> get headers => {for (final e in ((raw['headers'] as Map?) ?? const {}).entries) '${e.key}': '${e.value}'};
+  List<Map> get segments => [
+    for (final s in (raw['segments'] as List? ?? const []))
+      if (s is Map) s,
+  ];
 
   /// [{label, lang, url, default}]: subtitles as files (WebVTT or SubRip) the player fetches.
-  List<Map> get subtitles => [for (final s in (raw['subtitles'] as List? ?? const [])) if (s is Map && s['url'] is String) s];
+  /// Text subtitles carry a `url` (the player shows them); picture ones (PGS, VobSub) only an `id`:
+  /// the add-on has them drawn into the picture when chosen. `selected`: the one drawn in now.
+  List<Map> get subtitles => [
+    for (final s in (raw['subtitles'] as List? ?? const []))
+      if (s is Map && (s['url'] is String || s['id'] != null)) s,
+  ];
+
+  /// The add-on's own list of sound tracks ({id, label, lang, selected, player}): all of them, also
+  /// when the stream it sent carries only one. `player`: where the track is in the stream itself,
+  /// when the player can switch to it there; otherwise the add-on is asked to send that track.
+  List<Map> get audios => [
+    for (final a in (raw['audios'] as List? ?? const []))
+      if (a is Map && a['id'] != null) a,
+  ];
 }
 
 /// Korie's own player: video full screen, sound in the background (the island shows it). Reports
@@ -46,6 +60,7 @@ class KoriePlayer {
   /// player's Playlist button adds it, and its picture shows on Now Playing.
   PlayEntry? chosen;
   DateTime? _chosenAt;
+
   /// What the person picked to play. Picked outside a playlist, the playlist that was playing ends.
   void choose(PlayEntry e, {bool queued = false}) {
     if (!queued) PlayQueue.instance.clear();
@@ -86,7 +101,13 @@ class KoriePlayer {
     }
     final nav = navigator?.currentState;
     if (nav == null) return const [null, 'no screen'];
-    nav.push(PageRouteBuilder(pageBuilder: (_, _, _) => VideoScreen(request: r), transitionDuration: Duration.zero, reverseTransitionDuration: Duration.zero));
+    nav.push(
+      PageRouteBuilder(
+        pageBuilder: (_, _, _) => VideoScreen(request: r),
+        transitionDuration: Duration.zero,
+        reverseTransitionDuration: Duration.zero,
+      ),
+    );
     return const [true];
   }
 

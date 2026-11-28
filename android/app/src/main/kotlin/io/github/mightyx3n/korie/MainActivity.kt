@@ -30,6 +30,17 @@ import java.util.concurrent.Executors
  * provider (other apps' Continue Watching lists and their own home-screen rows).
  */
 class MainActivity : FlutterActivity() {
+    companion object {
+        private var current: MainActivity? = null
+        /** The last update Android would not install: its status and message (for the island). */
+        var installFailure: Map<String, Any?>? = null
+
+        fun installFailed(status: Int, message: String?) {
+            installFailure = mapOf("status" to status, "message" to (message ?: ""))
+            current?.channel?.invokeMethod("installFailed", null)
+        }
+    }
+
     private val worker = Executors.newFixedThreadPool(2)
     private var channel: MethodChannel? = null
     private var homeChannel: MethodChannel? = null
@@ -107,6 +118,7 @@ class MainActivity : FlutterActivity() {
         super.configureFlutterEngine(flutterEngine)
         val ch = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "korie/android")
         channel = ch
+        current = this
         ch.setMethodCallHandler { call, result ->
             when (call.method) {
                 "apps" -> background(result) { listApps() }
@@ -129,6 +141,9 @@ class MainActivity : FlutterActivity() {
                 "askNotifAccess" -> result.success(start(Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS")))
                 "isDefaultHome" -> result.success(isDefaultHome())
                 "askDefaultHome" -> askDefaultHome(result)
+                "homeRole" -> result.success(homeRole())
+                "installFailure" -> { result.success(installFailure); installFailure = null }
+                "openedAsHome" -> result.success(openedAsHome)
                 "locationGranted" -> result.success(locationGranted())
                 "askLocation" -> askLocation(result)
                 "deviceLocation" -> result.success(deviceLocation())
@@ -157,13 +172,14 @@ class MainActivity : FlutterActivity() {
 
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
         super.onCreate(savedInstanceState)
+        openedAsHome = intent?.hasCategory(Intent.CATEGORY_HOME) == true
         takeFile(intent)
     }
 
     /** Home pressed while Korie is already in front: tell Flutter to go back to the dock. */
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        if (intent.hasCategory(Intent.CATEGORY_HOME)) homeChannel?.invokeMethod("home", null)
+        if (intent.hasCategory(Intent.CATEGORY_HOME)) { openedAsHome = true; homeChannel?.invokeMethod("home", null) }
         if (takeFile(intent)) channel?.invokeMethod("fileOpened", null)
     }
 
@@ -213,6 +229,7 @@ class MainActivity : FlutterActivity() {
     }
 
     override fun onDestroy() {
+        if (current == this) current = null
         stopMedia()
         try { unregisterReceiver(packagesChanged) } catch (_: Exception) {}
         try { unregisterReceiver(screenOff) } catch (_: Exception) {}
@@ -487,9 +504,24 @@ class MainActivity : FlutterActivity() {
         return r?.activityInfo?.packageName == packageName
     }
 
+    /**
+     * Android's home app role (Android 10 and later): unlike "Always" in the "which launcher?" chooser,
+     * which Android forgets each time Korie is updated, the role stays. null: no such role here.
+     */
+    /** Korie was opened by the Home button (or as the TV's home screen), not as an app. */
+    private var openedAsHome = false
+
+    private fun homeRole(): Boolean? {
+        if (Build.VERSION.SDK_INT < 29) return null
+        val rm = getSystemService(android.app.role.RoleManager::class.java) ?: return null
+        if (!rm.isRoleAvailable(android.app.role.RoleManager.ROLE_HOME)) return null
+        return rm.isRoleHeld(android.app.role.RoleManager.ROLE_HOME)
+    }
+
     private var homeResult: MethodChannel.Result? = null
     private fun askDefaultHome(result: MethodChannel.Result) {
-        if (isDefaultHome()) { result.success(true); return }
+        // Home already, but only by "Always" (not the role): ask for the role, which updates keep.
+        if (isDefaultHome() && homeRole() != false) { result.success(true); return }
         if (Build.VERSION.SDK_INT >= 29) {
             val rm = getSystemService(android.app.role.RoleManager::class.java)
             if (rm != null && rm.isRoleAvailable(android.app.role.RoleManager.ROLE_HOME)) {

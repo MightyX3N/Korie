@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../android.dart';
 import '../geo.dart';
@@ -99,6 +100,7 @@ class HomeState extends State<Home> with TickerProviderStateMixin {
       if (u.what == 'tiles' || u.what == 'tv') _loadExtras();
     });
     _loadExtras();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _keepHomeRole());
     if (Home.unlockAtStart) {
       Home.unlockAtStart = false;
       WidgetsBinding.instance.addPostFrameCallback((_) => startAs(store.current));
@@ -443,6 +445,18 @@ class HomeState extends State<Home> with TickerProviderStateMixin {
   /// The Home button while Korie is open: close what is open and go to the first dock app.
   /// Into the profile Who's Watching starts as: its PIN (and add-on passwords) if it has them;
   /// without them, Who's Watching to pick someone else.
+  /// Used as the TV's home screen but only by "Always" in Android's "which launcher?" chooser, which
+  /// Android forgets with every update (the Shield then asks again): ask once for the home app role,
+  /// which updates keep. Once per Korie version, so a TV that refuses is not asked over and over.
+  Future<void> _keepHomeRole() async {
+    if (await Android.homeRole() != false || !await Android.openedAsHome()) return;
+    final prefs = await SharedPreferences.getInstance();
+    final v = Android.version;
+    if (prefs.getString('home.roleAsked') == v) return;
+    await prefs.setString('home.roleAsked', v);
+    await Android.askDefaultHome();
+  }
+
   Future<void> startAs(Profile p) async {
     if (p.id != store.current.id) store.choose(p);
     if (p.pin == null && p.links.isEmpty) return;

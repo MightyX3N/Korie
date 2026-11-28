@@ -16,7 +16,13 @@ class UpdateReceiver : BroadcastReceiver() {
                 try { c.startActivity(confirm) } catch (_: Exception) {}
             }
             PackageInstaller.STATUS_SUCCESS -> {}
-            else -> android.util.Log.w("KorieUpdate", "install: " + i.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE))
+            else -> {
+                // Play Protect blocking it, too little space, a broken download…: Korie says so.
+                val status = i.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE)
+                val msg = i.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE)
+                android.util.Log.w("KorieUpdate", "install: $status $msg")
+                MainActivity.installFailed(status, msg)
+            }
         }
     }
 }

@@ -628,7 +628,18 @@ local function next_episode(it, user)
   return nil
 end
 
-local function play(item, resume)
+-- Sound the player plays as it is (as in DEVICE_PROFILE); other tracks the server converts.
+local PLAYABLE_AUDIO = { aac = true, mp3 = true, ac3 = true, eac3 = true, opus = true, vorbis = true, flac = true }
+
+local function playable_audio(codec)
+  codec = string.lower(codec or "")
+  return PLAYABLE_AUDIO[codec] == true or string.sub(codec, 1, 3) == "pcm"
+end
+
+-- opts (from the player's "switch"): audio = a sound track's Index, subtitle = picture subtitles'
+-- Index to draw into the video, start = where to carry on (seconds).
+local function play(item, resume, opts)
+  opts = opts or {}
   local a = account()
   if not server() or not a then
     korie.toast("Jellyfin: sign in first, in Settings → Add-ons → Jellyfin")
@@ -639,10 +650,13 @@ local function play(item, resume)
     korie.toast("Jellyfin: the server did not answer")
     return
   end
-  local convert = korie.setting("quality") == "convert"
+  -- Converted: chosen in the settings, or the player could not play the file as it is ("switch"
+  -- with convert = true: a format this TV's decoder lacks).
+  local convert = korie.setting("quality") == "convert" or opts.convert == true
   local info, why = api("POST", "/Items/" .. item.id .. "/PlaybackInfo", { userId = a.user }, {
     UserId = a.user, DeviceProfile = DEVICE_PROFILE, MaxStreamingBitrate = 120000000,
     EnableDirectPlay = not convert, EnableDirectStream = not convert, EnableTranscoding = true, AutoOpenLiveStream = true,
+    AudioStreamIndex = opts.audio, SubtitleStreamIndex = opts.subtitle,
   })
   local src = type(info) == "table" and info.MediaSources and info.MediaSources[1]
   if not src then
@@ -660,17 +674,41 @@ local function play(item, resume)
     korie.toast("Jellyfin: the server offers no way to play this here")
     return
   end
-  -- Subtitles Jellyfin can give as text (from the file or beside it), as WebVTT for the player.
+  -- Every subtitle track. Text ones go to the player as WebVTT; picture ones (PGS, VobSub) have no
+  -- url: chosen, the server draws them into the video ("switch" below).
   local subs = {}
   for _, st in ipairs(src.MediaStreams or {}) do
-    if st.Type == "Subtitle" and st.IsTextSubtitleStream ~= false and st.Index then
+    if st.Type == "Subtitle" and st.Index then
+      local index = math.floor(st.Index)
+      local text = st.IsTextSubtitleStream ~= false
       subs[#subs + 1] = {
+        id = index,
         label = st.DisplayTitle or st.Title or st.Language or ("Subtitles " .. (#subs + 1)),
         lang = st.Language,
-        url = server().url .. "/Videos/" .. item.id .. "/" .. src.Id .. "/Subtitles/" .. math.floor(st.Index) .. "/0/Stream.vtt" .. query{ api_key = a.token },
-        default = st.IsDefault == true or st.IsForced == true or nil,
+        url = text and (server().url .. "/Videos/" .. item.id .. "/" .. src.Id .. "/Subtitles/" .. index .. "/0/Stream.vtt" .. query{ api_key = a.token }) or nil,
+        default = text and opts.start == nil and (st.IsDefault == true or st.IsForced == true) or nil,
+        selected = (not text and method == "Transcode" and opts.subtitle == index) or nil,
       }
     end
+  end
+  -- Every sound track, also when the converted stream carries only the chosen one. "player": its place
+  -- in the file, when the file is played as it is and the player can play that track itself.
+  local audios, chosen, nth = {}, opts.audio or src.DefaultAudioStreamIndex, 0
+  for _, st in ipairs(src.MediaStreams or {}) do
+    if st.Type == "Audio" and st.Index then
+      if chosen == nil and st.IsDefault then chosen = st.Index end
+      audios[#audios + 1] = {
+        id = math.floor(st.Index),
+        label = st.DisplayTitle or st.Title or st.Language or ("Track " .. (#audios + 1)),
+        lang = st.Language,
+        player = (method == "DirectPlay" and playable_audio(st.Codec)) and nth or nil,
+      }
+      nth = nth + 1
+    end
+  end
+  for _, t in ipairs(audios) do
+    if chosen == nil then chosen = t.id end
+    t.selected = t.id == math.floor(chosen) or nil
   end
   local pos = it.UserData and it.UserData.PlaybackPositionTicks or 0
   local title, subtitle = it.Name or item.title, nil
@@ -682,10 +720,11 @@ local function play(item, resume)
   end
   korie.play{
     url = url, mime = mime, title = title, subtitle = subtitle,
-    start = resume and (pos / TICKS) or 0,
+    start = opts.start or (resume and (pos / TICKS)) or 0,
     headers = { ["Authorization"] = auth_header(a.token) },
     segments = segments_of(item.id),
     subtitles = #subs > 0 and subs or nil,
+    audios = #audios > 0 and audios or nil,
     next = following and {
       title = episode_label(following), series = following.SeriesName or it.SeriesName,
       image = image(following.Id, "Primary", following.ImageTags and following.ImageTags.Primary, 640),
@@ -710,6 +749,15 @@ end)
 -- The player asks for what comes after the one it is showing ("Next Episode", or the episode ended).
 korie.on("next", function(ref)
   if type(ref) == "table" and ref.next then play({ id = ref.next, kind = "Episode" }, false) end
+end)
+
+-- The player wants another sound track, or picture subtitles drawn in (or no longer): the same video
+-- again from where it is, as the server sends it with that track.
+korie.on("switch", function(ref, want)
+  if type(ref) ~= "table" or not ref.id or type(want) ~= "table" then return false end
+  play({ id = ref.id }, false, { audio = want.audio, subtitle = want.subtitle, start = want.position or 0,
+    convert = want.convert == true or ref.method == "Transcode" or nil })
+  return true
 end)
 
 -- Korie's player reports; the server hears it, so every Jellyfin app shows the same progress.

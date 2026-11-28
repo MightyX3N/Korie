@@ -437,18 +437,7 @@ class _SetupState extends State<Setup> {
         case 'rows':
           store.setShowAppRows(!store.showAppRows);
         case 'corner':
-          if (!corner && mounted) {
-            final opened = await Android.askNotifAccess();
-            if (opened) await Android.untilBack();
-            if (!opened && mounted) {
-              await askChoice(
-                context,
-                title: 'Now Playing in the Corner',
-                message: 'This TV has no screen for notification access. It can be allowed from a computer with:\n\nadb shell cmd notification allow_listener io.github.mightyx3n.korie/io.github.mightyx3n.korie.KorieNotifications',
-                choices: const ['OK'],
-              );
-            }
-          }
+          if (!corner && mounted) await askNowPlayingAccess(context);
       }
     }
   }
@@ -572,4 +561,24 @@ class _WelcomeState extends State<_Welcome> {
       child: Text(words[i], key: ValueKey(i), style: tx(h * 72 / 720, w: FontWeight.w800, spacing: -1.5)),
     );
   }
+}
+
+/// Notification access, which Now Playing needs. Android's own screen for it when the TV has one;
+/// when it has none, or Korie is not on it (the Shield), how to allow it from a computer.
+Future<bool> askNowPlayingAccess(BuildContext context) async {
+  final opened = await Android.askNotifAccess();
+  if (opened) await Android.untilBack();
+  if (await Android.notifAccess()) return true;
+  if (context.mounted) {
+    await askChoice(
+      context,
+      title: 'Now Playing in the Corner',
+      message:
+          "This TV doesn't let you allow it here${opened ? ' (Korie is not on that screen)' : ''}. Allow it once from a computer on the same network, with adb:\n\n"
+          'adb shell cmd notification allow_listener io.github.mightyx3n.korie/io.github.mightyx3n.korie.KorieNotifications\n\n'
+          'It stays allowed after that, also when Korie is updated.',
+      choices: const ['OK'],
+    );
+  }
+  return Android.notifAccess();
 }

@@ -147,7 +147,7 @@ void main() {
     expect(p?.manifest.id, 'openfilms');
   });
 
-  test('jellyfin 1.9: setup pages, users, passwords, playing (against a fake Jellyfin server)', () async {
+  test('jellyfin 1.10: setup pages, users, passwords, playing, tracks (against a fake Jellyfin server)', () async {
     final srv = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     Map<String, Object?> film(String id, String name, String genres, int year, String added, {bool series = false}) => {
       'Id': id, 'Name': name, 'Type': series ? 'Series' : 'Movie', 'ProductionYear': year, 'Genres': genres.split(','),
@@ -168,6 +168,7 @@ void main() {
       {'Id': 'u-kid', 'Name': 'Kid'}, // no password
     ];
     final tries = <String>[];
+    final playbackInfo = <Map>[];
     srv.listen((rq) async {
       final body = await utf8.decoder.bind(rq).join();
       final path = rq.uri.path;
@@ -203,8 +204,15 @@ void main() {
         out = {'Id': 'e-205', 'Name': 'Breakage', 'Type': 'Episode', 'SeriesId': 's-bb', 'SeriesName': 'Breaking Bad', 'ParentIndexNumber': 2, 'IndexNumber': 5,
           'UserData': {'PlaybackPositionTicks': 9000000000}};
       } else if (path == '/Items/e-205/PlaybackInfo') {
-        out = {'PlaySessionId': 'ps-1', 'MediaSources': [{'Id': 'ms-1', 'SupportsDirectPlay': true, 'MediaStreams': [
-          {'Type': 'Video', 'Index': 0}, {'Type': 'Audio', 'Index': 1, 'Language': 'eng'},
+        // Like Jellyfin: the DTS track or picture subtitles need converting (HLS); the rest plays as it is.
+        final j = jsonDecode(body) as Map;
+        final convert = j['AudioStreamIndex'] == 2 || j['SubtitleStreamIndex'] == 4 || j['EnableDirectPlay'] == false;
+        playbackInfo.add(j);
+        out = {'PlaySessionId': 'ps-${playbackInfo.length}', 'MediaSources': [{'Id': 'ms-1', 'SupportsDirectPlay': !convert,
+          if (convert) 'TranscodingUrl': '/videos/e-205/master.m3u8?AudioStreamIndex=${j['AudioStreamIndex']}&SubtitleStreamIndex=${j['SubtitleStreamIndex']}',
+          'DefaultAudioStreamIndex': 1, 'MediaStreams': [
+          {'Type': 'Video', 'Index': 0}, {'Type': 'Audio', 'Index': 1, 'Language': 'eng', 'Codec': 'aac', 'DisplayTitle': 'English - AAC - Stereo', 'IsDefault': true},
+          {'Type': 'Audio', 'Index': 2, 'Language': 'eng', 'Codec': 'dts', 'DisplayTitle': 'Commentary - DTS - 5.1'},
           {'Type': 'Subtitle', 'Index': 3, 'Language': 'eng', 'DisplayTitle': 'English', 'IsTextSubtitleStream': true},
           {'Type': 'Subtitle', 'Index': 4, 'Language': 'dan', 'DisplayTitle': 'Danish (PGS)', 'IsTextSubtitleStream': false},
         ]}]};
@@ -226,7 +234,7 @@ void main() {
       await rq.response.close();
     });
     await host.install(AddonHost.readPackage(pack('$addonsDir/jellyfin'))!);
-    expect(host.installed['jellyfin']!.manifest.version, '1.9');
+    expect(host.installed['jellyfin']!.manifest.version, '1.10');
     final url = 'http://127.0.0.1:${srv.port}';
     final asked = <String>[];
     ui.answer = (op, args) {
@@ -307,10 +315,43 @@ void main() {
     expect(r['url'], contains('/Videos/e-205/stream'));
     expect(r['start'], 900);
     expect(r['title'], 'Breaking Bad');
-    final subs = r['subtitles'] as List;
-    expect(subs, hasLength(1));
-    expect((subs.single as Map)['url'], contains('/Videos/e-205/ms-1/Subtitles/3/0/Stream.vtt'));
-    expect((subs.single as Map)['label'], 'English');
+    final subs = (r['subtitles'] as List).cast<Map>();
+    expect(subs, hasLength(2), reason: 'text and picture subtitles');
+    expect(subs[0]['url'], contains('/Videos/e-205/ms-1/Subtitles/3/0/Stream.vtt'));
+    expect(subs[0]['label'], 'English');
+    expect(subs[1]['url'], isNull, reason: 'picture subtitles are drawn in by the server');
+    expect(subs[1]['id'], 4);
+    // Every sound track; the DTS one the player can't play itself (no "player" place).
+    final audios = (r['audios'] as List).cast<Map>();
+    expect(audios.map((a) => a['id']), [1, 2]);
+    expect(audios[0], containsPair('selected', true));
+    expect(audios[0]['player'], 0);
+    expect(audios[1]['player'], isNull);
+
+    // Choosing the DTS track: the same episode from the same spot, converted with that track.
+    ui.played.clear();
+    final ok = await host.call('jellyfin', 'switch', [r['ref'], {'audio': 2, 'subtitle': null, 'position': 1234.5}], const Duration(seconds: 20));
+    expect(ok, isTrue, reason: host.logOf('jellyfin').join('\n'));
+    expect(playbackInfo.last['AudioStreamIndex'], 2);
+    final r2 = ui.played.single;
+    expect(r2['url'], contains('/videos/e-205/master.m3u8?AudioStreamIndex=2'));
+    expect(r2['mime'], 'application/x-mpegURL');
+    expect(r2['start'], 1234.5);
+    expect(((r2['audios'] as List).cast<Map>()).firstWhere((a) => a['selected'] == true)['id'], 2);
+    // Picture subtitles: drawn in, and marked as chosen.
+    ui.played.clear();
+    await host.call('jellyfin', 'switch', [r2['ref'], {'audio': 2, 'subtitle': 4, 'position': 1300}], const Duration(seconds: 20));
+    expect(playbackInfo.last['SubtitleStreamIndex'], 4);
+    expect(((ui.played.single['subtitles'] as List).cast<Map>())[1]['selected'], isTrue);
+    // The TV could not play the file as it is: asked for it converted, the server converts it (and
+    // later track changes stay converted).
+    ui.played.clear();
+    await host.call('jellyfin', 'switch', [r['ref'], {'audio': 1, 'subtitle': null, 'position': 5, 'convert': true}], const Duration(seconds: 20));
+    expect(playbackInfo.last['EnableDirectPlay'], isFalse);
+    final r3 = ui.played.single;
+    ui.played.clear();
+    await host.call('jellyfin', 'switch', [r3['ref'], {'audio': 1, 'subtitle': null, 'position': 9}], const Duration(seconds: 20));
+    expect(playbackInfo.last['EnableDirectPlay'], isFalse, reason: 'stays converted');
     expect((r['segments'] as List).single, {'type': 'intro', 'start': 2, 'end': 7});
     expect((r['next'] as Map)['title'], isNotEmpty);
     await srv.close(force: true);

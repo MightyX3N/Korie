@@ -180,9 +180,21 @@ add-on is the example: finding the server, signing in and making profiles are al
 - `next = {title="S1 E3 · Name", series=, image=, overview=}`: there is something after this. When this
   ends, the Next Up screen shows it, and the `next` event asks the add-on to start it.
 - `autonext = true`: the Next Up screen counts down 7 seconds and then starts it.
-- `subtitles = { {label="English", lang="eng", url=, default=true}, ... }`: subtitle files (WebVTT or
-  SubRip) the player fetches with the same `headers`; the Subtitles button lists them. Audio tracks in
-  the file are listed by the Audio button by themselves.
+- `subtitles = { {id=, label="English", lang="eng", url=, default=true}, ... }`: every subtitle track.
+  Text ones carry a `url` (WebVTT or SubRip, fetched with the same `headers`); picture ones (PGS,
+  VobSub) only an `id`, and `selected=true` on the one drawn into this stream. The Subtitles panel
+  lists them all and scrolls, so hundreds are fine.
+- `audios = { {id=, label=, lang=, selected=true, player=0}, ... }`: every sound track, also when the
+  stream carries only one. `player`: the track's place in the stream when the player can switch to it
+  there; without it, choosing the track asks the add-on (`switch` below). Without `audios`, the Audio
+  panel lists the tracks the stream itself has.
+
+The `switch` event: `korie.on("switch", function(ref, want) ... end)`, with
+`want = {audio=, subtitle=, position=, convert=}`. The person chose a sound track the stream does not
+carry or picture subtitles (or none), or the TV could not play the file as it is (`convert = true`).
+Answer by calling `korie.play` again for the same video from `position`, with that track (picture
+subtitles drawn in, or converted to something the TV plays), and return `true`; return `false` if it
+can't be done.
 
 Korie's own playlists (per profile, in Korie TV) play an add-on's films and episodes through its
 `action` with `"play"`, one after another: nothing more is needed from the add-on.

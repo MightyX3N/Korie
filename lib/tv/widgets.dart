@@ -147,7 +147,7 @@ class PosterCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final w = g.posterW, h = g.posterH, r = g.dp(16);
-    final genre = item.genres.isEmpty ? '' : item.genres.first;
+
     return HoldFocusable(
       onTap: onTap,
       onHold: onHold,
@@ -182,12 +182,13 @@ class PosterCard extends StatelessWidget {
                   gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0x00000000), Color(0xB3000000)], stops: [0.7, 1]),
                 ),
               ),
-              if (genre.isNotEmpty)
+              // The name, as on every poster (with no picture it is already in the middle).
+              if (item.title.isNotEmpty && item.poster.isNotEmpty)
                 Positioned(
-                  left: g.dp(6),
-                  right: g.dp(6),
+                  left: g.dp(8),
+                  right: g.dp(8),
                   bottom: g.dp(10),
-                  child: Text(genre, textAlign: TextAlign.center, maxLines: 1, overflow: TextOverflow.ellipsis, style: tx(g.dp(13), w: FontWeight.w600, opacity: 0.9)),
+                  child: Text(item.title, textAlign: TextAlign.center, maxLines: 1, overflow: TextOverflow.ellipsis, style: tx(g.dp(13), w: FontWeight.w600, opacity: 0.95)),
                 ),
             ],
           ),

@@ -118,6 +118,14 @@ class Android {
 
   static Future<bool> notifAccess() async => on && (await _ch.invokeMethod<bool>('notifAccess') ?? false);
   static Future<bool> askNotifAccess() async => on && (await _ch.invokeMethod<bool>('askNotifAccess') ?? false);
+  /// Whether Korie holds Android's home app role (null: this TV has no such role).
+  static Future<bool?> homeRole() async => on ? await _ch.invokeMethod<bool>('homeRole') : null;
+
+  /// The last Korie update Android would not install ({status, message}), once.
+  static Future<Map?> installFailure() async => on ? await _ch.invokeMethod<Map>('installFailure') : null;
+
+  /// Opened by the Home button (as the TV's home screen), not as an app.
+  static Future<bool> openedAsHome() async => on && (await _ch.invokeMethod<bool>('openedAsHome') ?? false);
   static Future<bool> isDefaultHome() async => on && (await _ch.invokeMethod<bool>('isDefaultHome') ?? false);
   static Future<bool> askDefaultHome() async => on && (await _ch.invokeMethod<bool>('askDefaultHome') ?? false);
   static Future<bool> locationGranted() async => on && (await _ch.invokeMethod<bool>('locationGranted') ?? false);

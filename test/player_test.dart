@@ -69,10 +69,10 @@ class FakeVideo extends VideoPlayerPlatform {
   @override
   Future<List<VideoAudioTrack>> getAudioTracks(int playerId) async {
     await tracksLater?.future;
-    return _tracks;
+    return tracks;
   }
 
-  static const _tracks = [
+  List<VideoAudioTrack> tracks = const [
     VideoAudioTrack(id: 'a', label: 'English', language: 'en', isSelected: true),
     VideoAudioTrack(id: 'b', label: 'Dansk', language: 'da', isSelected: false),
   ];
@@ -284,6 +284,69 @@ void main() {
     expect(find.byType(VideoScreen), findsOneWidget);
     await t.pump(const Duration(seconds: 8));
     expect(s.countdown, isNull, reason: 'dismissed: it does not come back');
+    await t.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('150 subtitles: the panel scrolls, opens on the chosen one, and every row is reachable', (t) async {
+    video.tracks = [...video.tracks, const VideoAudioTrack(id: 'c', label: 'Commentary', language: 'en', isSelected: false)];
+    final s = await open(t, more: {
+      'subtitles': [
+        for (var i = 0; i < 150; i++) {'id': 4 + i, 'label': 'Subtitle ${i + 1}', 'lang': 'eng', 'url': 'http://127.0.0.1:9/$i.vtt', if (i == 119) 'default': true},
+        {'id': 154, 'label': 'Danish - PGSSUB', 'lang': 'dan'},
+      ],
+      'audios': [
+        {'id': 1, 'label': 'English - AAC', 'lang': 'eng', 'selected': true, 'player': 0},
+        {'id': 2, 'label': 'Dansk - AAC', 'lang': 'dan', 'player': 1},
+        {'id': 3, 'label': 'Commentary - DTS - 5.1', 'lang': 'eng'},
+      ],
+    });
+    expect(s.subtitle, 119, reason: "the add-on's default");
+    await key(t, LogicalKeyboardKey.arrowDown);
+    await key(t, LogicalKeyboardKey.arrowRight);
+    await key(t, LogicalKeyboardKey.arrowRight); // Subtitles
+    await key(t, LogicalKeyboardKey.select);
+    await t.pump(const Duration(milliseconds: 300));
+    final screen = t.view.physicalSize.height;
+    Rect focusedRect() => t.getRect(find.byWidget(FocusManager.instance.primaryFocus!.context!.widget));
+    String focusedText() => find
+        .descendant(of: find.byWidget(FocusManager.instance.primaryFocus!.context!.widget), matching: find.byType(Text))
+        .evaluate()
+        .map((e) => (e.widget as Text).data)
+        .join(' ');
+    expect(focusedText(), contains('Subtitle 120'));
+    expect(focusedRect().top, greaterThanOrEqualTo(0));
+    expect(focusedRect().bottom, lessThanOrEqualTo(screen), reason: 'scrolled into view');
+    // All the way down to the picture subtitles at the end, each one on screen as it is reached.
+    for (var i = 0; i < 31; i++) {
+      await key(t, LogicalKeyboardKey.arrowDown);
+      await t.pump(const Duration(milliseconds: 300));
+      expect(focusedRect().bottom, lessThanOrEqualTo(screen));
+    }
+    expect(focusedText(), contains('Danish - PGSSUB'));
+    expect(focusedText(), contains('PICTURE'));
+    // And all the way up to Off.
+    for (var i = 0; i < 151; i++) {
+      await key(t, LogicalKeyboardKey.arrowUp);
+    }
+    await t.pump(const Duration(milliseconds: 300));
+    expect(focusedText(), contains('Off'));
+    expect(focusedRect().top, greaterThanOrEqualTo(0));
+    await t.binding.handlePopRoute(); // Back closes the panel
+    await t.pump(const Duration(milliseconds: 100));
+    expect(s.panel, isNull);
+
+    // Audio: all three of the add-on's tracks; Dansk is in the stream itself, so the player switches.
+    await key(t, LogicalKeyboardKey.arrowDown);
+    for (var i = 0; i < 3; i++) {
+      await key(t, LogicalKeyboardKey.arrowRight);
+    }
+    await key(t, LogicalKeyboardKey.select);
+    expect(s.panel, 'audio');
+    expect(find.text('Commentary - DTS - 5.1'), findsOneWidget);
+    expect(focusedText(), contains('English - AAC'));
+    await key(t, LogicalKeyboardKey.arrowDown);
+    await key(t, LogicalKeyboardKey.select);
+    expect(video.selected, 'b', reason: "the stream's second track");
     await t.pumpWidget(const SizedBox());
   });
 }
