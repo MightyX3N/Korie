@@ -57,9 +57,6 @@ const _defaultFavourites = [
 
 enum _Mode { newTab, page, tabs }
 
-/// Korie's web browser: tabs (kept per profile), a new-tab page with search and favourites, and
-/// pages where the arrow keys move a pointer and OK clicks, as TV browsers do. Up at the top edge
-/// of a page reaches the bar; Back goes back a page, and from the first page leaves.
 /// Tells that a page stopped working (its renderer crashed).
 void pageCrashed(BuildContext context, bool reloaded) {
   final o = Navigator.of(context).overlay;
@@ -67,6 +64,10 @@ void pageCrashed(BuildContext context, bool reloaded) {
   showToast(o, reloaded ? 'The page stopped working and was opened again' : 'This page keeps stopping, so it was closed');
 }
 
+/// Korie's web browser: tabs (kept per profile), a new-tab page with search and favourites, and
+/// pages where the arrow keys move a pointer and OK clicks, as TV browsers do. Up at the top edge
+/// of a page reaches the bar; Back goes back a page, from the first page to the new-tab page, and
+/// from there leaves.
 class KorieBrowser extends StatefulWidget {
   const KorieBrowser({super.key, required this.store, this.open});
   final Store store;
@@ -264,8 +265,11 @@ class _KorieBrowserState extends State<KorieBrowser> {
     if (o != null) showToast(o, _isFavourite ? 'Added to Favourites' : 'Removed from Favourites');
   }
 
+  /// Back goes back step by step inside the Browser: a page goes back a page, the first page of a
+  /// tab goes to the new-tab page, the tabs view goes back to the page, and the new-tab page
+  /// leaves the Browser (the tabs are kept for next time).
   Future<void> _back() async {
-    if (mode != _Mode.page && tab != null) {
+    if (mode == _Mode.tabs && tab != null) {
       await switchTo(current);
       return;
     }
@@ -273,8 +277,10 @@ class _KorieBrowserState extends State<KorieBrowser> {
       await web.back();
       return;
     }
-    // A page with nothing to go back to: leave the Browser (the tabs are kept for next time).
-    await _keepPicture();
+    if (mode == _Mode.page) {
+      await showNewTab();
+      return;
+    }
     if (mounted) Navigator.of(context).pop();
   }
 
@@ -389,15 +395,16 @@ class _KorieBrowserState extends State<KorieBrowser> {
             final pageSize = Size(g.w, g.h - barH);
             return Stack(
               children: [
-                // The page stays in place under the other views, so going back to it is instant.
+                // The page, while it is shown: its view is made when it is on screen (made under the
+                // new-tab or tabs view it stays blank on some TVs) and goes when they cover it.
+                if (mode == _Mode.page)
                 Positioned(
                   left: 0,
                   top: barH,
                   width: pageSize.width,
                   height: pageSize.height,
-                  // (always in place: the new-tab and tabs views cover it; hiding it stops its picture)
                   child: ExcludeFocus(
-                    excluding: mode != _Mode.page,
+                    excluding: false,
                     child: Focus(
                       focusNode: pageNode,
                       onKeyEvent: (n, e) => _pageKey(n, e, pageSize),
@@ -405,7 +412,7 @@ class _KorieBrowserState extends State<KorieBrowser> {
                       child: Stack(
                         children: [
                           Positioned.fill(
-                            child: KeyedSubtree(key: pageKey, child: WebPageView(page: web)),
+                            child: KeyedSubtree(key: pageKey, child: WebPageView(key: ValueKey(tab?.id), page: web)),
                           ),
                           if (pointerShown && pageNode.hasFocus) _pointer(g),
                           if (loading)
