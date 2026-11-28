@@ -1,7 +1,7 @@
 name: korie
 description: "Korie: a launcher for TV, car, phone and desktop."
 publish_to: 'none'
-version: 2.7.0+27
+version: 2.8.0+28
 
 environment:
   sdk: ^3.14.0

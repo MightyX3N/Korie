@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:material_ui/material_ui.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'addons/host.dart';
 import 'addons/manifest.dart';
@@ -93,8 +94,64 @@ class Island extends ChangeNotifier {
     refreshAll();
     // Media sessions announce themselves; this catches access given later and missed changes.
     _poll = Timer.periodic(const Duration(seconds: 20), (_) => refreshAll());
+    // An update found before shows at once; then a fresh check right away (and every 3 hours,
+    // and when the TV wakes: [woke]).
+    _loadFound().then((_) => checkUpdates());
     Timer.periodic(const Duration(hours: 3), (_) => checkUpdates());
-    Timer(const Duration(seconds: 20), checkUpdates);
+  }
+
+  /// The TV woke up: look for updates now, so one shows as soon as the TV is on.
+  void woke() {
+    _retries = 0; // a few tries again: the network may still be waking up
+    checkUpdates();
+  }
+
+  static const _foundKey = 'update.found';
+  int _retries = 0;
+
+  /// What the last check found, kept so it shows the moment Korie starts.
+  Future<void> _loadFound() async {
+    try {
+      final raw = (await SharedPreferences.getInstance()).getString(_foundKey);
+      if (raw == null) return;
+      final j = jsonDecode(raw) as Map;
+      final a = j['app'];
+      if (a is Map && ((a['code'] as num?)?.toInt() ?? 0) > await Android.versionCode()) {
+        newApp = (version: '${a['version']}', apk: '${a['apk']}');
+      }
+      final host = AddonHost.instance;
+      newAddons = [
+        for (final e in (j['addons'] as List? ?? const []))
+          if (e is Map)
+            if (host.installed[e['id']] case final inst? when compareVersions('${e['version']}', inst.manifest.version) > 0)
+              IndexEntry(
+                id: '${e['id']}',
+                name: '${e['name']}',
+                version: '${e['version']}',
+                author: '${e['author'] ?? ''}',
+                description: '${e['description'] ?? ''}',
+                uses: [for (final u in (e['uses'] as List? ?? const [])) '$u'],
+                url: '${e['url']}',
+              ),
+      ];
+      if (hasUpdate) _showUpdate();
+    } catch (_) {}
+  }
+
+  Future<void> _saveFound(int code) async {
+    try {
+      final app = newApp;
+      await (await SharedPreferences.getInstance()).setString(
+        _foundKey,
+        jsonEncode({
+          if (app != null) 'app': {'version': app.version, 'apk': app.apk, 'code': code},
+          'addons': [
+            for (final e in newAddons)
+              {'id': e.id, 'name': e.name, 'version': e.version, 'author': e.author, 'description': e.description, 'uses': e.uses, 'url': e.url},
+          ],
+        }),
+      );
+    } catch (_) {}
   }
 
   var _lastHandles = '';
@@ -186,30 +243,38 @@ class Island extends ChangeNotifier {
   Future<void> checkUpdates() async {
     if (updating != null) return;
     final host = AddonHost.instance;
-    ({String version, String apk})? app;
-    var failed = false;
+    // What could not be reached keeps what was found before (a found update never vanishes
+    // because the network was not up yet).
+    var appReached = true, indexReached = true;
+    var code = 0;
     try {
       final j = jsonDecode(utf8.decode(await host.download(updateUrl))) as Map;
-      final code = (j['code'] as num?)?.toInt() ?? 0;
-      if (code > await Android.versionCode() && j['apk'] is String) app = (version: '${j['version']}', apk: j['apk'] as String);
+      code = (j['code'] as num?)?.toInt() ?? 0;
+      newApp = code > await Android.versionCode() && j['apk'] is String ? (version: '${j['version']}', apk: j['apk'] as String) : null;
     } catch (_) {
-      failed = true;
+      appReached = false;
     }
-    List<IndexEntry> index;
     try {
-      index = await host.fetchIndex();
+      final index = await host.fetchIndex();
+      newAddons = [
+        for (final e in index)
+          if (host.installed[e.id] case final a? when compareVersions(e.version, a.manifest.version) > 0) e,
+      ];
     } catch (_) {
-      index = const [];
-      failed = true;
+      indexReached = false;
     }
-    newApp = app;
-    newAddons = [
-      for (final e in index)
-        if (host.installed[e.id] case final a? when compareVersions(e.version, a.manifest.version) > 0) e,
-    ];
+    final failed = !appReached || !indexReached;
     checkedAt = DateTime.now();
     checkFailed = failed;
-    debugPrint('korie: update check: app ${app?.version ?? 'none'}, add-ons ${newAddons.length}${failed ? ' (not all reached)' : ''}');
+    // Just after the TV wakes the network may not be up yet: try again a few times.
+    if (!appReached && _retries < 3) {
+      _retries++;
+      Timer(const Duration(seconds: 30), checkUpdates);
+    } else if (appReached) {
+      _retries = 0;
+    }
+    if (appReached) _saveFound(code);
+    debugPrint('korie: update check: app ${appReached ? (newApp?.version ?? 'none') : 'not reached'}, add-ons ${newAddons.length}${failed ? ' (not all reached)' : ''}');
     _showUpdate();
   }
 
