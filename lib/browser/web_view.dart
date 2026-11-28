@@ -63,6 +63,13 @@ class WebPage extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// The view went away (its page left the screen): the next view takes what is loaded next.
+  void _detach(MethodChannel ch) {
+    if (_ch != ch) return;
+    ch.setMethodCallHandler(null);
+    _ch = null;
+  }
+
   Future<void> load(String address) async {
     url = address;
     title = '';
@@ -87,14 +94,32 @@ class WebPage extends ChangeNotifier {
   Future<int> scrollY() async => (await _ch?.invokeMethod<int>('scrollY')) ?? 0;
 }
 
-/// The page on screen. [url] is opened when the view is made.
-class WebPageView extends StatelessWidget {
+/// The page on screen. [url] is opened when the view is made (or what [WebPage.load] was given
+/// before it was there). Made only while the page is to be seen: a view made under something
+/// else stays blank on some TVs.
+class WebPageView extends StatefulWidget {
   const WebPageView({super.key, required this.page, this.url = '', this.resume});
   final WebPage page;
   final String url;
 
   /// The key of a page in the background to show again as it is (instead of loading [url]).
   final String? resume;
+
+  @override
+  State<WebPageView> createState() => _WebPageViewState();
+}
+
+class _WebPageViewState extends State<WebPageView> {
+  MethodChannel? _mine;
+
+  WebPage get page => widget.page;
+
+  @override
+  void dispose() {
+    final m = _mine;
+    if (m != null) page._detach(m);
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) => PlatformViewLink(
@@ -110,12 +135,15 @@ class WebPageView extends StatelessWidget {
         id: params.id,
         viewType: 'korie/web',
         layoutDirection: TextDirection.ltr,
-        creationParams: {'url': url, 'resume': ?resume},
+        creationParams: {'url': widget.url, 'resume': ?widget.resume},
         creationParamsCodec: const StandardMessageCodec(),
         onFocus: () => params.onFocusChanged(true),
       );
       c.addOnPlatformViewCreatedListener(params.onPlatformViewCreated);
-      c.addOnPlatformViewCreatedListener(page._attach);
+      c.addOnPlatformViewCreatedListener((id) {
+        page._attach(id);
+        _mine = page._ch;
+      });
       c.create();
       return c;
     },
